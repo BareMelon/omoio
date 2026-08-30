@@ -33,6 +33,16 @@ pub struct DisplayInfo {
     pub refresh_hz: u32,
 }
 
+/// A library entry as the interface needs it. `available` is false when the
+/// folder is gone right now, which for a game on an external drive is a normal
+/// state rather than a broken entry.
+#[derive(Serialize)]
+pub struct GameEntry {
+    #[serde(flatten)]
+    pub game: crate::core::library::Game,
+    pub available: bool,
+}
+
 #[derive(Clone, Serialize)]
 pub struct Progress {
     pub stage: String,

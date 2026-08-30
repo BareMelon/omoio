@@ -1,7 +1,7 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
 
-import { getFirmwareVersion, getRpcs3Version } from "./api";
+import { getFirmwareVersion, getRpcs3Version, listGames } from "./api";
 import { store, type ViewId } from "./state";
 import { renderTitlebar } from "./components/titlebar";
 import { renderSidebar } from "./components/sidebar";
@@ -64,3 +64,4 @@ store.subscribe((state) => {
 
 getRpcs3Version().then((version) => store.setRpcs3Version(version));
 getFirmwareVersion().then((version) => store.setFirmwareVersion(version));
+listGames().then((games) => store.setGames(games));

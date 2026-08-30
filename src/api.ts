@@ -55,6 +55,28 @@ export function onRpcs3InstallProgress(handler: (progress: InstallProgress) => v
   return listen<InstallProgress>("rpcs3-install-progress", (event) => handler(event.payload));
 }
 
+export interface Game {
+  title_id: string;
+  title: string;
+  version: string | null;
+  path: string;
+  size_bytes: number;
+  /// False when the folder isn't reachable right now, e.g. an external drive.
+  available: boolean;
+}
+
+export function listGames(): Promise<Game[]> {
+  return invoke("list_games");
+}
+
+export function importGame(path: string): Promise<Game> {
+  return invoke("import_game", { path });
+}
+
+export function removeGame(titleId: string): Promise<void> {
+  return invoke("remove_game", { titleId });
+}
+
 export function getFirmwareVersion(): Promise<string | null> {
   return invoke("get_firmware_version");
 }

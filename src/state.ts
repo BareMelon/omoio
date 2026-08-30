@@ -1,9 +1,14 @@
+import type { Game } from "./api";
+
 export type ViewId = "library" | "catalogue" | "homebrew" | "updates" | "system";
 
 interface AppState {
   view: ViewId;
   rpcs3Version: string | null;
   firmwareVersion: string | null;
+  games: Game[];
+  importing: boolean;
+  importError: string | null;
 }
 
 type Listener = (state: AppState) => void;
@@ -13,7 +18,14 @@ type Listener = (state: AppState) => void;
 // enough for the ~15 components in the app; revisit only if that stops
 // being true.
 class Store {
-  private state: AppState = { view: "library", rpcs3Version: null, firmwareVersion: null };
+  private state: AppState = {
+    view: "library",
+    rpcs3Version: null,
+    firmwareVersion: null,
+    games: [],
+    importing: false,
+    importError: null,
+  };
   private listeners = new Set<Listener>();
 
   get(): AppState {
@@ -33,6 +45,21 @@ class Store {
 
   setFirmwareVersion(version: string | null): void {
     this.state = { ...this.state, firmwareVersion: version };
+    this.notify();
+  }
+
+  setGames(games: Game[]): void {
+    this.state = { ...this.state, games };
+    this.notify();
+  }
+
+  setImporting(importing: boolean): void {
+    this.state = { ...this.state, importing, importError: null };
+    this.notify();
+  }
+
+  setImportError(message: string): void {
+    this.state = { ...this.state, importing: false, importError: message };
     this.notify();
   }
 

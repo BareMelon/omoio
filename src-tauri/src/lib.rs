@@ -2,6 +2,7 @@ mod backends;
 mod commands;
 pub mod core;
 mod hardware;
+pub mod import;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +22,9 @@ pub fn run() {
             commands::cancel_rpcs3_install,
             commands::get_firmware_version,
             commands::install_firmware,
+            commands::list_games,
+            commands::import_game,
+            commands::remove_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
