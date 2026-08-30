@@ -2,6 +2,7 @@ export type ViewId = "library" | "catalogue" | "homebrew" | "updates" | "system"
 
 interface AppState {
   view: ViewId;
+  rpcs3Version: string | null;
 }
 
 type Listener = (state: AppState) => void;
@@ -11,7 +12,7 @@ type Listener = (state: AppState) => void;
 // enough for the ~15 components in the app; revisit only if that stops
 // being true.
 class Store {
-  private state: AppState = { view: "library" };
+  private state: AppState = { view: "library", rpcs3Version: null };
   private listeners = new Set<Listener>();
 
   get(): AppState {
@@ -21,6 +22,11 @@ class Store {
   setView(view: ViewId): void {
     if (view === this.state.view) return;
     this.state = { ...this.state, view };
+    this.notify();
+  }
+
+  setRpcs3Version(version: string | null): void {
+    this.state = { ...this.state, rpcs3Version: version };
     this.notify();
   }
 

@@ -1,6 +1,7 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
 
+import { getRpcs3Version } from "./api";
 import { store, type ViewId } from "./state";
 import { renderTitlebar } from "./components/titlebar";
 import { renderSidebar } from "./components/sidebar";
@@ -60,3 +61,5 @@ store.subscribe((state) => {
     content.replaceChildren(view.content);
   });
 });
+
+getRpcs3Version().then((version) => store.setRpcs3Version(version));

@@ -320,6 +320,76 @@ button {
   text-align: right;
 }
 
+.cfg-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6.5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cfg-row:last-child {
+  border-bottom: none;
+}
+.cfg-k {
+  font-size: 12.5px;
+  color: var(--mute);
+}
+.cfg-v {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.small-btn {
+  padding: 5px 11px;
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: var(--mute);
+  transition: background 0.12s, color 0.12s;
+}
+.small-btn:hover {
+  background: var(--raise);
+  color: var(--ink);
+}
+.small-btn[disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.progress-row {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.progress-row:last-child {
+  border-bottom: none;
+}
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--mute);
+  margin-bottom: 6px;
+}
+.progress-label .pct {
+  font-family: var(--mono);
+  color: var(--dim);
+}
+.progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--raise);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--brand);
+  transition: width 0.15s ease-out;
+}
+.progress-error {
+  font-size: 11.5px;
+  color: var(--mute);
+  margin-top: 8px;
+}
+
 /* ---------- detail panel ---------- */
 .detail {
   width: 352px;

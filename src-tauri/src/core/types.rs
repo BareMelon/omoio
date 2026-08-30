@@ -32,3 +32,10 @@ pub struct DisplayInfo {
     pub height: u32,
     pub refresh_hz: u32,
 }
+
+#[derive(Clone, Serialize)]
+pub struct Progress {
+    pub stage: String,
+    pub bytes: u64,
+    pub total: u64,
+}

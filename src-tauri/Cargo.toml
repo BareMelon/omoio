@@ -26,6 +26,11 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Gdi",
     "Win32_Foundation",
 ] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
+sevenz-rust2 = "0.22"
+tokio = { version = "1", features = ["fs", "io-util"] }
+futures-util = "0.3"
+sha2 = "0.11"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
