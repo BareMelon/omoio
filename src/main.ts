@@ -12,7 +12,7 @@ import { renderUpdates } from "./views/updates";
 import { renderSystem } from "./views/system";
 import type { View } from "./views/view";
 
-const VIEWS: Record<ViewId, () => View> = {
+const VIEWS: Record<ViewId, () => View | Promise<View>> = {
   library: renderLibrary,
   catalogue: renderCatalogue,
   homebrew: renderHomebrew,
@@ -50,9 +50,13 @@ shell.append(renderSidebar(), main, renderDetail());
 
 app.append(renderTitlebar(), shell);
 
+let renderToken = 0;
 store.subscribe((state) => {
-  const view = VIEWS[state.view]();
-  viewTitle.textContent = view.title;
-  viewSub.textContent = view.subtitle;
-  content.replaceChildren(view.content);
+  const token = ++renderToken;
+  Promise.resolve(VIEWS[state.view]()).then((view) => {
+    if (token !== renderToken) return;
+    viewTitle.textContent = view.title;
+    viewSub.textContent = view.subtitle;
+    content.replaceChildren(view.content);
+  });
 });

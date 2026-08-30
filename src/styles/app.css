@@ -275,6 +275,51 @@ button {
   margin-top: 5px;
 }
 
+/* ---------- content sections ---------- */
+.sec {
+  margin-top: 20px;
+}
+.sec-h {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+
+.hw {
+  max-width: 660px;
+}
+.hw-row {
+  display: grid;
+  grid-template-columns: 78px 1fr auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.hw-row:last-child {
+  border-bottom: none;
+}
+.hw-k {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.hw-v {
+  font-size: 13px;
+  font-weight: 550;
+}
+.hw-n {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  text-align: right;
+}
+
 /* ---------- detail panel ---------- */
 .detail {
   width: 352px;
