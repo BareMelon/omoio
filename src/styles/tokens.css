@@ -1,0 +1,20 @@
+:root {
+  --void: #0b0e14;
+  --panel: #11151e;
+  --raise: #181d2a;
+  --raise2: #1e2434;
+  --line: #252c3d;
+  --line2: #323a4e;
+  --ink: #e6eaf2;
+  --mute: #7b8598;
+  --dim: #5a6377;
+  --brand: #126bfc;
+  --brand-soft: rgba(18, 107, 252, 0.14);
+  --go: #2ed37e;
+  --warn: #e3a33f;
+
+  --ui: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --r: 7px;
+}

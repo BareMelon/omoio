@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Omoio — interface mockup</title>
+<style>
+:root{
+  --void:#0B0E14;
+  --panel:#11151E;
+  --raise:#181D2A;
+  --raise2:#1E2434;
+  --line:#252C3D;
+  --line2:#323A4E;
+  --ink:#E6EAF2;
+  --mute:#7B8598;
+  --dim:#5A6377;
+  --brand:#126BFC;
+  --brand-soft:rgba(18,107,252,.14);
+  --go:#2ED37E;
+  --warn:#E3A33F;
+  --bad:#D9534F;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+  --r:7px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:#05070B;
+  font-family:var(--ui);
+  color:var(--ink);
+  font-size:13px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:3px}
+
+/* ---------- window ---------- */
+.win{
+  width:100%;max-width:1280px;height:min(820px,calc(100vh - 48px));
+  background:var(--void);
+  border:1px solid var(--line2);
+  border-radius:10px;
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.03) inset;
+}
+.titlebar{
+  height:38px;flex:0 0 38px;
+  background:var(--panel);
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;
+  padding-left:14px;
+  user-select:none;
+}
+.wordmark{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.01em}
+.wordmark svg{width:16px;height:16px;display:block}
+.tb-spacer{flex:1}
+.tb-btn{width:44px;height:38px;display:grid;place-items:center;color:var(--mute);transition:background .12s,color .12s}
+.tb-btn:hover{background:var(--raise);color:var(--ink)}
+.tb-btn.close:hover{background:#C4383A;color:#fff}
+.tb-btn svg{width:10px;height:10px}
+
+/* ---------- shell ---------- */
+.shell{flex:1;display:flex;min-height:0}
+.side{
+  width:212px;flex:0 0 212px;
+  background:var(--panel);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;
+  padding:12px 10px 10px;
+}
+.nav-label{
+  font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--dim);padding:0 8px;margin:16px 0 6px;
+}
+.nav-label:first-child{margin-top:2px}
+.nav-item{
+  width:100%;display:flex;align-items:center;gap:10px;
+  padding:7px 8px;border-radius:var(--r);
+  color:var(--mute);text-align:left;
+  transition:background .12s,color .12s;
+}
+.nav-item:hover{background:var(--raise);color:var(--ink)}
+.nav-item.on{background:var(--brand-soft);color:#8FBAFF}
+.nav-item.on .nav-ico{color:var(--brand)}
+.nav-ico{width:15px;height:15px;flex:0 0 15px;color:var(--dim)}
+.nav-count{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.nav-dot{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--brand)}
+
+.side-foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--line)}
+.stat{display:flex;justify-content:space-between;padding:3px 8px;font-size:11px}
+.stat span:first-child{color:var(--dim)}
+.stat span:last-child{font-family:var(--mono);color:var(--mute)}
+.import-btn{
+  width:100%;margin-top:10px;padding:9px;border-radius:var(--r);
+  background:var(--brand);color:#fff;font-weight:600;font-size:12.5px;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  transition:transform .1s ease-out,background .12s;
+}
+.import-btn:hover{background:#2A7BFF}
+.import-btn:active{transform:scale(.975)}
+.import-btn svg{width:14px;height:14px}
+
+/* ---------- main ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{
+  height:52px;flex:0 0 52px;
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;padding:0 18px;
+}
+.view-title{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.view-sub{font-size:11.5px;color:var(--dim);font-family:var(--mono)}
+.search{
+  margin-left:auto;position:relative;width:250px;
+}
+.search input{
+  width:100%;padding:6.5px 10px 6.5px 30px;
+  background:var(--raise);border:1px solid var(--line);border-radius:var(--r);
+  color:var(--ink);font:inherit;font-size:12.5px;
+}
+.search input::placeholder{color:var(--dim)}
+.search input:focus{outline:none;border-color:var(--brand)}
+.search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:13px;height:13px;color:var(--dim)}
+.seg{display:flex;background:var(--raise);border:1px solid var(--line);border-radius:var(--r);padding:2px}
+.seg button{padding:4px 9px;border-radius:5px;color:var(--dim);font-size:11.5px;transition:background .12s,color .12s}
+.seg button.on{background:var(--raise2);color:var(--ink)}
+
+.content{flex:1;overflow-y:auto;padding:18px}
+.content::-webkit-scrollbar{width:10px}
+.content::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px;border:3px solid var(--void)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
+.card{text-align:left;transition:transform .16s cubic-bezier(.2,.8,.3,1)}
+.card:hover{transform:translateY(-3px)}
+.card:hover .art{border-color:var(--line2);box-shadow:0 10px 24px -8px rgba(0,0,0,.7)}
+.art{
+  position:relative;aspect-ratio:5/6;border-radius:var(--r);overflow:hidden;
+  border:1px solid var(--line);transition:border-color .16s,box-shadow .16s;
+}
+.art svg{position:absolute;inset:0;width:100%;height:100%}
+.art-name{
+  position:absolute;left:0;right:0;bottom:0;padding:22px 11px 10px;
+  font-size:12.5px;font-weight:650;line-height:1.2;letter-spacing:-.01em;
+  color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.7);
+  background:linear-gradient(transparent,rgba(0,0,0,.72));
+}
+.card.ghost .art{opacity:.42;filter:saturate(.35)}
+.card.ghost:hover .art{opacity:.7;filter:saturate(.7)}
+.badge{
+  position:absolute;top:8px;left:8px;
+  padding:2.5px 6px;border-radius:4px;
+  font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  background:rgba(6,9,14,.72);backdrop-filter:blur(8px);
+}
+.badge.go{color:var(--go)}
+.badge.warn{color:var(--warn)}
+.badge.own{color:var(--mute)}
+.pip{
+  position:absolute;top:8px;right:8px;width:17px;height:17px;border-radius:50%;
+  background:var(--brand);color:#fff;display:grid;place-items:center;
+  font-size:9px;font-weight:700;
+}
+.meta{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11px;color:var(--dim)}
+.meta .id{font-family:var(--mono);font-size:10.5px}
+
+/* ---------- detail ---------- */
+.detail{
+  width:352px;flex:0 0 352px;
+  background:var(--panel);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;
+  transition:margin-right .28s cubic-bezier(.2,.8,.3,1),opacity .2s;
+}
+.detail.hidden{margin-right:-352px;opacity:0;pointer-events:none}
+.d-hero{position:relative;height:132px;flex:0 0 132px;overflow:hidden;border-bottom:1px solid var(--line)}
+.d-art{position:absolute;inset:0}
+.d-art svg{width:100%;height:100%;display:block}
+.d-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(17,21,30,.9),rgba(17,21,30,.15))}
+.d-close{position:absolute;top:9px;right:9px;z-index:2;width:24px;height:24px;border-radius:5px;display:grid;place-items:center;background:rgba(6,9,14,.6);backdrop-filter:blur(6px);color:var(--mute)}
+.d-close:hover{color:var(--ink)}
+.d-close svg{width:11px;height:11px}
+.d-body{flex:1;overflow-y:auto;padding:16px}
+.d-body::-webkit-scrollbar{width:8px}
+.d-body::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px;border:2px solid var(--panel)}
+.d-title{font-size:19px;font-weight:650;letter-spacing:-.02em;line-height:1.15}
+.d-sub{margin-top:4px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.play{
+  width:100%;margin:14px 0 4px;padding:11px;border-radius:var(--r);
+  background:var(--brand);color:#fff;font-weight:650;font-size:13.5px;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:transform .1s ease-out,background .12s;
+}
+.play:hover{background:#2A7BFF}
+.play:active{transform:scale(.98)}
+.play svg{width:13px;height:13px}
+.play.outline{background:transparent;border:1px solid var(--line2);color:var(--ink);font-weight:600}
+.play.outline:hover{background:var(--raise);border-color:var(--brand)}
+.note{font-size:11.5px;color:var(--dim);text-align:center;margin-top:8px;line-height:1.5}
+
+.sec{margin-top:20px}
+.sec-h{
+  font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--dim);margin-bottom:8px;
+}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:5.5px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row-k{color:var(--mute);font-size:12px}
+.row-v{font-family:var(--mono);font-size:11.5px}
+.row-v.go{color:var(--go)}
+.row-v.warn{color:var(--warn)}
+.chip{display:inline-block;padding:2px 7px;border-radius:4px;background:var(--raise2);font-size:10.5px;color:var(--mute);margin:0 4px 4px 0;font-family:var(--mono)}
+
+.log{background:var(--raise);border:1px solid var(--line);border-radius:var(--r);padding:10px 11px}
+.log-line{display:flex;gap:8px;align-items:center;padding:2.5px 0;font-size:11.5px;color:var(--mute)}
+.log-line svg{width:11px;height:11px;flex:0 0 11px;color:var(--go)}
+
+/* ---------- import overlay ---------- */
+.scrim{
+  position:absolute;inset:0;background:rgba(5,7,11,.72);backdrop-filter:blur(3px);
+  display:grid;place-items:center;z-index:20;
+  opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{
+  width:470px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;
+  padding:22px;box-shadow:0 24px 60px -12px rgba(0,0,0,.8);
+  transform:scale(.97) translateY(6px);transition:transform .24s cubic-bezier(.2,.9,.3,1);
+}
+.scrim.on .sheet{transform:none}
+.sheet-h{font-size:16px;font-weight:650;letter-spacing:-.015em}
+.sheet-p{font-size:12.5px;color:var(--mute);margin-top:4px;line-height:1.5}
+.drop{
+  margin-top:16px;border:1.5px dashed var(--line2);border-radius:var(--r);
+  padding:30px 20px;text-align:center;width:100%;
+  transition:border-color .14s,background .14s;
+}
+.drop:hover{border-color:var(--brand);background:var(--brand-soft)}
+.drop svg{width:26px;height:26px;color:var(--dim);margin-bottom:9px}
+.drop-t{font-size:13px;font-weight:600}
+.drop-s{font-size:11.5px;color:var(--dim);margin-top:3px;font-family:var(--mono)}
+
+.pipe{margin-top:16px;display:none}
+.pipe.on{display:block}
+.step{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12.5px;color:var(--dim);transition:color .2s}
+.step.done{color:var(--ink)}
+.step.active{color:var(--ink)}
+.step-i{width:15px;height:15px;flex:0 0 15px;display:grid;place-items:center}
+.step-i .ring{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--line2)}
+.step.active .ring{border-color:var(--brand);border-top-color:transparent;animation:spin .7s linear infinite}
+.step-i svg{width:13px;height:13px;color:var(--go);display:none}
+.step.done .ring{display:none}
+.step.done svg{display:block}
+.step-v{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.done-card{display:none;margin-top:16px;align-items:center;gap:12px;padding:12px;background:var(--raise);border:1px solid var(--line);border-radius:var(--r)}
+.done-card.on{display:flex}
+.done-art{width:44px;height:53px;border-radius:5px;overflow:hidden;flex:0 0 44px}
+.done-art svg{width:100%;height:100%}
+.sheet-actions{display:flex;gap:9px;margin-top:18px}
+.btn{flex:1;padding:9px;border-radius:var(--r);font-size:12.5px;font-weight:600;text-align:center;transition:background .12s,transform .1s}
+.btn:active{transform:scale(.98)}
+.btn.ghost{border:1px solid var(--line2);color:var(--mute)}
+.btn.ghost:hover{background:var(--raise);color:var(--ink)}
+.btn.solid{background:var(--brand);color:#fff}
+.btn.solid:hover{background:#2A7BFF}
+.btn[disabled]{opacity:.4;pointer-events:none}
+
+.verdict{display:flex;gap:13px;align-items:center;padding:15px 16px;background:var(--raise);border:1px solid var(--line);border-left:2px solid var(--go);border-radius:var(--r);margin-bottom:22px}
+.verdict-ico{width:34px;height:34px;flex:0 0 34px;border-radius:8px;background:rgba(46,211,126,.12);display:grid;place-items:center}
+.verdict-ico svg{width:17px;height:17px;color:var(--go)}
+.verdict-t{font-size:13.5px;font-weight:650}
+.verdict-s{font-size:12px;color:var(--mute);margin-top:2px}
+.hw{max-width:660px}
+.hw-row{display:grid;grid-template-columns:78px 1fr auto;gap:14px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
+.hw-row:last-child{border-bottom:none}
+.hw-k{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+.hw-v{font-size:13px;font-weight:550}
+.hw-n{font-family:var(--mono);font-size:11px;color:var(--mute);text-align:right}
+.cfg-row{display:flex;justify-content:space-between;padding:6.5px 0;border-bottom:1px solid var(--line)}
+.cfg-row:last-child{border-bottom:none}
+.cfg-k{font-size:12.5px;color:var(--mute)}
+.cfg-v{font-family:var(--mono);font-size:11.5px}
+.cfg-v em{font-style:normal;color:var(--go)}
+.linkish{font-size:12px;color:var(--brand);margin-top:10px;display:inline-block}
+.linkish:hover{text-decoration:underline}
+.small-btn{padding:5px 11px;border:1px solid var(--line2);border-radius:5px;font-size:11.5px;color:var(--mute);transition:background .12s,color .12s}
+.small-btn:hover{background:var(--raise);color:var(--ink)}
+
+.sheet.wide{width:560px}
+.setup-step{display:flex;gap:13px;padding:13px 0;border-bottom:1px solid var(--line)}
+.setup-step:last-child{border-bottom:none}
+.ss-num{width:22px;height:22px;flex:0 0 22px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:1px}
+.setup-step.done .ss-num{background:var(--go);border-color:var(--go);color:#08150E}
+.setup-step.now .ss-num{border-color:var(--brand);color:var(--brand)}
+.ss-t{font-size:13px;font-weight:600}
+.setup-step:not(.done):not(.now) .ss-t{color:var(--dim)}
+.ss-d{font-size:11.5px;color:var(--mute);margin-top:3px;line-height:1.5}
+.ss-data{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px}
+.ss-actions{display:flex;gap:8px;margin-top:10px}
+.empty{text-align:center;padding:70px 20px}
+.empty-t{font-size:14px;font-weight:600}
+.empty-s{font-size:12.5px;color:var(--dim);margin-top:5px}
+
+.banner{
+  display:flex;gap:11px;align-items:flex-start;
+  padding:12px 14px;margin-bottom:18px;
+  background:var(--raise);border:1px solid var(--line);border-left:2px solid var(--brand);
+  border-radius:var(--r);
+}
+.banner svg{width:15px;height:15px;flex:0 0 15px;color:var(--brand);margin-top:1px}
+.banner-t{font-size:12.5px;font-weight:600}
+.banner-s{font-size:11.5px;color:var(--mute);margin-top:2px;line-height:1.5}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+@media (max-width:900px){
+  .detail{position:absolute;right:0;top:38px;bottom:0;z-index:10}
+  .side{width:60px;flex:0 0 60px}
+  .side .txt,.nav-count,.side-foot .stat{display:none}
+}
+</style>
+</head>
+<body>
+<div class="win" id="win" style="position:relative">
+
+  <div class="titlebar">
+    <div class="wordmark">
+      <svg viewBox="0 0 1254 1254" fill="#126BFC" fill-rule="evenodd"><path d="M342 222l-60 26-40 27-16 27-6 24v610l6 24 16 27 40 27 61 26-14-24-9-30-1-30V282l1-30 9-30z"/><path d="M396 205l-30 29-10 40v686l10 40 30 29 56 12h439l56-12 45-29 30-40 11-40v-82h-49l-25-5-16-21v-95l16-21 25-5h49V404h-52l-25-5-16-21v-95l16-21 25-5h52v-77l-11-40-30-40-45-29-56-12H452zM575 429h20l33 12 249 147 22 26 8 30v17l-8 30-22 26-249 147-33 12h-20l-33-12-22-26-8-30V475l8-30 22-26z"/></svg>
+      Omoio
+    </div>
+    <div class="tb-spacer"></div>
+    <button class="tb-btn"><svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    <button class="tb-btn"><svg viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    <button class="tb-btn close"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2"/></svg></button>
+  </div>
+
+  <div class="shell">
+    <aside class="side">
+      <div class="nav-label txt">Games</div>
+      <button class="nav-item on" data-view="library">
+        <svg class="nav-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M5.5 2.5v11"/></svg>
+        <span class="txt">Library</span><span class="nav-count">8</span>
+      </button>
+      <button class="nav-item" data-view="catalogue">
+        <svg class="nav-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+        <span class="txt">Catalogue</span><span class="nav-count">2416</span>
+      </button>
+      <button class="nav-item" data-view="homebrew">
+        <svg class="nav-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2v8M5 7l3 3 3-3M3 13h10"/></svg>
+        <span class="txt">Homebrew</span><span class="nav-count">64</span>
+      </button>
+
+      <div class="nav-label txt">Maintenance</div>
+      <button class="nav-item" data-view="updates">
+        <svg class="nav-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.5 8a5.5 5.5 0 1 1-1.9-4.2M13 2v3.5h-3.5"/></svg>
+        <span class="txt">Updates</span><span class="nav-dot"></span>
+      </button>
+      <button class="nav-item" data-view="system">
+        <svg class="nav-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/></svg>
+        <span class="txt">System</span>
+      </button>
+
+      <div class="side-foot">
+        <div class="stat"><span>RPCS3</span><span>0.0.42</span></div>
+        <div class="stat"><span>Firmware</span><span>4.93</span></div>
+        <div class="stat"><span>Storage</span><span>312 GB</span></div>
+        <button class="import-btn" id="openImport">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3.5v9M3.5 8h9"/></svg>
+          Import game
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="view-title" id="viewTitle">Library</div>
+          <div class="view-sub" id="viewSub">8 games · 312 GB</div>
+        </div>
+        <div class="search">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+          <input type="text" placeholder="Search your games…" id="search">
+        </div>
+        <div class="seg">
+          <button class="on">Grid</button>
+          <button>List</button>
+        </div>
+      </div>
+
+      <div class="content" id="content"></div>
+    </main>
+
+    <aside class="detail hidden" id="detail">
+      <div class="d-hero">
+        <div class="d-art" id="dArt"></div>
+        <button class="d-close" id="dClose"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.4"/></svg></button>
+      </div>
+      <div class="d-body" id="dBody"></div>
+    </aside>
+  </div>
+
+
+  <!-- first-run setup -->
+  <div class="scrim" id="setupScrim">
+    <div class="sheet wide">
+      <div class="sheet-h">Set up PS3 support</div>
+      <div class="sheet-p">Four steps, once. Omoio handles the parts that don't need you.</div>
+
+      <div style="margin-top:16px">
+        <div class="setup-step done">
+          <span class="ss-num">✓</span>
+          <div style="flex:1">
+            <div class="ss-t">Check your PC</div>
+            <div class="ss-d">Your CPU does the heavy lifting in PS3 emulation. Yours is well above what's needed.</div>
+            <div class="ss-data">
+              <span class="chip">Ryzen 5 7600X</span><span class="chip">RTX 4070</span>
+              <span class="chip">32 GB</span><span class="chip">1440p · 165 Hz</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="setup-step done">
+          <span class="ss-num">✓</span>
+          <div style="flex:1">
+            <div class="ss-t">Install RPCS3</div>
+            <div class="ss-d">Downloaded the official Windows build and set the renderer to Vulkan for your GPU.</div>
+            <div class="ss-data"><span class="chip">0.0.42-17193</span><span class="chip">Vulkan</span><span class="chip">verified</span></div>
+          </div>
+        </div>
+
+        <div class="setup-step now">
+          <span class="ss-num">3</span>
+          <div style="flex:1">
+            <div class="ss-t">Add PS3 firmware</div>
+            <div class="ss-d">Sony publishes the firmware for free, but you need to download it yourself. Omoio installs it once you point at the file.</div>
+            <div class="ss-actions">
+              <button class="small-btn">Open Sony's download page</button>
+              <button class="small-btn">Choose PUP file…</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <span class="ss-num">4</span>
+          <div style="flex:1">
+            <div class="ss-t">Add your games</div>
+            <div class="ss-d">Point Omoio at a folder and it finds everything inside.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn ghost" id="setupClose">Do this later</button>
+        <button class="btn solid" disabled>Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- import sheet -->
+  <div class="scrim" id="scrim">
+    <div class="sheet">
+      <div class="sheet-h" id="sheetH">Import a game</div>
+      <div class="sheet-p" id="sheetP">Point Omoio at a folder, disc image or archive. Everything after that is automatic.</div>
+
+      <button class="drop" id="drop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 15V3M8 7l4-4 4 4M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4"/></svg>
+        <div class="drop-t">Drop a game here</div>
+        <div class="drop-s">folder · .iso · .zip · .7z</div>
+      </button>
+
+      <div class="pipe" id="pipe">
+        <div class="step" data-v="Red Dead Redemption"><span class="step-i"><span class="ring"></span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 7.5l3 3 6-7"/></svg></span>Identify game<span class="step-v"></span></div>
+        <div class="step" data-v="BLUS30418"><span class="step-i"><span class="ring"></span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 7.5l3 3 6-7"/></svg></span>Read title ID<span class="step-v"></span></div>
+        <div class="step" data-v="7.8 GB"><span class="step-i"><span class="ring"></span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 7.5l3 3 6-7"/></svg></span>Unpack and organise files<span class="step-v"></span></div>
+        <div class="step" data-v="1.08"><span class="step-i"><span class="ring"></span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 7.5l3 3 6-7"/></svg></span>Fetch official updates<span class="step-v"></span></div>
+        <div class="step" data-v="2 found"><span class="step-i"><span class="ring"></span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 7.5l3 3 6-7"/></svg></span>Apply community patches<span class="step-v"></span></div>
+        <div class="step" data-v="DualSense"><span class="step-i"><span class="ring"></span><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 7.5l3 3 6-7"/></svg></span>Configure RPCS3 and controller<span class="step-v"></span></div>
+      </div>
+
+      <div class="done-card" id="doneCard">
+        <div class="done-art" id="doneArt"></div>
+        <div>
+          <div style="font-weight:650;font-size:13px">Red Dead Redemption</div>
+          <div style="font-size:11.5px;color:var(--mute);margin-top:2px">Ready to play · patched to 1.08</div>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn ghost" id="cancelBtn">Close</button>
+        <button class="btn solid" id="playBtn" disabled>Play</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ART = {
+  ridge:(a,b)=>`<svg viewBox="0 0 100 120" preserveAspectRatio="xMidYMid slice"><rect width="100" height="120" fill="${a}"/><path d="M0 92 L26 54 L44 76 L68 34 L100 82 L100 120 L0 120Z" fill="${b}" opacity=".92"/><circle cx="74" cy="26" r="9" fill="${b}" opacity=".5"/></svg>`,
+  orbit:(a,b)=>`<svg viewBox="0 0 100 120" preserveAspectRatio="xMidYMid slice"><rect width="100" height="120" fill="${a}"/><circle cx="50" cy="52" r="26" fill="none" stroke="${b}" stroke-width="2.5" opacity=".85"/><circle cx="50" cy="52" r="38" fill="none" stroke="${b}" stroke-width="1" opacity=".4"/><circle cx="50" cy="52" r="11" fill="${b}"/></svg>`,
+  bars:(a,b)=>`<svg viewBox="0 0 100 120" preserveAspectRatio="xMidYMid slice"><rect width="100" height="120" fill="${a}"/><g fill="${b}"><rect x="14" y="30" width="8" height="60" opacity=".9"/><rect x="30" y="46" width="8" height="44" opacity=".7"/><rect x="46" y="18" width="8" height="72" opacity="1"/><rect x="62" y="54" width="8" height="36" opacity=".6"/><rect x="78" y="38" width="8" height="52" opacity=".8"/></g></svg>`,
+  eclipse:(a,b)=>`<svg viewBox="0 0 100 120" preserveAspectRatio="xMidYMid slice"><rect width="100" height="120" fill="${a}"/><circle cx="50" cy="50" r="30" fill="${b}"/><circle cx="66" cy="38" r="30" fill="${a}" opacity=".97"/><rect x="0" y="96" width="100" height="2" fill="${b}" opacity=".55"/></svg>`,
+  grid:(a,b)=>`<svg viewBox="0 0 100 120" preserveAspectRatio="xMidYMid slice"><rect width="100" height="120" fill="${a}"/><g stroke="${b}" stroke-width="1.1" opacity=".5"><path d="M0 40h100M0 60h100M0 80h100M25 20v90M50 20v90M75 20v90"/></g><rect x="38" y="48" width="24" height="24" fill="${b}"/></svg>`,
+  arc:(a,b)=>`<svg viewBox="0 0 100 120" preserveAspectRatio="xMidYMid slice"><rect width="100" height="120" fill="${a}"/><path d="M-6 96 Q50 6 106 96" fill="none" stroke="${b}" stroke-width="12" opacity=".9"/><path d="M-6 112 Q50 28 106 112" fill="none" stroke="${b}" stroke-width="3" opacity=".45"/></svg>`
+};
+
+const GAMES = [
+  {t:"Red Dead Redemption",id:"BLUS30418",s:"ridge",a:"#2B1810",b:"#E07A3C",c:"Playable",own:1,ver:"1.08",size:"7.8 GB",played:"14 h",last:"Yesterday",patches:["Unlock FPS","Shadow fix"],new:1},
+  {t:"Demon's Souls",id:"BLUS30443",s:"arc",a:"#141821",b:"#8A93A8",c:"Playable",own:1,ver:"1.00",size:"5.9 GB",played:"73 h",last:"Today",patches:["Unlock FPS","Skip intro videos","Aspect ratio"]},
+  {t:"Metal Gear Solid 4",id:"BLUS30109",s:"bars",a:"#1E2118",b:"#A8B04A",c:"Playable",own:1,ver:"2.00",size:"23.4 GB",played:"31 h",last:"3 days ago",patches:["Crash fix","Flickering textures fix"]},
+  {t:"God of War III",id:"BCUS98111",s:"eclipse",a:"#2A0F10",b:"#D9433F",c:"Ingame",own:1,ver:"1.00",size:"36.1 GB",played:"2 h",last:"2 weeks ago",patches:[],upd:"1.02"},
+  {t:"Uncharted 2: Among Thieves",id:"BCUS98123",s:"orbit",a:"#16241A",b:"#D9B44A",c:"Playable",own:1,ver:"1.10",size:"20.7 GB",played:"22 h",last:"Last week",patches:["Unlock FPS"]},
+  {t:"LittleBigPlanet",id:"BCUS98148",s:"grid",a:"#2A1C10",b:"#E8A24A",c:"Playable",own:1,ver:"1.32",size:"8.4 GB",played:"9 h",last:"A month ago",patches:["Unlock FPS"]},
+  {t:"Persona 5",id:"BLUS31604",s:"bars",a:"#1A0A0C",b:"#E8323C",c:"Playable",own:1,ver:"1.03",size:"18.9 GB",played:"96 h",last:"Today",patches:["Unlock FPS","Skip intro videos"]},
+  {t:"Skate 3",id:"BLUS30464",s:"arc",a:"#1C1E22",b:"#E8D24A",c:"Playable",own:1,ver:"1.05",size:"5.2 GB",played:"41 h",last:"4 days ago",patches:["Unlock FPS"]},
+  {t:"Gran Turismo 5",id:"BCUS98114",s:"orbit",a:"#0F1926",b:"#4A9FE0",c:"Ingame",own:0,latest:"2.17",np:5},
+  {t:"The Last of Us",id:"BCUS98174",s:"eclipse",a:"#14201A",b:"#6FA88C",c:"Playable",own:0,latest:"1.11",np:4},
+  {t:"Ni no Kuni: Wrath of the White Witch",id:"BLUS31059",s:"arc",a:"#122032",b:"#7FC4E8",c:"Playable",own:0,latest:"1.02",np:2},
+  {t:"Heavy Rain",id:"BCUS98164",s:"grid",a:"#101418",b:"#5C7A96",c:"Playable",own:0,latest:"1.06",np:1},
+  {t:"inFAMOUS",id:"BCUS98119",s:"ridge",a:"#0E1420",b:"#3D8FE0",c:"Playable",own:0,latest:"1.03",np:2},
+  {t:"Catherine",id:"BLUS30767",s:"orbit",a:"#2A1218",b:"#E86A8C",c:"Playable",own:0,latest:"1.01",np:3}
+];
+
+const art = g => ART[g.s](g.a,g.b);
+const cls = c => c==="Playable" ? "go" : c==="Ingame" ? "warn" : "own";
+
+let view="library", sel=null;
+const content=document.getElementById('content');
+const detail=document.getElementById('detail');
+
+function cardHTML(g){
+  return `<button class="card ${g.own?'':'ghost'}" data-id="${g.id}">
+    <div class="art">${art(g)}
+      <span class="badge ${cls(g.c)}">${g.c}</span>
+      ${g.new?'<span class="pip">1</span>':''}
+      <span class="art-name">${g.t}</span>
+    </div>
+    <div class="meta"><span class="id">${g.id}</span>${g.own?`<span>· ${g.size}</span>`:'<span>· not in library</span>'}</div>
+  </button>`;
+}
+
+function render(){
+  const q=document.getElementById('search').value.toLowerCase();
+  let list, title, sub, banner="";
+
+  if(view==="library"){
+    list=GAMES.filter(g=>g.own); title="Library"; sub="8 games · 312 GB";
+  } else if(view==="catalogue"){
+    list=GAMES; title="Catalogue"; sub="2,416 titles indexed";
+    banner=`<div class="banner">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5h.01"/></svg>
+      <div><div class="banner-t">Every PS3 title, whether you own it or not</div>
+      <div class="banner-s">Compatibility, patches and update history for the full catalogue. Omoio does not distribute games — dimmed titles need your own copy.</div></div></div>`;
+  } else if(view==="homebrew"){
+    content.innerHTML=`<div class="empty"><div class="empty-t">64 homebrew apps and demos</div>
+      <div class="empty-s">Freely distributable software, installable in one click.</div></div>`;
+    setHead("Homebrew","64 packages · free to distribute"); return;
+  } else if(view==="updates"){
+    content.innerHTML=`<div class="empty"><div class="empty-t">1 update available</div>
+      <div class="empty-s">Cobalt Uprising can go from 1.00 to 1.03.</div></div>`;
+    setHead("Updates","1 pending"); return;
+  } else {
+    content.innerHTML=systemHTML();
+    setHead("System","Ryzen 5 7600X · RTX 4070 · 32 GB");
+    document.getElementById('rerun').onclick=()=>document.getElementById('setupScrim').classList.add('on');
+    return;
+  }
+
+  const f=list.filter(g=>g.t.toLowerCase().includes(q)||g.id.toLowerCase().includes(q));
+  setHead(title,sub);
+  content.innerHTML = banner + (f.length
+    ? `<div class="grid">${f.map(cardHTML).join('')}</div>`
+    : `<div class="empty"><div class="empty-t">No matches for “${q}”</div><div class="empty-s">Try the catalogue to search all 2,416 titles.</div></div>`);
+
+  content.querySelectorAll('.card').forEach(c=>c.onclick=()=>open(c.dataset.id));
+}
+function systemHTML(){
+  const hw=[
+    ["CPU","AMD Ryzen 5 7600X","6 cores / 12 threads · AVX-512"],
+    ["GPU","NVIDIA GeForce RTX 4070","12 GB · Vulkan 1.3"],
+    ["Memory","32 GB DDR5","6000 MT/s"],
+    ["Display","2560 × 1440","165 Hz"],
+    ["Storage","Samsung 990 PRO","312 GB of 931 GB used"]
+  ];
+  const cfg=[
+    ["Renderer","Vulkan"],["Resolution scale","150% — 1440p"],["SPU block size","Mega"],
+    ["SPU threads","4"],["Frame limit","Auto — 60"],["Audio backend","XAudio2"]
+  ];
+  return `<div class="hw">
+    <div class="verdict">
+      <div class="verdict-ico"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 9.5l3.5 3.5L15 5"/></svg></div>
+      <div><div class="verdict-t">Strong for PS3 emulation</div>
+      <div class="verdict-s">Your CPU is the part that matters most, and it clears the bar comfortably. Expect 60 fps at 1440p on most playable titles.</div></div>
+    </div>
+    <div class="sec"><div class="sec-h">Detected hardware</div>
+      ${hw.map(([k,v,n])=>`<div class="hw-row"><span class="hw-k">${k}</span><span class="hw-v">${v}</span><span class="hw-n">${n}</span></div>`).join('')}
+      <button class="linkish" id="rerun">Run the first-time setup again</button>
+    </div>
+    <div class="sec"><div class="sec-h">What Omoio chose for you</div>
+      ${cfg.map(([k,v])=>`<div class="cfg-row"><span class="cfg-k">${k}</span><span class="cfg-v">${v}</span></div>`).join('')}
+      <div class="note" style="text-align:left;margin-top:9px">Games with their own known-good settings override these. Everything else uses RPCS3 defaults, which are correct for most titles.</div>
+    </div>
+    <div class="sec"><div class="sec-h">Emulator</div>
+      <div class="cfg-row"><span class="cfg-k">RPCS3 build</span><span class="cfg-v">0.0.42-17193 <em>up to date</em></span></div>
+      <div class="cfg-row"><span class="cfg-k">PS3 firmware</span><span class="cfg-v">4.93 <em>installed</em></span></div>
+      <div class="cfg-row"><span class="cfg-k">Games folder</span><span class="cfg-v">D:\\Games\\PS3</span></div>
+    </div>
+  </div>`;
+}
+function setHead(t,s){document.getElementById('viewTitle').textContent=t;document.getElementById('viewSub').textContent=s}
+
+function open(id){
+  const g=GAMES.find(x=>x.id===id); sel=g;
+  document.getElementById('dArt').innerHTML=art(g);
+  document.getElementById('dBody').innerHTML = g.own ? ownedHTML(g) : ghostHTML(g);
+  detail.classList.remove('hidden');
+}
+function ownedHTML(g){
+  return `<div class="d-title">${g.t}</div>
+  <div class="d-sub">${g.id} · version ${g.ver}</div>
+  <button class="play"><svg viewBox="0 0 12 14" fill="currentColor"><path d="M1 1l10 6-10 6z"/></svg>Play</button>
+  ${g.upd?`<div class="note">Update ${g.upd} is available.</div>`:''}
+  <div class="sec"><div class="sec-h">Status</div>
+    <div class="row"><span class="row-k">Compatibility</span><span class="row-v ${cls(g.c)}">${g.c}</span></div>
+    <div class="row"><span class="row-k">Installed version</span><span class="row-v">${g.ver}</span></div>
+    <div class="row"><span class="row-k">Size on disk</span><span class="row-v">${g.size}</span></div>
+    <div class="row"><span class="row-k">Play time</span><span class="row-v">${g.played}</span></div>
+    <div class="row"><span class="row-k">Last played</span><span class="row-v">${g.last}</span></div>
+  </div>
+  ${g.patches.length?`<div class="sec"><div class="sec-h">Patches applied</div>
+    ${g.patches.map(p=>`<span class="chip">${p}</span>`).join('')}
+  </div>`:''}
+  <div class="sec"><div class="sec-h">Set up automatically</div>
+    <div class="log">
+      ${['Files organised','Registered with RPCS3','Renderer set to Vulkan','Controller profile created','Shader cache warmed'].map(t=>
+        `<div class="log-line"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 7.5l3 3 6-7"/></svg>${t}</div>`).join('')}
+    </div>
+  </div>`;
+}
+function ghostHTML(g){
+  return `<div class="d-title">${g.t}</div>
+  <div class="d-sub">${g.id} · not in your library</div>
+  <button class="play outline">Import my copy</button>
+  <div class="note">Omoio doesn't distribute games. Point it at a copy you already own and the rest is automatic.</div>
+  <div class="sec"><div class="sec-h">What we know about this title</div>
+    <div class="row"><span class="row-k">Compatibility</span><span class="row-v ${cls(g.c)}">${g.c}</span></div>
+    <div class="row"><span class="row-k">Latest update</span><span class="row-v">${g.latest}</span></div>
+    <div class="row"><span class="row-k">Community patches</span><span class="row-v">${g.np} available</span></div>
+    <div class="row"><span class="row-k">On your RTX 4070</span><span class="row-v go">Likely 60 fps at 1440p</span></div>
+  </div>
+  <div class="sec"><div class="sec-h">Reported by players like you</div>
+    <div class="log"><div class="log-line" style="color:var(--mute)">Steady on RTX 4070 at 1440p. Enable the shadow patch.</div></div>
+  </div>`;
+}
+
+document.getElementById('dClose').onclick=()=>detail.classList.add('hidden');
+document.getElementById('search').oninput=render;
+document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>{
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('on'));
+  n.classList.add('on'); view=n.dataset.view; detail.classList.add('hidden'); render();
+});
+
+// import flow
+const scrim=document.getElementById('scrim'),pipe=document.getElementById('pipe'),
+      drop=document.getElementById('drop'),doneCard=document.getElementById('doneCard'),
+      playBtn=document.getElementById('playBtn');
+document.getElementById('openImport').onclick=()=>scrim.classList.add('on');
+document.getElementById('cancelBtn').onclick=()=>{scrim.classList.remove('on');reset()};
+scrim.onclick=e=>{if(e.target===scrim){scrim.classList.remove('on');reset()}};
+function reset(){
+  setTimeout(()=>{
+    pipe.classList.remove('on');doneCard.classList.remove('on');drop.style.display='';
+    playBtn.disabled=true;
+    document.getElementById('sheetH').textContent='Import a game';
+    document.getElementById('sheetP').textContent='Point Omoio at a folder, disc image or archive. Everything after that is automatic.';
+    pipe.querySelectorAll('.step').forEach(s=>{s.className='step';s.querySelector('.step-v').textContent=''});
+  },220);
+}
+drop.onclick=()=>{
+  drop.style.display='none'; pipe.classList.add('on');
+  document.getElementById('sheetH').textContent='Importing';
+  document.getElementById('sheetP').textContent='RedDeadRedemption_PS3_USA.7z';
+  const steps=[...pipe.querySelectorAll('.step')];
+  steps.forEach((s,i)=>{
+    setTimeout(()=>{
+      s.classList.add('active');
+      setTimeout(()=>{
+        s.classList.remove('active'); s.classList.add('done');
+        s.querySelector('.step-v').textContent=s.dataset.v;
+        if(i===steps.length-1){
+          document.getElementById('doneArt').innerHTML=art(GAMES[0]);
+          doneCard.classList.add('on'); playBtn.disabled=false;
+          document.getElementById('sheetH').textContent='Ready';
+          document.getElementById('sheetP').textContent='Added to your library.';
+        }
+      },520);
+    },i*640);
+  });
+};
+
+const setupScrim=document.getElementById('setupScrim');
+document.getElementById('setupClose').onclick=()=>setupScrim.classList.remove('on');
+setupScrim.onclick=e=>{if(e.target===setupScrim)setupScrim.classList.remove('on')};
+
+render();
+</script>
+</body>
+</html>
