@@ -1,6 +1,6 @@
 mod backends;
 mod commands;
-mod core;
+pub mod core;
 mod hardware;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
