@@ -8,6 +8,9 @@ src-tauri/target/
 # generated icon set - regenerate with `npm run tauri icon`
 src-tauri/icons/
 
+# generated JSON schemas for editor validation - regenerated on every build
+src-tauri/gen/
+
 # local
 .env
 .env.local
