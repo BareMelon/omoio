@@ -1,6 +1,9 @@
+import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   cancelRpcs3Install,
   getHardwareInfo,
+  installFirmware,
   installRpcs3,
   onRpcs3InstallProgress,
   type HardwareInfo,
@@ -8,6 +11,10 @@ import {
 } from "../api";
 import { store } from "../state";
 import type { View } from "./view";
+
+// Sony publishes the firmware free but we never fetch it: the user downloads
+// the PUP from here themselves and points us at it.
+const SONY_FIRMWARE_PAGE = "https://www.playstation.com/en-us/support/hardware/ps3/system-software/";
 
 function bytesToGB(bytes: number): number {
   return Math.round(bytes / 1024 ** 3);
@@ -46,39 +53,48 @@ const STAGE_LABEL: Record<InstallProgress["stage"], string> = {
   done: "Done",
 };
 
-function renderEmulator(version: string | null): HTMLElement {
+function statusRow(label: string, valueId: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "cfg-row";
+  row.innerHTML = `<span class="cfg-k">${label}</span><span class="cfg-v" id="${valueId}"></span>`;
+  return row;
+}
+
+function renderEmulator(rpcs3Version: string | null, firmwareVersion: string | null): HTMLElement {
   const el = document.createElement("div");
   el.className = "sec";
-
-  const status = document.createElement("div");
-  status.className = "cfg-row";
-  status.innerHTML = `
-    <span class="cfg-k">RPCS3</span>
-    <span class="cfg-v" id="rpcs3-version"></span>
-  `;
-
-  const action = document.createElement("div");
-  action.className = "cfg-row";
-
   el.innerHTML = `<div class="sec-h">Emulator</div>`;
-  el.appendChild(status);
-  el.appendChild(action);
 
-  const versionEl = status.querySelector<HTMLElement>("#rpcs3-version")!;
+  const rpcs3Status = statusRow("RPCS3", "rpcs3-version");
+  const rpcs3Action = document.createElement("div");
+  rpcs3Action.className = "row-actions";
+  const firmwareStatus = statusRow("PS3 firmware", "firmware-version");
+  const firmwareAction = document.createElement("div");
+  firmwareAction.className = "row-actions";
+  el.append(rpcs3Status, rpcs3Action, firmwareStatus, firmwareAction);
 
-  function showIdle(currentVersion: string | null) {
-    versionEl.textContent = currentVersion ?? "Not installed";
-    action.innerHTML = currentVersion
+  const rpcs3VersionEl = rpcs3Status.querySelector<HTMLElement>("#rpcs3-version")!;
+  const firmwareVersionEl = firmwareStatus.querySelector<HTMLElement>("#firmware-version")!;
+
+  let installedRpcs3 = rpcs3Version;
+
+  function showRpcs3Idle(current: string | null) {
+    installedRpcs3 = current;
+    rpcs3VersionEl.textContent = current ?? "Not installed";
+    rpcs3Action.innerHTML = current
       ? ""
       : `<button class="small-btn" id="install-rpcs3">Install RPCS3</button>`;
-    action.querySelector<HTMLButtonElement>("#install-rpcs3")?.addEventListener("click", startInstall);
+    rpcs3Action
+      .querySelector<HTMLButtonElement>("#install-rpcs3")
+      ?.addEventListener("click", startRpcs3Install);
   }
 
-  function showProgress(progress: InstallProgress) {
-    const pct = progress.stage === "downloading" && progress.total > 0
-      ? Math.round((progress.bytes / progress.total) * 100)
-      : null;
-    action.innerHTML = `
+  function showRpcs3Progress(progress: InstallProgress) {
+    const pct =
+      progress.stage === "downloading" && progress.total > 0
+        ? Math.round((progress.bytes / progress.total) * 100)
+        : null;
+    rpcs3Action.innerHTML = `
       <div class="progress-row" style="flex:1">
         <div class="progress-label">
           <span>${STAGE_LABEL[progress.stage]}</span>
@@ -88,42 +104,88 @@ function renderEmulator(version: string | null): HTMLElement {
       </div>
       <button class="small-btn" id="cancel-install">Cancel</button>
     `;
-    action.querySelector<HTMLButtonElement>("#cancel-install")?.addEventListener("click", () => {
+    rpcs3Action.querySelector<HTMLButtonElement>("#cancel-install")?.addEventListener("click", () => {
       cancelRpcs3Install();
     });
   }
 
-  async function startInstall() {
-    showProgress({ stage: "checking", bytes: 0, total: 0 });
-    const unlisten = await onRpcs3InstallProgress(showProgress);
+  async function startRpcs3Install() {
+    showRpcs3Progress({ stage: "checking", bytes: 0, total: 0 });
+    const unlisten = await onRpcs3InstallProgress(showRpcs3Progress);
     try {
       const installed = await installRpcs3();
       store.setRpcs3Version(installed);
-      showIdle(installed);
+      showRpcs3Idle(installed);
+      // Firmware can only be added once RPCS3 is there to unpack it.
+      showFirmwareIdle(store.get().firmwareVersion);
     } catch (err) {
-      if (err !== "cancelled") {
-        console.error("RPCS3 install failed:", err);
-        action.innerHTML = `<div class="progress-error">Couldn't install RPCS3. Check your internet connection and try again.</div>`;
+      if (err === "cancelled") {
+        showRpcs3Idle(null);
       } else {
-        showIdle(null);
+        console.error("RPCS3 install failed:", err);
+        rpcs3Action.innerHTML = `<div class="progress-error">Couldn't install RPCS3. Check your internet connection and try again.</div>`;
       }
     } finally {
       unlisten();
     }
   }
 
-  showIdle(version);
+  function showFirmwareIdle(current: string | null, note?: string) {
+    firmwareVersionEl.textContent = current ?? "Not installed";
+    if (current) {
+      firmwareAction.innerHTML = "";
+      return;
+    }
+    firmwareAction.innerHTML = `
+      <button class="small-btn" id="open-sony">Open Sony's download page</button>
+      <button class="small-btn" id="choose-pup"${installedRpcs3 ? "" : " disabled"}>Choose PUP file…</button>
+      ${note ? `<div class="progress-error">${note}</div>` : ""}
+    `;
+    firmwareAction.querySelector<HTMLButtonElement>("#open-sony")?.addEventListener("click", () => {
+      openUrl(SONY_FIRMWARE_PAGE);
+    });
+    firmwareAction
+      .querySelector<HTMLButtonElement>("#choose-pup")
+      ?.addEventListener("click", chooseFirmware);
+  }
+
+  async function chooseFirmware() {
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "PS3 firmware", extensions: ["pup"] }],
+    });
+    if (typeof selected !== "string") return;
+
+    firmwareAction.innerHTML = `
+      <div class="progress-row" style="flex:1">
+        <div class="progress-label"><span>Installing firmware…</span></div>
+        <div class="progress"><div class="progress-fill indeterminate"></div></div>
+      </div>
+    `;
+    try {
+      const installed = await installFirmware(selected);
+      store.setFirmwareVersion(installed);
+      showFirmwareIdle(installed);
+    } catch (err) {
+      console.error("Firmware install failed:", err);
+      showFirmwareIdle(null, typeof err === "string" ? err : "Couldn't install that firmware.");
+    }
+  }
+
+  showRpcs3Idle(rpcs3Version);
+  showFirmwareIdle(firmwareVersion);
   return el;
 }
 
 export async function renderSystem(): Promise<View> {
   const hw = await getHardwareInfo();
-  const rpcs3Version = store.get().rpcs3Version;
+  const { rpcs3Version, firmwareVersion } = store.get();
 
   const content = document.createElement("div");
   content.className = "hw";
   content.appendChild(renderHardware(hw));
-  content.appendChild(renderEmulator(rpcs3Version));
+  content.appendChild(renderEmulator(rpcs3Version, firmwareVersion));
 
   return {
     title: "System",

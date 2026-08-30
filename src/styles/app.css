@@ -390,6 +390,38 @@ button {
   margin-top: 8px;
 }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 2px;
+  flex-wrap: wrap;
+}
+.row-actions:empty {
+  display: none;
+}
+
+/* RPCS3 unpacks the firmware itself and reports no progress, so this bar
+   says "working" rather than claiming a percentage it doesn't know. */
+.progress-fill.indeterminate {
+  width: 34%;
+  animation: indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes indeterminate {
+  from {
+    margin-left: -34%;
+  }
+  to {
+    margin-left: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill.indeterminate {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
 /* ---------- detail panel ---------- */
 .detail {
   width: 352px;

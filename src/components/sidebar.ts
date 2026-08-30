@@ -54,7 +54,7 @@ export function renderSidebar(): HTMLElement {
   foot.className = "side-foot";
   foot.innerHTML = `
     <div class="stat"><span>RPCS3</span><span id="rpcs3-stat">Not installed</span></div>
-    <div class="stat"><span>Firmware</span><span>Not installed</span></div>
+    <div class="stat"><span>Firmware</span><span id="firmware-stat">Not installed</span></div>
     <button class="import-btn" id="import-game">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3.5v9M3.5 8h9"/></svg>
       Import game
@@ -63,12 +63,14 @@ export function renderSidebar(): HTMLElement {
   side.appendChild(foot);
 
   const rpcs3Stat = foot.querySelector<HTMLElement>("#rpcs3-stat")!;
+  const firmwareStat = foot.querySelector<HTMLElement>("#firmware-stat")!;
 
   store.subscribe((state) => {
     side.querySelectorAll<HTMLButtonElement>(".nav-item").forEach((btn) => {
       btn.classList.toggle("on", btn.dataset.view === state.view);
     });
     rpcs3Stat.textContent = state.rpcs3Version ?? "Not installed";
+    firmwareStat.textContent = state.firmwareVersion ?? "Not installed";
   });
 
   return side;

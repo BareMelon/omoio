@@ -1,3 +1,5 @@
+pub mod firmware;
+
 use crate::core::types::Progress;
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -41,10 +43,23 @@ pub fn detect_version(app: &AppHandle) -> Option<String> {
     read_version(&exe)
 }
 
+// RPCS3 is a console-less GUI binary; without this flag every call to it
+// flashes a console window over whatever the user is looking at.
+fn command(exe: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new(exe);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 // Asking the binary itself rather than trusting whatever we last installed:
 // the installed build's actual behaviour is what counts.
 fn read_version(exe: &Path) -> Option<String> {
-    let output = std::process::Command::new(exe).arg("--version").output().ok()?;
+    let output = command(exe).arg("--version").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     // "RPCS3 0.0.42-19884-3ef20ebb Alpha" -> "0.0.42-19884-3ef20ebb"
     text.split_whitespace().nth(1).map(|s| s.to_string())

@@ -7,6 +7,8 @@ mod hardware;
 pub fn run() {
     tauri::Builder::default()
         .manage(commands::InstallState::default())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -17,6 +19,8 @@ pub fn run() {
             commands::get_rpcs3_version,
             commands::install_rpcs3,
             commands::cancel_rpcs3_install,
+            commands::get_firmware_version,
+            commands::install_firmware,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -54,3 +54,11 @@ export function cancelRpcs3Install(): Promise<void> {
 export function onRpcs3InstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
   return listen<InstallProgress>("rpcs3-install-progress", (event) => handler(event.payload));
 }
+
+export function getFirmwareVersion(): Promise<string | null> {
+  return invoke("get_firmware_version");
+}
+
+export function installFirmware(path: string): Promise<string> {
+  return invoke("install_firmware", { path });
+}

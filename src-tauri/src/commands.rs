@@ -38,3 +38,19 @@ pub async fn install_rpcs3(app: AppHandle, state: State<'_, InstallState>) -> Re
 pub fn cancel_rpcs3_install(state: State<'_, InstallState>) {
     state.cancel.store(true, Ordering::Relaxed);
 }
+
+#[tauri::command]
+pub fn get_firmware_version(app: AppHandle) -> Option<String> {
+    rpcs3::firmware::detect_version(&app)
+}
+
+#[tauri::command]
+pub async fn install_firmware(app: AppHandle, path: String) -> Result<String, String> {
+    // Unpacking firmware takes long enough to block the UI thread, so it runs
+    // on the blocking pool.
+    tauri::async_runtime::spawn_blocking(move || {
+        rpcs3::firmware::install(&app, std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
