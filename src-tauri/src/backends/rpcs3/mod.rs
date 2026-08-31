@@ -1,5 +1,7 @@
 pub mod firmware;
 pub mod launch;
+#[cfg(windows)]
+pub mod overlay;
 
 use crate::core::types::Progress;
 use futures_util::StreamExt;

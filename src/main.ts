@@ -1,7 +1,15 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
 
-import { getFirmwareVersion, getRpcs3Version, listGames } from "./api";
+import {
+  getFirmwareVersion,
+  getRpcs3Version,
+  listGames,
+  onGameStarted,
+  onGameStopped,
+  playingGame,
+} from "./api";
+import { renderPlayingBar } from "./components/playingBar";
 import { store, type ViewId } from "./state";
 import { renderTitlebar } from "./components/titlebar";
 import { renderSidebar } from "./components/sidebar";
@@ -54,11 +62,22 @@ shell.append(renderSidebar(), main, renderDetail());
 
 app.append(renderTitlebar(), shell);
 
+const topbarNormal = [...topbar.children];
+
 let renderToken = 0;
 store.subscribe((state) => {
+  // While a game runs, its picture covers the content area, so the top bar
+  // becomes the controls for it and the view underneath is left alone.
+  if (state.playing) {
+    topbar.replaceChildren(renderPlayingBar(state.playing));
+    content.replaceChildren();
+    return;
+  }
+  topbar.replaceChildren(...topbarNormal);
+
   const token = ++renderToken;
   Promise.resolve(VIEWS[state.view]()).then((view) => {
-    if (token !== renderToken) return;
+    if (token !== renderToken || store.get().playing) return;
     viewTitle.textContent = view.title;
     viewSub.textContent = view.subtitle;
     content.replaceChildren(view.content);
@@ -68,3 +87,10 @@ store.subscribe((state) => {
 getRpcs3Version().then((version) => store.setRpcs3Version(version));
 getFirmwareVersion().then((version) => store.setFirmwareVersion(version));
 listGames().then((games) => store.setGames(games));
+playingGame().then((playing) => store.setPlaying(playing));
+
+onGameStarted((playing) => store.setPlaying(playing));
+onGameStopped(() => {
+  store.setGameFullscreen(false);
+  store.setPlaying(null);
+});

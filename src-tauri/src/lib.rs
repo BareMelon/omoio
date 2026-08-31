@@ -4,11 +4,32 @@ mod commands;
 pub mod core;
 mod hardware;
 pub mod import;
+pub mod session;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(commands::InstallState::default())
+        .manage(session::Session::default())
+        // The game picture is a separate window sitting over ours, so it has to
+        // be moved whenever ours is, and taken down when ours closes rather
+        // than left running with nothing to sit on.
+        .on_window_event(|window, event| {
+            use tauri::{Manager, WindowEvent};
+            let app = window.app_handle();
+            let session = app.state::<session::Session>();
+            match event {
+                WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                    if let Some(main) = app.get_webview_window("main") {
+                        session::place(&main, &session);
+                    }
+                }
+                WindowEvent::Destroyed => {
+                    session.stop();
+                }
+                _ => {}
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -26,6 +47,9 @@ pub fn run() {
             commands::list_games,
             commands::import_game,
             commands::launch_game,
+            commands::stop_game,
+            commands::playing_game,
+            commands::set_game_fullscreen,
             commands::remove_game,
             commands::get_games_folder,
             commands::set_games_folder,

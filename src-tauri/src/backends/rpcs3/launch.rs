@@ -56,7 +56,59 @@ pub fn register(app: &AppHandle, game: &Game) -> Result<(), String> {
     std::fs::write(&list, merged).map_err(|e| e.to_string())
 }
 
-pub fn launch(app: &AppHandle, game: &Game) -> Result<(), String> {
+/// RPCS3 greets a fresh install with a window about itself, its funding and
+/// its piracy policy. The user asked for their game, so the greeting is turned
+/// off the same way clicking its checkbox would, before the emulator ever runs.
+fn with_welcome_disabled(existing: &str) -> String {
+    const SECTION: &str = "[main_window]";
+    const KEY: &str = "infoBoxEnabledWelcome";
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut in_section = false;
+    let mut written = false;
+
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            // Leaving the section without having seen the key: add it here.
+            if in_section && !written {
+                lines.push(format!("{KEY}=false"));
+                written = true;
+            }
+            in_section = trimmed == SECTION;
+        } else if in_section && trimmed.starts_with(KEY) {
+            lines.push(format!("{KEY}=false"));
+            written = true;
+            continue;
+        }
+        lines.push(line.to_string());
+    }
+
+    if !written {
+        if !in_section {
+            lines.push(String::new());
+            lines.push(SECTION.to_string());
+        }
+        lines.push(format!("{KEY}=false"));
+    }
+
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
+fn disable_welcome_screen(app: &AppHandle) -> Result<(), String> {
+    let dir = super::install_dir(app)?.join("GuiConfigs");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let file = dir.join("CurrentSettings.ini");
+    let existing = std::fs::read_to_string(&file).unwrap_or_default();
+    if existing.contains("infoBoxEnabledWelcome=false") {
+        return Ok(());
+    }
+    std::fs::write(&file, with_welcome_disabled(&existing)).map_err(|e| e.to_string())
+}
+
+pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
     let exe = super::exe_path(app)?;
     if !exe.exists() {
         return Err("Install RPCS3 first, then you can play.".to_string());
@@ -71,16 +123,17 @@ pub fn launch(app: &AppHandle, game: &Game) -> Result<(), String> {
         .ok_or("Couldn't find the game's program file. This folder may be incomplete.")?;
 
     register(app, game)?;
+    disable_welcome_screen(app)?;
 
     // --no-gui keeps RPCS3's own window out of the way: the user asked to play
     // a game, not to meet the emulator. Spawned rather than waited on, so
     // Omoio stays usable while the game runs.
-    super::command(&exe)
+    let child = super::command(&exe)
         .arg("--no-gui")
         .arg(&eboot)
         .spawn()
         .map_err(|e| e.to_string())?;
-    Ok(())
+    Ok(child.id())
 }
 
 #[cfg(test)]
@@ -103,6 +156,37 @@ mod tests {
     fn does_not_double_the_trailing_slash() {
         let line = games_list_line("BCES00141", Path::new("D:/games/LBP/"));
         assert_eq!(line, "BCES00141: \"D:/games/LBP/\"");
+    }
+
+    #[test]
+    fn turns_off_the_welcome_screen_in_an_existing_config() {
+        let existing = "[GSFrame]\nvisibility=Windowed\n\n[main_window]\ninfoBoxEnabledWelcome=true\n\n[Meta]\nattachCommandLine=false\n";
+        let out = with_welcome_disabled(existing);
+
+        assert!(out.contains("infoBoxEnabledWelcome=false"));
+        assert!(!out.contains("infoBoxEnabledWelcome=true"));
+        // Everything else RPCS3 keeps in there survives.
+        assert!(out.contains("[GSFrame]"));
+        assert!(out.contains("visibility=Windowed"));
+        assert!(out.contains("attachCommandLine=false"));
+    }
+
+    #[test]
+    fn adds_the_setting_when_the_section_has_no_such_key() {
+        let out = with_welcome_disabled("[main_window]\nsomethingElse=1\n\n[Meta]\nx=2\n");
+        assert!(out.contains("infoBoxEnabledWelcome=false"));
+        assert!(out.contains("somethingElse=1"));
+        assert!(out.contains("[Meta]"));
+        // It has to land inside main_window, not after Meta.
+        let welcome = out.find("infoBoxEnabledWelcome").unwrap();
+        assert!(welcome < out.find("[Meta]").unwrap());
+    }
+
+    #[test]
+    fn writes_a_whole_config_when_there_is_none() {
+        let out = with_welcome_disabled("");
+        assert!(out.contains("[main_window]"));
+        assert!(out.contains("infoBoxEnabledWelcome=false"));
     }
 
     #[test]

@@ -83,6 +83,31 @@ export function launchGame(titleId: string): Promise<void> {
   return invoke("launch_game", { titleId });
 }
 
+export interface Playing {
+  title_id: string;
+  title: string;
+}
+
+export function stopGame(): Promise<void> {
+  return invoke("stop_game");
+}
+
+export function playingGame(): Promise<Playing | null> {
+  return invoke("playing_game");
+}
+
+export function setGameFullscreen(fullscreen: boolean): Promise<void> {
+  return invoke("set_game_fullscreen", { fullscreen });
+}
+
+export function onGameStarted(handler: (playing: Playing) => void): Promise<UnlistenFn> {
+  return listen<Playing>("game-started", (event) => handler(event.payload));
+}
+
+export function onGameStopped(handler: () => void): Promise<UnlistenFn> {
+  return listen("game-stopped", () => handler());
+}
+
 export function getGamesFolder(): Promise<string | null> {
   return invoke("get_games_folder");
 }

@@ -1,4 +1,4 @@
-import type { Game } from "./api";
+import type { Game, Playing } from "./api";
 
 export type ViewId = "library" | "catalogue" | "homebrew" | "updates" | "system";
 
@@ -9,6 +9,9 @@ interface AppState {
   games: Game[];
   search: string;
   notice: string | null;
+  playing: Playing | null;
+  gameFullscreen: boolean;
+  selected: string | null;
 }
 
 type Listener = (state: AppState) => void;
@@ -25,6 +28,9 @@ class Store {
     games: [],
     search: "",
     notice: null,
+    playing: null,
+    gameFullscreen: false,
+    selected: null,
   };
   private listeners = new Set<Listener>();
 
@@ -61,6 +67,21 @@ class Store {
 
   setNotice(notice: string | null): void {
     this.state = { ...this.state, notice };
+    this.notify();
+  }
+
+  setPlaying(playing: Playing | null): void {
+    this.state = { ...this.state, playing };
+    this.notify();
+  }
+
+  setGameFullscreen(gameFullscreen: boolean): void {
+    this.state = { ...this.state, gameFullscreen };
+    this.notify();
+  }
+
+  setSelected(selected: string | null): void {
+    this.state = { ...this.state, selected };
     this.notify();
   }
 

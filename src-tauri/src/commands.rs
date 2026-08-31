@@ -5,6 +5,7 @@ use crate::core::settings::Settings;
 use crate::core::types::{GameEntry, HardwareInfo, Progress};
 use crate::hardware;
 use crate::import;
+use crate::session::{Playing, Session};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -235,7 +236,38 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
         .iter()
         .find(|g| g.title_id == title_id)
         .ok_or("That game isn't in your library any more.")?;
-    rpcs3::launch::launch(&app, game)
+
+    // One game at a time: starting another stops the one already running.
+    app.state::<Session>().stop();
+    let pid = rpcs3::launch::launch(&app, game)?;
+    app.state::<Session>().begin(
+        pid,
+        Playing {
+            title_id: game.title_id.clone(),
+            title: game.title.clone(),
+        },
+    );
+    crate::session::watch(app.clone(), pid);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stop_game(app: AppHandle) {
+    app.state::<Session>().stop();
+}
+
+#[tauri::command]
+pub fn playing_game(app: AppHandle) -> Option<Playing> {
+    app.state::<Session>().playing()
+}
+
+#[tauri::command]
+pub fn set_game_fullscreen(app: AppHandle, fullscreen: bool) {
+    let session = app.state::<Session>();
+    session.set_fullscreen(fullscreen);
+    if let Some(window) = app.get_webview_window("main") {
+        crate::session::place(&window, &session);
+    }
 }
 
 #[tauri::command]

@@ -1,6 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Game } from "../api";
-import { launchGame, removeGame, listGames } from "../api";
 import { openImportSheet } from "../components/importSheet";
 import { store } from "../state";
 import { emptyState, type View } from "./view";
@@ -33,7 +32,7 @@ function placeholderArt(game: Game): string {
 function gameCard(game: Game): HTMLElement {
   const card = document.createElement("button");
   card.className = game.available ? "card" : "card ghost";
-  card.title = game.available ? `Play ${game.title}` : "This game's folder isn't there";
+  card.title = game.title;
 
   // A dump's ICON0 is 320x176, landscape, while the tile is portrait like the
   // box art a metadata service would eventually give us. Cropping to fill cuts
@@ -57,35 +56,10 @@ function gameCard(game: Game): HTMLElement {
   // Set through textContent so a game's own title can never be markup.
   card.querySelector<HTMLElement>(".art-name")!.textContent = game.title;
 
-  if (game.available) {
-    card.onclick = async () => {
-      card.disabled = true;
-      try {
-        await launchGame(game.title_id);
-      } catch (err) {
-        store.setNotice(typeof err === "string" ? err : "Couldn't start this game.");
-      } finally {
-        card.disabled = false;
-      }
-    };
-  }
+  // Opens the game rather than starting it: what it is, whether it can run,
+  // and a Play button live in the panel.
+  card.onclick = () => store.setSelected(game.title_id);
   return card;
-}
-
-function detailsFor(game: Game): HTMLElement {
-  const row = document.createElement("div");
-  row.className = "card-actions";
-  const remove = document.createElement("button");
-  remove.className = "link-btn";
-  remove.textContent = "Remove";
-  remove.onclick = async (e) => {
-    e.stopPropagation();
-    remove.disabled = true;
-    await removeGame(game.title_id);
-    store.setGames(await listGames());
-  };
-  row.appendChild(remove);
-  return row;
 }
 
 export function renderLibrary(): View {
@@ -123,11 +97,7 @@ export function renderLibrary(): View {
   } else {
     const grid = document.createElement("div");
     grid.className = "grid";
-    shown.forEach((game) => {
-      const cell = document.createElement("div");
-      cell.append(gameCard(game), detailsFor(game));
-      grid.appendChild(cell);
-    });
+    shown.forEach((game) => grid.appendChild(gameCard(game)));
     content.appendChild(grid);
   }
 
