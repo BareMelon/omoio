@@ -212,6 +212,17 @@ pub async fn import_game(app: AppHandle, path: String) -> Result<GameEntry, Stri
 }
 
 #[tauri::command]
+pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
+    let library = Library::load(&library_path(&app)?);
+    let game = library
+        .games()
+        .iter()
+        .find(|g| g.title_id == title_id)
+        .ok_or("That game isn't in your library any more.")?;
+    rpcs3::launch::launch(&app, game)
+}
+
+#[tauri::command]
 pub fn remove_game(app: AppHandle, title_id: String) -> Result<(), String> {
     let library_file = library_path(&app)?;
     let mut library = Library::load(&library_file);

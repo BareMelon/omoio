@@ -1,4 +1,5 @@
 pub mod firmware;
+pub mod launch;
 
 use crate::core::types::Progress;
 use futures_util::StreamExt;

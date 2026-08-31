@@ -25,6 +25,7 @@ pub fn run() {
             commands::install_firmware,
             commands::list_games,
             commands::import_game,
+            commands::launch_game,
             commands::remove_game,
             commands::get_games_folder,
             commands::set_games_folder,

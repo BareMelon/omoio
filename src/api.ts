@@ -77,6 +77,10 @@ export function removeGame(titleId: string): Promise<void> {
   return invoke("remove_game", { titleId });
 }
 
+export function launchGame(titleId: string): Promise<void> {
+  return invoke("launch_game", { titleId });
+}
+
 export function getGamesFolder(): Promise<string | null> {
   return invoke("get_games_folder");
 }

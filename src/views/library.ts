@@ -1,5 +1,5 @@
 import type { Game } from "../api";
-import { removeGame, listGames } from "../api";
+import { launchGame, removeGame, listGames } from "../api";
 import { openImportSheet } from "../components/importSheet";
 import { store } from "../state";
 import { emptyState, type View } from "./view";
@@ -31,12 +31,31 @@ function gameRow(game: Game): HTMLElement {
 
   const right = document.createElement("div");
   right.className = "game-actions";
+
+  const problem = document.createElement("span");
+  problem.className = "game-missing";
   if (!game.available) {
-    const missing = document.createElement("span");
-    missing.className = "game-missing";
-    missing.textContent = "Folder not found";
-    right.appendChild(missing);
+    problem.textContent = "Folder not found";
   }
+  right.appendChild(problem);
+
+  const play = document.createElement("button");
+  play.className = "play-btn";
+  play.innerHTML = `<svg viewBox="0 0 12 14" fill="currentColor"><path d="M1 1l10 6-10 6z"/></svg>Play`;
+  play.disabled = !game.available;
+  play.onclick = async () => {
+    problem.textContent = "";
+    play.disabled = true;
+    try {
+      await launchGame(game.title_id);
+    } catch (err) {
+      problem.textContent = typeof err === "string" ? err : "Couldn't start this game.";
+    } finally {
+      play.disabled = !game.available;
+    }
+  };
+  right.appendChild(play);
+
   const remove = document.createElement("button");
   remove.className = "small-btn";
   remove.textContent = "Remove";

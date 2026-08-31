@@ -494,6 +494,33 @@ button {
 .game-missing {
   font-size: 11.5px;
   color: var(--warn);
+  text-align: right;
+}
+.play-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 15px;
+  border-radius: var(--r);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 650;
+  font-size: 12.5px;
+  transition: background 0.12s, transform 0.1s ease-out;
+}
+.play-btn:hover {
+  background: #2a7bff;
+}
+.play-btn:active {
+  transform: scale(0.97);
+}
+.play-btn[disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.play-btn svg {
+  width: 11px;
+  height: 11px;
 }
 
 .notice {
