@@ -18,7 +18,11 @@ export function renderPlayingBar(playing: Playing): HTMLElement {
   bar.querySelector<HTMLElement>(".playing-name")!.textContent = playing.title;
 
   const fullscreenButton = bar.querySelector<HTMLButtonElement>("#toggle-fullscreen")!;
-  fullscreenButton.textContent = store.get().gameFullscreen ? "Leave fullscreen" : "Fullscreen";
+  // The key is on the button because once the picture covers the screen the
+  // button is behind it, and F11 is then the only way back.
+  fullscreenButton.textContent = store.get().gameFullscreen
+    ? "Leave fullscreen (F11)"
+    : "Fullscreen (F11)";
   fullscreenButton.onclick = async () => {
     const next = !store.get().gameFullscreen;
     await setGameFullscreen(next);

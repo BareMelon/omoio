@@ -57,22 +57,40 @@ pub fn attach(game: isize, host: isize) {
     }
 }
 
-/// True on the press, not while held, so one tap toggles once.
+/// Asks whether F11 went down since the last time we asked, which is the low
+/// bit of GetAsyncKeyState.
 ///
-/// The game window has the keyboard while it runs, so Omoio never sees a key
-/// of its own. This reads the key globally instead, which is the only way out
-/// of fullscreen once the picture covers the screen.
+/// The obvious reading, "is the key down right now", does not work here. We
+/// look every 400ms and a tap lasts around a hundred, so most presses fall
+/// between two looks and are never seen. That is not a rare miss: it means the
+/// only way out of a picture covering the screen is to hold the key down and
+/// hope, which is exactly how it behaved. The low bit is remembered by Windows
+/// until read, so a tap between polls still counts.
+///
+/// The bit is per-process and nothing else here reads this key, so one press
+/// gives exactly one event.
 pub fn fullscreen_key_pressed() -> bool {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F11};
+    unsafe { GetAsyncKeyState(VK_F11.0 as i32) as u16 & 0x0001 != 0 }
+}
 
-    static WAS_DOWN: AtomicBool = AtomicBool::new(false);
-    let down = unsafe { GetAsyncKeyState(VK_F11.0 as i32) } as u16 & 0x8000 != 0;
-    let pressed = down && !WAS_DOWN.swap(down, Ordering::Relaxed);
-    if !down {
-        WAS_DOWN.store(false, Ordering::Relaxed);
+/// Whether the game or Omoio is the window being used.
+///
+/// The key is read globally, because the game holds the keyboard and Omoio
+/// never sees a key of its own. Without this check F11 in a browser would drag
+/// the game to fullscreen behind it, which is worse than not having the
+/// shortcut at all.
+pub fn ours_has_focus(game: isize, host: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, GA_ROOT};
+
+    let front = unsafe { GetForegroundWindow() };
+    if front.0.is_null() {
+        return false;
     }
-    pressed
+    let root = unsafe { GetAncestor(front, GA_ROOT) };
+    let front = front.0 as isize;
+    let root = root.0 as isize;
+    front == game || front == host || root == game || root == host
 }
 
 pub fn place(game: isize, x: i32, y: i32, width: i32, height: i32) {

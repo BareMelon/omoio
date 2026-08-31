@@ -142,6 +142,10 @@ fn still_running(pid: u32) -> bool {
 pub fn watch(app: AppHandle, pid: u32) {
     tauri::async_runtime::spawn(async move {
         let mut attached = false;
+        // The key state is remembered until read, so clear anything left over
+        // from before the game started. Otherwise an F11 pressed elsewhere
+        // minutes ago throws the game to fullscreen the moment it appears.
+        overlay::fullscreen_key_pressed();
 
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;
@@ -167,23 +171,29 @@ pub fn watch(app: AppHandle, pid: u32) {
                 return;
             }
 
-            // The game holds the keyboard, so this is the only way back out of
-            // a picture that covers the screen.
-            if attached && overlay::fullscreen_key_pressed() {
-                let now = !session.is_fullscreen();
-                session.set_fullscreen(now);
-                let _ = app.emit("game-fullscreen", now);
-            }
-
             let Some(window) = app.get_webview_window("main") else {
                 continue;
             };
+            let host = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
+
+            // The game holds the keyboard, so this is the only way back out of
+            // a picture that covers the screen. Read it even when we are not
+            // going to act on it, so a press meant for another window is
+            // consumed rather than saved up for later.
+            let pressed = overlay::fullscreen_key_pressed();
+            if let (true, Some(game)) = (pressed, session.window()) {
+                if overlay::ours_has_focus(game, host) {
+                    let now = !session.is_fullscreen();
+                    session.set_fullscreen(now);
+                    let _ = app.emit("game-fullscreen", now);
+                }
+            }
 
             if !attached {
                 // The window only exists once RPCS3 has something to draw, so
                 // this keeps looking while the game boots.
                 if let Some(game) = overlay::find_window(pid) {
-                    overlay::attach(game, window.hwnd().map(|h| h.0 as isize).unwrap_or(0));
+                    overlay::attach(game, host);
                     session.adopt_window(game);
                     attached = true;
                     let _ = app.emit("game-started", session.playing());
