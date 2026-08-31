@@ -120,25 +120,58 @@ pub fn count_warnings(log: &str) -> usize {
     log.lines().filter(|line| line.starts_with(WARNING)).count()
 }
 
-/// A question someone can paste somewhere and get a useful answer to, built
-/// only from what the log and library actually say.
-pub fn troubleshooting_prompt(session: &Session) -> String {
+/// The prompt someone pastes into an assistant when a game misbehaves.
+///
+/// It has to carry more than the log. An assistant that does not know how this
+/// machine is set up will answer with RPCS3 menu paths the user does not have,
+/// or tell them to edit a config file by hand, or send them looking for game
+/// files. So the prompt explains the setup first, says how advice should be
+/// worded to be followable, and only then hands over the evidence.
+///
+/// `applied` is what the user has already changed for this game, as display
+/// paths and values. An assistant that cannot see those will keep suggesting
+/// settings that are already set.
+pub fn troubleshooting_prompt(session: &Session, applied: &[(String, String)]) -> String {
     let mut out = String::new();
+
+    out.push_str(
+        "I need help getting a PS3 game running properly. Please answer as a troubleshooter.\n\n",
+    );
+
+    out.push_str("## How my setup works\n\n");
+    out.push_str(
+        "I use Omoio, a launcher that manages RPCS3 for me. Before you advise anything:\n\n\
+         - I never see the RPCS3 interface. Omoio starts the emulator and shows the game inside its own window, so RPCS3 menu paths are no use to me.\n\
+         - Every setting RPCS3 has is available to me in Omoio, per game. I open the game and press Change settings. There is a Common tab for the usual ones and an Advanced tab holding all of them, with a search box.\n\
+         - Advanced lists settings under RPCS3's own names and sections. Name a setting exactly as RPCS3 names it, like \"Video / Vulkan / Asynchronous Texture Streaming\", and I can paste that straight into the search box.\n\
+         - Anything I change applies to this game alone. Anything I leave alone stays at RPCS3's own default.\n\
+         - I do not edit configuration files by hand, and I cannot swap in a different RPCS3 build. Omoio manages the emulator.\n\
+         - The game, the firmware and any updates are already installed. Do not tell me where to obtain any of them, and do not suggest anything involving decryption keys or copy protection.\n\n",
+    );
+
+    out.push_str("## How to answer\n\n");
+    out.push_str(
+        "- Change one thing at a time, so I can tell what actually fixed it, unless two settings genuinely only work together.\n\
+         - For each change give the exact setting path, the value to set it to, and one line on why you think it helps.\n\
+         - Tell me what I should see if it worked, and what to try next if it did not.\n\
+         - Rank your suggestions, most likely first.\n\
+         - If the log does not support a diagnosis, say so plainly and tell me what to capture instead. Do not guess to fill the space.\n\n",
+    );
+
+    out.push_str("## The game\n\n");
+    out.push_str(&format!("- Title: {}\n", session.title));
+    out.push_str(&format!("- Title ID: {}\n", session.title_id));
     out.push_str(&format!(
-        "I'm running the PS3 game {} ({}) in RPCS3 and need help working out what went wrong.\n\n",
-        session.title, session.title_id
-    ));
-    out.push_str(&format!(
-        "The session {} after {}.\n\n",
+        "- This session {} after {}.\n",
         match session.ending {
             Ending::Crashed => "ended unexpectedly",
             Ending::Closed => "closed normally",
-            Ending::Stopped => "was stopped by me",
+            Ending::Stopped => "was stopped by me from Omoio",
         },
         format_duration(session.seconds)
     ));
 
-    out.push_str("Setup:\n");
+    out.push_str("\n## The machine\n\n");
     for (label, value) in [
         ("RPCS3", &session.machine.rpcs3),
         ("CPU", &session.machine.cpu),
@@ -151,15 +184,30 @@ pub fn troubleshooting_prompt(session: &Session) -> String {
         }
     }
 
-    if session.problems.is_empty() {
-        out.push_str("\nRPCS3 logged no errors for this session.\n");
+    out.push_str("\n## Settings already changed for this game\n\n");
+    if applied.is_empty() {
+        out.push_str("None. This game is running on RPCS3's own defaults throughout.\n");
     } else {
-        out.push_str(&format!("\nWhat RPCS3 logged ({}):\n", session.problems.len()));
+        for (path, value) in applied {
+            out.push_str(&format!("- {path} = {value}\n"));
+        }
+        out.push_str("\nEverything else is at RPCS3's default.\n");
+    }
+
+    if session.problems.is_empty() {
+        out.push_str("\n## What RPCS3 logged\n\nNothing. RPCS3 logged no warnings or errors for this session.\n");
+    } else {
+        out.push_str(&format!(
+            "\n## What RPCS3 logged ({} lines, repeats collapsed)\n\n```\n",
+            session.problems.len()
+        ));
         for problem in &session.problems {
             out.push_str(&format!("{problem}\n"));
         }
+        out.push_str("```\n");
     }
-    out.push_str("\nWhat is likely causing this, and what should I change?\n");
+
+    out.push_str("\n## What I need\n\nWhat is most likely causing this, and which settings should I change, in what order?\n");
     out
 }
 
@@ -255,7 +303,8 @@ Qt version: Compiled against Qt 6.11.2\n\
             problems: vec!["·F 0:00:05.0 RSX: it fell over".into()],
             log_file: "logs/BCES00850-1.log".into(),
         };
-        let prompt = troubleshooting_prompt(&session);
+        let applied = [("Video / Renderer".to_string(), "OpenGL".to_string())];
+        let prompt = troubleshooting_prompt(&session, &applied);
 
         assert!(prompt.contains("LittleBigPlanet 2"));
         assert!(prompt.contains("BCES00850"));
@@ -264,6 +313,35 @@ Qt version: Compiled against Qt 6.11.2\n\
         assert!(prompt.contains("RTX A4500"));
         assert!(prompt.contains("AVX+"));
         assert!(prompt.contains("it fell over"));
+        // Whatever has already been tried has to be in there, or the advice
+        // comes back telling us to set what is already set.
+        assert!(prompt.contains("Video / Renderer = OpenGL"));
+    }
+
+    /// The prompt is worth little if the reader does not know that RPCS3's own
+    /// interface is out of reach and that every setting is available here.
+    #[test]
+    fn explains_the_setup_before_handing_over_the_log() {
+        let session = Session {
+            title_id: "BCES00850".into(),
+            title: "LittleBigPlanet 2".into(),
+            started: "2026-08-31T09:20:01".into(),
+            seconds: 30,
+            ending: Ending::Crashed,
+            machine: Machine::default(),
+            problems: vec!["·F 0:00:05.0 RSX: it fell over".into()],
+            log_file: "logs/x.log".into(),
+        };
+        let prompt = troubleshooting_prompt(&session, &[]);
+
+        assert!(prompt.contains("Omoio"));
+        assert!(prompt.contains("never see the RPCS3 interface"));
+        assert!(prompt.contains("Advanced"));
+        assert!(prompt.contains("one thing at a time"));
+        assert!(prompt.contains("running on RPCS3's own defaults"));
+        // The setup has to come before the evidence, or it reads as an
+        // afterthought and gets skimmed past.
+        assert!(prompt.find("How my setup works") < prompt.find("it fell over"));
     }
 
     #[test]
@@ -278,7 +356,7 @@ Qt version: Compiled against Qt 6.11.2\n\
             problems: vec![],
             log_file: "logs/x.log".into(),
         };
-        assert!(troubleshooting_prompt(&session).contains("logged no errors"));
+        assert!(troubleshooting_prompt(&session, &[]).contains("logged no warnings or errors"));
     }
 
     #[test]

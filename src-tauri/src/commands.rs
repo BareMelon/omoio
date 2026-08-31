@@ -390,10 +390,19 @@ pub fn read_session_log(path: String) -> Result<String, String> {
 pub fn session_prompt(app: AppHandle, log_file: String) -> Result<String, String> {
     let text = std::fs::read_to_string(sessions_index(&app)?).unwrap_or_default();
     let all: Vec<PlaySession> = serde_json::from_str(&text).unwrap_or_default();
-    all.iter()
+    let session = all
+        .iter()
         .find(|s| s.log_file == log_file)
-        .map(playlog::troubleshooting_prompt)
-        .ok_or_else(|| "That session isn't in the list any more.".to_string())
+        .ok_or_else(|| "That session isn't in the list any more.".to_string())?;
+
+    // What is set for this game now, rather than what was set when it ran.
+    // Anyone advising needs to know what has already been tried.
+    let applied: Vec<(String, String)> = rpcs3::game_config::read(&app, &session.title_id)
+        .into_iter()
+        .map(|(key, value)| (key.split('\n').collect::<Vec<_>>().join(" / "), value))
+        .collect();
+
+    Ok(playlog::troubleshooting_prompt(session, &applied))
 }
 
 #[tauri::command]
