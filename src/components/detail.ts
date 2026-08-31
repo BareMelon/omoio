@@ -1,6 +1,16 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { gameSettings, launchGame, listGames, removeGame, type Game } from "../api";
+import {
+  gameCompatibility,
+  gamePatches,
+  gameSettings,
+  launchGame,
+  listGames,
+  refreshCompatibility,
+  removeGame,
+  type Game,
+} from "../api";
 import { openGameSettings } from "./gameSettingsSheet";
+import { openPatches } from "./patchesSheet";
 import { store } from "../state";
 
 function formatSize(bytes: number): string {
@@ -36,9 +46,19 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       )}
     </div>
     <div class="sec">
+      <div class="sec-h">How well it runs</div>
+      <div class="compat" id="detail-compat">
+        <span class="status" id="detail-compat-badge"></span>
+        <button class="link-btn" id="detail-compat-get"></button>
+      </div>
+      <div class="note plain" id="detail-compat-note"></div>
+    </div>
+    <div class="sec">
       <div class="sec-h">Emulator</div>
       <button class="small-btn wide" id="detail-settings">Change settings</button>
       <div class="note plain" id="detail-settings-note"></div>
+      <button class="small-btn wide" id="detail-patches">Patches</button>
+      <div class="note plain" id="detail-patches-note"></div>
     </div>
     <div class="sec">
       <div class="sec-h">Location</div>
@@ -71,10 +91,57 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     }
   };
 
+  const badge = body.querySelector<HTMLElement>("#detail-compat-badge")!;
+  const compatNote = body.querySelector<HTMLElement>("#detail-compat-note")!;
+  const getList = body.querySelector<HTMLButtonElement>("#detail-compat-get")!;
+  const showCompat = async () => {
+    const compat = await gameCompatibility(game.title_id);
+    badge.textContent = compat.label;
+    badge.className = `status ${compat.tone}`;
+    compatNote.textContent = compat.checked
+      ? `${compat.explanation} Last reported ${compat.checked}.`
+      : compat.explanation;
+    // Only offered when it would do something: the list is missing, or old
+    // enough that a game's result may have moved on.
+    getList.classList.toggle("gone", !compat.stale);
+    getList.textContent = compat.have_list ? "Check for newer results" : "Get the list";
+  };
+  getList.onclick = async () => {
+    getList.disabled = true;
+    getList.textContent = "Getting…";
+    try {
+      await refreshCompatibility();
+      await showCompat();
+    } catch (err) {
+      compatNote.textContent =
+        typeof err === "string" ? err : "Couldn't get the compatibility list.";
+    } finally {
+      getList.disabled = false;
+    }
+  };
+  showCompat();
+
+  const patchesNote = body.querySelector<HTMLElement>("#detail-patches-note")!;
+  const showPatchCount = async () => {
+    const { have_list, patches } = await gamePatches(game.title_id, game.version ?? "");
+    const fits = patches.filter((p) => p.applies);
+    const on = fits.filter((p) => p.enabled).length;
+    patchesNote.textContent = !have_list
+      ? "No patch list yet."
+      : fits.length === 0
+        ? "None published for this game."
+        : on === 0
+          ? `${fits.length} available, none on.`
+          : `${on} of ${fits.length} on.`;
+  };
+  showPatchCount();
+  body.querySelector<HTMLButtonElement>("#detail-patches")!.onclick = () =>
+    openPatches(game.title_id, game.title, game.version ?? "", showPatchCount);
+
   const settingsNote = body.querySelector<HTMLElement>("#detail-settings-note")!;
   const showSettingsCount = async () => {
     const [, chosen] = await gameSettings(game.title_id);
-    const changed = Object.values(chosen).reduce((n, keys) => n + Object.keys(keys).length, 0);
+    const changed = Object.keys(chosen).length;
     settingsNote.textContent =
       changed === 0
         ? "Running with RPCS3's own settings."

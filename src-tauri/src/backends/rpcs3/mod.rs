@@ -1,8 +1,10 @@
+pub mod compat;
 pub mod firmware;
 pub mod game_config;
 pub mod launch;
 #[cfg(windows)]
 pub mod overlay;
+pub mod patches;
 
 use crate::core::types::Progress;
 use futures_util::StreamExt;

@@ -37,6 +37,10 @@ zip = "4"
 tokio = { version = "1", features = ["fs", "io-util"] }
 futures-util = "0.3"
 sha2 = "0.11"
+# RPCS3's patch file is real YAML: anchors, aliases, and the same key repeated
+# at the top level. Only used to read it; our own files keep the small writer
+# in game_config.rs.
+yaml-rust2 = "0.10"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

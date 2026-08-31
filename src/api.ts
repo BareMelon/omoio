@@ -247,3 +247,77 @@ export function getFirmwareVersion(): Promise<string | null> {
 export function installFirmware(path: string): Promise<string> {
   return invoke("install_firmware", { path });
 }
+
+export interface Compatibility {
+  known: boolean;
+  label: string;
+  tone: "go" | "warn" | "bad" | "mute";
+  explanation: string;
+  checked: string;
+  stale: boolean;
+  have_list: boolean;
+}
+
+export function gameCompatibility(titleId: string): Promise<Compatibility> {
+  return invoke("game_compatibility", { titleId });
+}
+
+export function refreshCompatibility(): Promise<number> {
+  return invoke("refresh_compatibility");
+}
+
+export interface Patch {
+  hash: string;
+  name: string;
+  game: string;
+  author: string;
+  notes: string;
+  version: string;
+  versions: string[];
+  applies: boolean;
+  enabled: boolean;
+}
+
+export interface PatchList {
+  have_list: boolean;
+  patches: Patch[];
+}
+
+export function gamePatches(titleId: string, appVersion: string): Promise<PatchList> {
+  return invoke("game_patches", { titleId, appVersion });
+}
+
+export function setPatchEnabled(
+  patch: Patch,
+  titleId: string,
+  appVersion: string,
+  enabled: boolean
+): Promise<void> {
+  return invoke("set_patch_enabled", { patch, titleId, appVersion, enabled });
+}
+
+export function refreshPatches(): Promise<number> {
+  return invoke("refresh_patches");
+}
+
+export interface ScanProgress {
+  stage: "looking" | "reading";
+  done: number;
+  total: number;
+  title: string;
+}
+
+export interface ScanResult {
+  added: number;
+  already_there: number;
+  not_games: number;
+  cancelled: boolean;
+}
+
+export function scanFolder(path: string): Promise<ScanResult> {
+  return invoke("scan_folder", { path });
+}
+
+export function onScanProgress(handler: (progress: ScanProgress) => void): Promise<UnlistenFn> {
+  return listen<ScanProgress>("scan-progress", (event) => handler(event.payload));
+}

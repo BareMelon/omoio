@@ -6,8 +6,12 @@ import {
   importGame,
   listGames,
   onImportProgress,
+  onScanProgress,
+  scanFolder,
   setGamesFolder,
   type ImportProgress,
+  type ScanProgress,
+  type ScanResult,
 } from "../api";
 import { store } from "../state";
 
@@ -52,9 +56,13 @@ export function openImportSheet(): void {
         <button class="btn ghost" id="pick-folder">Choose a folder</button>
         <button class="btn solid" id="pick-archive">Choose an archive</button>
       </div>
+      <div class="sheet-alt">
+        <button class="link-btn" id="pick-scan">Scan a folder for games</button>
+      </div>
     `;
     sheet.querySelector<HTMLButtonElement>("#pick-folder")!.onclick = pickFolder;
     sheet.querySelector<HTMLButtonElement>("#pick-archive")!.onclick = pickArchive;
+    sheet.querySelector<HTMLButtonElement>("#pick-scan")!.onclick = pickScan;
   }
 
   function showProgress(progress: ImportProgress) {
@@ -117,6 +125,89 @@ export function openImportSheet(): void {
     }
 
     await run(() => importArchive(picked));
+  }
+
+  function showScanProgress(progress: ScanProgress) {
+    // Finding the games and reading them are two different waits. Counting
+    // folders found says something is happening before a total is knowable.
+    const label =
+      progress.stage === "looking"
+        ? `Looking for games… ${progress.done} found`
+        : `Reading ${progress.title}`;
+    const pct =
+      progress.stage === "reading" && progress.total > 0
+        ? Math.min(100, Math.round((progress.done / progress.total) * 100))
+        : null;
+    sheet.innerHTML = `
+      <div class="sheet-h">Scanning</div>
+      <div class="progress-row" style="margin-top:14px">
+        <div class="progress-label">
+          <span class="scan-label"></span>
+          ${pct !== null ? `<span class="pct">${progress.done} of ${progress.total}</span>` : ""}
+        </div>
+        <div class="progress">
+          <div class="progress-fill${pct === null ? " indeterminate" : ""}"${
+            pct !== null ? ` style="width:${pct}%"` : ""
+          }></div>
+        </div>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="cancel-scan">Cancel</button>
+      </div>
+    `;
+    // A game's own title, so never through innerHTML.
+    sheet.querySelector<HTMLElement>(".scan-label")!.textContent = label;
+    sheet.querySelector<HTMLButtonElement>("#cancel-scan")!.onclick = () => {
+      cancelImport();
+    };
+  }
+
+  function showScanResult(result: ScanResult) {
+    busy = false;
+    const lines = [
+      result.added === 0
+        ? ""
+        : result.added === 1
+          ? "1 game added."
+          : `${result.added} games added.`,
+      result.already_there > 0 ? `${result.already_there} already in your library.` : "",
+      result.cancelled ? "Stopped early." : "",
+    ].filter(Boolean);
+    sheet.innerHTML = `
+      <div class="sheet-h">${result.added > 0 ? "Games added" : "Nothing new"}</div>
+      <div class="sheet-p">${
+        result.added === 0 && result.already_there === 0 && !result.cancelled
+          ? "No PS3 games were found in that folder."
+          : lines.join(" ")
+      }</div>
+      <div class="sheet-actions">
+        <button class="btn solid" id="scan-done">Done</button>
+      </div>
+    `;
+    sheet.querySelector<HTMLButtonElement>("#scan-done")!.onclick = close;
+  }
+
+  async function pickScan() {
+    const picked = await open({
+      directory: true,
+      multiple: false,
+      title: "Choose a folder to scan",
+    });
+    if (typeof picked !== "string") return;
+
+    busy = true;
+    showScanProgress({ stage: "looking", done: 0, total: 0, title: "" });
+    const unlisten = await onScanProgress(showScanProgress);
+    try {
+      const result = await scanFolder(picked);
+      store.setGames(await listGames());
+      showScanResult(result);
+    } catch (err) {
+      busy = false;
+      showChoices(typeof err === "string" ? err : "Couldn't scan that folder.");
+    } finally {
+      unlisten();
+    }
   }
 
   async function run(job: () => Promise<unknown>) {

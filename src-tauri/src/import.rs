@@ -348,3 +348,175 @@ mod tests {
         assert_eq!(identify(&dir.0).unwrap_err(), Error::UnreadableMetadata);
     }
 }
+
+/// How deep to look for games under a chosen folder.
+///
+/// A games drive is folders of games, sometimes grouped a level or two further
+/// by region or letter. It is not an arbitrary tree, and walking a whole
+/// multi-terabyte drive to the bottom to find PARAM.SFO files would take
+/// minutes and turn up nothing extra.
+const SCAN_DEPTH: usize = 4;
+
+/// Every dump under a folder, found by walking rather than by asking the user
+/// to point at each one.
+///
+/// A folder that is itself a dump is not descended into: a game contains no
+/// other game, and `PS3_GAME` sitting inside would otherwise be offered twice.
+pub fn find_dumps(
+    root: &Path,
+    cancel: &std::sync::atomic::AtomicBool,
+    found: &mut dyn FnMut(&Path),
+) -> Vec<PathBuf> {
+    let mut dumps = Vec::new();
+    // Depth alongside each folder, so the walk stays iterative.
+    let mut stack = vec![(crate::archive::extended_length(root), 0usize)];
+
+    while let Some((dir, depth)) = stack.pop() {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
+        }
+        if sfo_path(&dir).is_some() {
+            found(&dir);
+            dumps.push(dir);
+            continue;
+        }
+        if depth >= SCAN_DEPTH {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                stack.push((entry.path(), depth + 1));
+            }
+        }
+    }
+
+    // read_dir gives no order worth relying on, and a list that reshuffles
+    // between scans reads as though something changed.
+    dumps.sort();
+    dumps.into_iter().map(plain).collect()
+}
+
+/// Undoes the extended-length prefix.
+///
+/// The walk needs it to see past Windows' 260-character limit, but every path
+/// found underneath inherits it, and `\\?\C:\...` would then be what we store
+/// in the library, hand to the emulator, and show on screen.
+fn plain(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|p| p.strip_prefix(r"\\?\")) {
+        Some(stripped) => PathBuf::from(stripped),
+        None => path,
+    }
+}
+
+#[cfg(test)]
+mod scan_tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+
+    /// A throwaway tree under the system temp folder, removed when dropped so
+    /// a failing test does not leave litter behind.
+    struct Tree(PathBuf);
+
+    impl Tree {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir().join(format!("omoio-scan-{name}"));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            Tree(root)
+        }
+
+        /// A folder that looks like a disc dump, as far as the walk is
+        /// concerned: it is the PARAM.SFO that marks one.
+        fn disc_dump(&self, at: &str) -> PathBuf {
+            let root = self.0.join(at);
+            std::fs::create_dir_all(root.join("PS3_GAME")).unwrap();
+            std::fs::write(root.join("PS3_GAME").join("PARAM.SFO"), b"not a real sfo").unwrap();
+            root
+        }
+
+        fn folder(&self, at: &str) {
+            std::fs::create_dir_all(self.0.join(at)).unwrap();
+        }
+    }
+
+    impl Drop for Tree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn scan(root: &Path) -> Vec<PathBuf> {
+        find_dumps(root, &AtomicBool::new(false), &mut |_| {})
+    }
+
+    #[test]
+    fn finds_games_sitting_side_by_side() {
+        let tree = Tree::new("side-by-side");
+        tree.disc_dump("Game A");
+        tree.disc_dump("Game B");
+        tree.folder("Not a game/random");
+
+        let found = scan(&tree.0);
+        assert_eq!(found.len(), 2, "expected both games, got {found:?}");
+    }
+
+    #[test]
+    fn finds_games_grouped_a_few_folders_deep() {
+        // A real drive is often sorted by region or letter.
+        let tree = Tree::new("grouped");
+        tree.disc_dump("Games/Europe/Game A");
+        tree.disc_dump("Games/Japan/Game B");
+
+        assert_eq!(scan(&tree.0).len(), 2);
+    }
+
+    #[test]
+    fn does_not_look_inside_a_game_it_has_already_found() {
+        // PS3_GAME holds its own PARAM.SFO; descending would offer the same
+        // game a second time.
+        let tree = Tree::new("no-nesting");
+        let dump = tree.disc_dump("Game A");
+        std::fs::write(dump.join("PARAM.SFO"), b"not a real sfo").unwrap();
+
+        let found = scan(&tree.0);
+        assert_eq!(found.len(), 1, "the same game was found twice: {found:?}");
+    }
+
+    #[test]
+    fn stops_when_asked_to() {
+        let tree = Tree::new("cancelled");
+        tree.disc_dump("Game A");
+        tree.disc_dump("Game B");
+
+        let cancel = AtomicBool::new(true);
+        assert!(find_dumps(&tree.0, &cancel, &mut |_| {}).is_empty());
+    }
+
+    #[test]
+    fn hands_back_paths_a_person_could_read() {
+        // The walk goes through \? to see past the path limit; that must not
+        // end up in the library or on screen.
+        let tree = Tree::new("plain-paths");
+        tree.disc_dump("Game A");
+
+        for found in scan(&tree.0) {
+            assert!(
+                !found.to_string_lossy().starts_with(r"\?\"),
+                "{found:?} still carries the extended-length prefix"
+            );
+        }
+    }
+
+    #[test]
+    fn gives_back_the_same_order_every_time() {
+        let tree = Tree::new("stable-order");
+        tree.disc_dump("Game C");
+        tree.disc_dump("Game A");
+        tree.disc_dump("Game B");
+
+        assert_eq!(scan(&tree.0), scan(&tree.0));
+    }
+}

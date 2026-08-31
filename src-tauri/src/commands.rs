@@ -440,3 +440,182 @@ pub async fn install_firmware(app: AppHandle, path: String) -> Result<String, St
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// What we can say about a game's compatibility, already turned into words.
+/// The interface never sees a raw status string it would have to interpret.
+#[derive(serde::Serialize)]
+pub struct CompatView {
+    pub known: bool,
+    pub label: String,
+    pub tone: String,
+    pub explanation: String,
+    pub checked: String,
+    /// True when we have never downloaded the list, or the copy is old.
+    pub stale: bool,
+    pub have_list: bool,
+}
+
+#[tauri::command]
+pub fn game_compatibility(app: AppHandle, title_id: String) -> CompatView {
+    let (entry, stale) = rpcs3::compat::look_up(&app, &title_id);
+    let have_list = rpcs3::compat::have_list(&app);
+
+    match entry.as_ref().and_then(|e| {
+        rpcs3::compat::describe(&e.status).map(|d| (e, d))
+    }) {
+        Some((entry, (label, tone, explanation))) => CompatView {
+            known: true,
+            label: label.into(),
+            tone: tone.into(),
+            explanation: explanation.into(),
+            checked: entry.date.clone(),
+            stale,
+            have_list,
+        },
+        None => CompatView {
+            known: false,
+            label: if have_list { "No result".into() } else { "Not checked".into() },
+            tone: "mute".into(),
+            explanation: if have_list {
+                "Nobody has reported on this game yet.".into()
+            } else {
+                "Get the compatibility list to see how well this game runs.".into()
+            },
+            checked: String::new(),
+            stale,
+            have_list,
+        },
+    }
+}
+
+#[tauri::command]
+pub async fn refresh_compatibility(app: AppHandle) -> Result<usize, String> {
+    rpcs3::compat::refresh(&app).await
+}
+
+#[derive(serde::Serialize)]
+pub struct PatchView {
+    pub have_list: bool,
+    pub patches: Vec<rpcs3::patches::Patch>,
+}
+
+#[tauri::command]
+pub fn game_patches(app: AppHandle, title_id: String, app_version: String) -> PatchView {
+    PatchView {
+        have_list: rpcs3::patches::have_catalogue(&app),
+        patches: rpcs3::patches::for_title(&app, &title_id, &app_version),
+    }
+}
+
+#[tauri::command]
+pub fn set_patch_enabled(
+    app: AppHandle,
+    patch: rpcs3::patches::Patch,
+    title_id: String,
+    app_version: String,
+    enabled: bool,
+) -> Result<(), String> {
+    rpcs3::patches::set_enabled(&app, &patch, &title_id, &app_version, enabled)
+}
+
+#[tauri::command]
+pub async fn refresh_patches(app: AppHandle) -> Result<usize, String> {
+    rpcs3::patches::refresh(&app).await
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct ScanProgress {
+    pub stage: String,
+    pub done: usize,
+    pub total: usize,
+    pub title: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct ScanResult {
+    pub added: usize,
+    pub already_there: usize,
+    pub not_games: usize,
+    pub cancelled: bool,
+}
+
+/// Imports every dump under a folder in one pass.
+///
+/// Anything already in the library is left alone rather than replaced, so a
+/// second scan over the same drive is harmless and quick.
+#[tauri::command]
+pub async fn scan_folder(
+    app: AppHandle,
+    path: String,
+    state: State<'_, InstallState>,
+) -> Result<ScanResult, String> {
+    state.cancel_import.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_import.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = PathBuf::from(&path);
+        if !root.is_dir() {
+            return Err("That folder isn't there.".to_string());
+        }
+
+        let mut seen = 0usize;
+        let dumps = import::find_dumps(&root, &cancel, &mut |_| {
+            seen += 1;
+            let _ = app.emit(
+                "scan-progress",
+                ScanProgress {
+                    stage: "looking".into(),
+                    done: seen,
+                    total: 0,
+                    title: String::new(),
+                },
+            );
+        });
+
+        let library_file = library_path(&app)?;
+        let mut library = Library::load(&library_file);
+        let mut result = ScanResult {
+            added: 0,
+            already_there: 0,
+            not_games: 0,
+            cancelled: false,
+        };
+
+        let total = dumps.len();
+        for (done, dump) in dumps.iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                result.cancelled = true;
+                break;
+            }
+            match import::identify(dump) {
+                Ok(game) => {
+                    if library.games().iter().any(|g| g.title_id == game.title_id) {
+                        result.already_there += 1;
+                    } else {
+                        let _ = app.emit(
+                            "scan-progress",
+                            ScanProgress {
+                                stage: "reading".into(),
+                                done: done + 1,
+                                total,
+                                title: game.title.clone(),
+                            },
+                        );
+                        library.upsert(game);
+                        result.added += 1;
+                    }
+                }
+                // A folder that is not a game, or is an update rather than a
+                // title, is not a failure worth stopping a whole drive for.
+                Err(_) => result.not_games += 1,
+            }
+        }
+
+        if result.added > 0 {
+            library.save(&library_file)?;
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

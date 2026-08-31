@@ -12,6 +12,9 @@
   --brand-soft: rgba(18, 107, 252, 0.14);
   --go: #2ed37e;
   --warn: #e3a33f;
+  /* Loadable and Nothing. The palette had no red because nothing needed one
+     until compatibility did; this is the shade RPCS3 uses for the same two. */
+  --bad: #e74c3c;
 
   --ui: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
