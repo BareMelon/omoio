@@ -31,6 +31,9 @@ struct Running {
     playing: Playing,
     window: Option<isize>,
     fullscreen: bool,
+    started: std::time::Instant,
+    /// Set by Stop, so a session we ended is never reported as a crash.
+    stopped_by_us: bool,
 }
 
 impl Session {
@@ -40,7 +43,17 @@ impl Session {
             playing,
             window: None,
             fullscreen: false,
+            started: std::time::Instant::now(),
+            stopped_by_us: false,
         });
+    }
+
+    fn started_at(&self) -> Option<std::time::Instant> {
+        self.inner.lock().unwrap().as_ref().map(|r| r.started)
+    }
+
+    fn was_stopped_by_us(&self) -> bool {
+        self.inner.lock().unwrap().as_ref().is_some_and(|r| r.stopped_by_us)
     }
 
     pub fn playing(&self) -> Option<Playing> {
@@ -82,6 +95,9 @@ impl Session {
         let Some(pid) = self.pid() else {
             return false;
         };
+        if let Some(running) = self.inner.lock().unwrap().as_mut() {
+            running.stopped_by_us = true;
+        }
         kill(pid);
         true
     }
@@ -137,11 +153,26 @@ pub fn watch(app: AppHandle, pid: u32) {
             }
 
             if !still_running(pid) {
-                let ended = session.end();
-                if let Some(playing) = ended {
+                // Read the log before anything else can overwrite it.
+                let stopped_by_us = session.was_stopped_by_us();
+                let seconds = session
+                    .started_at()
+                    .map(|s| s.elapsed().as_secs())
+                    .unwrap_or(0);
+                let playing = session.end();
+                if let Some(playing) = playing {
+                    keep_session_log(&app, &playing, seconds, stopped_by_us);
                     let _ = app.emit("game-stopped", playing);
                 }
                 return;
+            }
+
+            // The game holds the keyboard, so this is the only way back out of
+            // a picture that covers the screen.
+            if attached && overlay::fullscreen_key_pressed() {
+                let now = !session.is_fullscreen();
+                session.set_fullscreen(now);
+                let _ = app.emit("game-fullscreen", now);
             }
 
             let Some(window) = app.get_webview_window("main") else {
@@ -164,6 +195,70 @@ pub fn watch(app: AppHandle, pid: u32) {
             }
         }
     });
+}
+
+/// Copies what RPCS3 said about this session somewhere it will survive, and
+/// records how it ended. RPCS3 overwrites its own log on the next launch, so
+/// this is the only chance to keep it.
+fn keep_session_log(app: &AppHandle, playing: &Playing, seconds: u64, stopped_by_us: bool) {
+    use crate::core::playlog::{self, Ending, Session as LoggedSession};
+
+    let Ok(rpcs3_dir) = crate::backends::rpcs3::install_dir(app) else {
+        return;
+    };
+    let log = std::fs::read_to_string(rpcs3_dir.join("log").join("RPCS3.log")).unwrap_or_default();
+
+    let ending = if stopped_by_us {
+        Ending::Stopped
+    } else if playlog::has_fatal(&log) {
+        Ending::Crashed
+    } else {
+        Ending::Closed
+    };
+
+    let Ok(data_dir) = app.path().data_dir() else {
+        return;
+    };
+    let logs = data_dir.join("Omoio").join("logs");
+    if std::fs::create_dir_all(&logs).is_err() {
+        return;
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let log_file = logs.join(format!("{}-{stamp}.log", playing.title_id));
+    let _ = std::fs::write(&log_file, &log);
+
+    let session = LoggedSession {
+        title_id: playing.title_id.clone(),
+        title: playing.title.clone(),
+        started: stamp.to_string(),
+        seconds,
+        ending,
+        machine: playlog::read_machine(&log),
+        problems: playlog::read_problems(&log, 40),
+        log_file: log_file.to_string_lossy().into_owned(),
+    };
+
+    let index = logs.join("sessions.json");
+    let mut all: Vec<LoggedSession> = std::fs::read_to_string(&index)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    all.insert(0, session);
+
+    // Keep as many as the user asked for and take the old logs with them, so
+    // this never grows without bound on someone's disk.
+    let keep = crate::core::settings::Settings::load(&data_dir.join("Omoio").join("settings.json"))
+        .keep_sessions;
+    for old in all.iter().skip(keep) {
+        let _ = std::fs::remove_file(&old.log_file);
+    }
+    all.truncate(keep);
+    if let Ok(text) = serde_json::to_string_pretty(&all) {
+        let _ = std::fs::write(&index, text);
+    }
 }
 
 /// Fills the content area, or the whole screen when the user asked for that.

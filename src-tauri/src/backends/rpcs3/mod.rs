@@ -46,6 +46,22 @@ pub fn detect_version(app: &AppHandle) -> Option<String> {
     read_version(&exe)
 }
 
+pub fn open_in_explorer(folder: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer")
+            .arg(folder)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = folder;
+        Err("Only supported on Windows.".to_string())
+    }
+}
+
 // RPCS3 is a console-less GUI binary; without this flag every call to it
 // flashes a console window over whatever the user is looking at.
 fn command(exe: &Path) -> std::process::Command {

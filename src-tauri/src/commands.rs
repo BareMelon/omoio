@@ -1,6 +1,7 @@
 use crate::archive;
 use crate::backends::rpcs3;
 use crate::core::library::Library;
+use crate::core::playlog::{self, Session as PlaySession};
 use crate::core::settings::Settings;
 use crate::core::types::{GameEntry, HardwareInfo, Progress};
 use crate::hardware;
@@ -69,6 +70,27 @@ pub fn set_games_folder(app: AppHandle, path: String) -> Result<(), String> {
     let file = settings_path(&app)?;
     let mut settings = Settings::load(&file);
     settings.games_folder = Some(PathBuf::from(path));
+    settings.save(&file)
+}
+
+#[tauri::command]
+pub fn get_settings(app: AppHandle) -> Result<Settings, String> {
+    Ok(Settings::load(&settings_path(&app)?))
+}
+
+#[tauri::command]
+pub fn set_start_fullscreen(app: AppHandle, on: bool) -> Result<(), String> {
+    let file = settings_path(&app)?;
+    let mut settings = Settings::load(&file);
+    settings.start_fullscreen = on;
+    settings.save(&file)
+}
+
+#[tauri::command]
+pub fn set_keep_sessions(app: AppHandle, keep: usize) -> Result<(), String> {
+    let file = settings_path(&app)?;
+    let mut settings = Settings::load(&file);
+    settings.keep_sessions = keep.clamp(1, 200);
     settings.save(&file)
 }
 
@@ -240,13 +262,15 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     // One game at a time: starting another stops the one already running.
     app.state::<Session>().stop();
     let pid = rpcs3::launch::launch(&app, game)?;
-    app.state::<Session>().begin(
+    let session = app.state::<Session>();
+    session.begin(
         pid,
         Playing {
             title_id: game.title_id.clone(),
             title: game.title.clone(),
         },
     );
+    session.set_fullscreen(Settings::load(&settings_path(&app)?).start_fullscreen);
     crate::session::watch(app.clone(), pid);
     Ok(())
 }
@@ -254,6 +278,99 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn stop_game(app: AppHandle) {
     app.state::<Session>().stop();
+}
+
+/// Where Omoio keeps things, so the Settings screen can point at them and open
+/// them. Every one of these is somewhere a person might need to go digging
+/// when something has gone wrong.
+#[derive(serde::Serialize)]
+pub struct Places {
+    data: String,
+    library: String,
+    settings: String,
+    logs: String,
+    covers: String,
+    rpcs3: String,
+    games_folder: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_places(app: AppHandle) -> Result<Places, String> {
+    let data = omoio_data_dir(&app)?;
+    let text = |p: PathBuf| p.to_string_lossy().into_owned();
+    Ok(Places {
+        library: text(data.join("library.json")),
+        settings: text(data.join("settings.json")),
+        logs: text(data.join("logs")),
+        covers: text(data.join("covers")),
+        rpcs3: text(rpcs3::install_dir(&app)?),
+        games_folder: Settings::load(&settings_path(&app)?)
+            .games_folder
+            .map(|p| p.to_string_lossy().into_owned()),
+        data: text(data),
+    })
+}
+
+/// Opens a folder in Explorer. Creates it first if it isn't there yet, so the
+/// button never just does nothing.
+#[tauri::command]
+pub fn reveal_folder(path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    let folder = if path.is_dir() {
+        path
+    } else {
+        path.parent().map(Path::to_path_buf).ok_or("No such folder.")?
+    };
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    rpcs3::open_in_explorer(&folder)
+}
+
+/// Empties the library list. The games themselves are the user's and are never
+/// touched; this only forgets them.
+#[tauri::command]
+pub fn forget_all_games(app: AppHandle) -> Result<(), String> {
+    Library::default().save(&library_path(&app)?)
+}
+
+#[tauri::command]
+pub fn clear_session_logs(app: AppHandle) -> Result<(), String> {
+    let logs = omoio_data_dir(&app)?.join("logs");
+    if logs.is_dir() {
+        std::fs::remove_dir_all(&logs).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn sessions_index(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(omoio_data_dir(app)?.join("logs").join("sessions.json"))
+}
+
+/// Every session we kept, newest first. Optionally just one game's.
+#[tauri::command]
+pub fn list_sessions(app: AppHandle, title_id: Option<String>) -> Result<Vec<PlaySession>, String> {
+    let text = std::fs::read_to_string(sessions_index(&app)?).unwrap_or_default();
+    let all: Vec<PlaySession> = serde_json::from_str(&text).unwrap_or_default();
+    Ok(match title_id {
+        Some(id) => all.into_iter().filter(|s| s.title_id == id).collect(),
+        None => all,
+    })
+}
+
+/// The whole log for one session, for when the errors alone are not enough.
+#[tauri::command]
+pub fn read_session_log(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|_| "That log isn't there any more.".to_string())
+}
+
+/// A question about this session, ready to paste wherever it helps.
+#[tauri::command]
+pub fn session_prompt(app: AppHandle, log_file: String) -> Result<String, String> {
+    let text = std::fs::read_to_string(sessions_index(&app)?).unwrap_or_default();
+    let all: Vec<PlaySession> = serde_json::from_str(&text).unwrap_or_default();
+    all.iter()
+        .find(|s| s.log_file == log_file)
+        .map(playlog::troubleshooting_prompt)
+        .ok_or_else(|| "That session isn't in the list any more.".to_string())
 }
 
 #[tauri::command]

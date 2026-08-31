@@ -1,0 +1,127 @@
+import {
+  listSessions,
+  readSessionLog,
+  sessionPrompt,
+  type PlaySession,
+} from "../api";
+import { emptyState, type View } from "./view";
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function formatWhen(unixSeconds: string): string {
+  const at = new Date(Number(unixSeconds) * 1000);
+  if (Number.isNaN(at.getTime())) return "";
+  return at.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const ENDING: Record<PlaySession["ending"], { label: string; tone: string }> = {
+  stopped: { label: "Stopped from Omoio", tone: "" },
+  closed: { label: "Closed normally", tone: "go" },
+  crashed: { label: "Ended unexpectedly", tone: "warn" },
+};
+
+async function copy(text: string, button: HTMLButtonElement, done: string): Promise<void> {
+  await navigator.clipboard.writeText(text);
+  const was = button.textContent;
+  button.textContent = done;
+  setTimeout(() => (button.textContent = was), 1600);
+}
+
+function sessionCard(session: PlaySession): HTMLElement {
+  const ending = ENDING[session.ending];
+  const card = document.createElement("div");
+  card.className = "session";
+  card.innerHTML = `
+    <div class="session-head">
+      <div>
+        <div class="session-title"></div>
+        <div class="session-meta">
+          <span class="id">${session.title_id}</span>
+          <span>· ${formatWhen(session.started)}</span>
+          <span>· played ${formatDuration(session.seconds)}</span>
+        </div>
+      </div>
+      <span class="session-ending ${ending.tone}">${ending.label}</span>
+    </div>
+    <div class="session-problems"></div>
+    <div class="row-actions">
+      <button class="small-btn" data-act="prompt">Copy prompt for an AI</button>
+      <button class="small-btn" data-act="log">Copy full log</button>
+      <button class="small-btn" data-act="show">Show errors</button>
+    </div>
+  `;
+  card.querySelector<HTMLElement>(".session-title")!.textContent = session.title;
+
+  const problems = card.querySelector<HTMLElement>(".session-problems")!;
+  const summary = document.createElement("div");
+  summary.className = "session-summary";
+  summary.textContent =
+    session.problems.length === 0
+      ? "RPCS3 logged no errors."
+      : `${session.problems.length} error${session.problems.length === 1 ? "" : "s"} logged.`;
+  problems.appendChild(summary);
+
+  const list = document.createElement("pre");
+  list.className = "session-list";
+  list.hidden = true;
+  list.textContent = session.problems.join("\n");
+  problems.appendChild(list);
+
+  const show = card.querySelector<HTMLButtonElement>('[data-act="show"]')!;
+  show.disabled = session.problems.length === 0;
+  show.onclick = () => {
+    list.hidden = !list.hidden;
+    show.textContent = list.hidden ? "Show errors" : "Hide errors";
+  };
+
+  const promptButton = card.querySelector<HTMLButtonElement>('[data-act="prompt"]')!;
+  promptButton.onclick = async () => {
+    // Built in the backend from the log itself, so it says only what was recorded.
+    await copy(await sessionPrompt(session.log_file), promptButton, "Copied");
+  };
+
+  const logButton = card.querySelector<HTMLButtonElement>('[data-act="log"]')!;
+  logButton.onclick = async () => {
+    await copy(await readSessionLog(session.log_file), logButton, "Copied");
+  };
+
+  return card;
+}
+
+export async function renderLogs(): Promise<View> {
+  const sessions = await listSessions();
+
+  const content = document.createElement("div");
+  if (sessions.length === 0) {
+    content.appendChild(
+      emptyState(
+        "Nothing recorded yet",
+        "Play a game and Omoio keeps what the emulator said about it, so you can look into it afterwards."
+      )
+    );
+  } else {
+    const note = document.createElement("div");
+    note.className = "notice plain";
+    note.textContent =
+      "RPCS3 overwrites its own log each time it starts. Omoio keeps a copy of every session so a crash is still there afterwards.";
+    content.appendChild(note);
+    sessions.forEach((session) => content.appendChild(sessionCard(session)));
+  }
+
+  const crashes = sessions.filter((s) => s.ending === "crashed").length;
+  const subtitle =
+    sessions.length === 0
+      ? "No sessions yet"
+      : `${sessions.length} session${sessions.length === 1 ? "" : "s"}${crashes > 0 ? ` · ${crashes} ended unexpectedly` : ""}`;
+
+  return { title: "Logs", subtitle, content };
+}

@@ -4,10 +4,30 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub games_folder: Option<PathBuf>,
+    /// Start games filling the screen rather than sitting in the content area.
+    #[serde(default)]
+    pub start_fullscreen: bool,
+    /// How many played sessions to keep logs for.
+    #[serde(default = "default_keep_sessions")]
+    pub keep_sessions: usize,
+}
+
+fn default_keep_sessions() -> usize {
+    20
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            games_folder: None,
+            start_fullscreen: false,
+            keep_sessions: default_keep_sessions(),
+        }
+    }
 }
 
 impl Settings {
@@ -40,14 +60,32 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_the_games_folder() {
+    fn round_trips_what_the_user_chose() {
         let path = temp_path("roundtrip");
         let settings = Settings {
             games_folder: Some(PathBuf::from("D:\\PS3")),
+            start_fullscreen: true,
+            keep_sessions: 5,
         };
         settings.save(&path).unwrap();
 
-        assert_eq!(Settings::load(&path).games_folder, Some(PathBuf::from("D:\\PS3")));
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.games_folder, Some(PathBuf::from("D:\\PS3")));
+        assert!(loaded.start_fullscreen);
+        assert_eq!(loaded.keep_sessions, 5);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_settings_file_from_an_older_build_still_loads() {
+        // Written before start_fullscreen and keep_sessions existed.
+        let path = temp_path("older");
+        std::fs::write(&path, r#"{"games_folder":"D:\\PS3"}"#).unwrap();
+
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.games_folder, Some(PathBuf::from("D:\\PS3")));
+        assert!(!loaded.start_fullscreen);
+        assert_eq!(loaded.keep_sessions, 20, "missing values fall back to the default");
         let _ = std::fs::remove_file(&path);
     }
 

@@ -1,6 +1,13 @@
 import type { Game, Playing } from "./api";
 
-export type ViewId = "library" | "catalogue" | "homebrew" | "updates" | "system";
+export type ViewId =
+  | "library"
+  | "catalogue"
+  | "homebrew"
+  | "updates"
+  | "system"
+  | "logs"
+  | "settings";
 
 interface AppState {
   view: ViewId;

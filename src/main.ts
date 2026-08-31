@@ -5,6 +5,7 @@ import {
   getFirmwareVersion,
   getRpcs3Version,
   listGames,
+  onGameFullscreen,
   onGameStarted,
   onGameStopped,
   playingGame,
@@ -19,6 +20,8 @@ import { renderCatalogue } from "./views/catalogue";
 import { renderHomebrew } from "./views/homebrew";
 import { renderUpdates } from "./views/updates";
 import { renderSystem } from "./views/system";
+import { renderLogs } from "./views/logs";
+import { renderSettings } from "./views/settings";
 import type { View } from "./views/view";
 
 const VIEWS: Record<ViewId, () => View | Promise<View>> = {
@@ -27,6 +30,8 @@ const VIEWS: Record<ViewId, () => View | Promise<View>> = {
   homebrew: renderHomebrew,
   updates: renderUpdates,
   system: renderSystem,
+  logs: renderLogs,
+  settings: renderSettings,
 };
 
 const app = document.getElementById("app")!;
@@ -90,6 +95,7 @@ listGames().then((games) => store.setGames(games));
 playingGame().then((playing) => store.setPlaying(playing));
 
 onGameStarted((playing) => store.setPlaying(playing));
+onGameFullscreen((on) => store.setGameFullscreen(on));
 onGameStopped(() => {
   store.setGameFullscreen(false);
   store.setPlaying(null);

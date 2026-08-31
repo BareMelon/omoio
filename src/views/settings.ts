@@ -1,0 +1,264 @@
+import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  cancelRpcs3Install,
+  clearSessionLogs,
+  forgetAllGames,
+  getPlaces,
+  getSettings,
+  installFirmware,
+  installRpcs3,
+  listGames,
+  onRpcs3InstallProgress,
+  revealFolder,
+  setGamesFolder,
+  setKeepSessions,
+  setStartFullscreen,
+  type InstallProgress,
+  type Places,
+  type Settings,
+} from "../api";
+import { store } from "../state";
+import type { View } from "./view";
+
+const SONY_FIRMWARE_PAGE =
+  "https://www.playstation.com/en-us/support/hardware/ps3/system-software/";
+
+function row(label: string, hint?: string): { row: HTMLElement; right: HTMLElement } {
+  const row = document.createElement("div");
+  row.className = "setting";
+  const left = document.createElement("div");
+  const name = document.createElement("div");
+  name.className = "setting-k";
+  name.textContent = label;
+  left.appendChild(name);
+  if (hint) {
+    const sub = document.createElement("div");
+    sub.className = "setting-hint";
+    sub.textContent = hint;
+    left.appendChild(sub);
+  }
+  const right = document.createElement("div");
+  right.className = "row-actions";
+  row.append(left, right);
+  return { row, right };
+}
+
+function toggle(on: boolean, onChange: (next: boolean) => Promise<void>): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.className = on ? "switch on" : "switch";
+  button.setAttribute("role", "switch");
+  button.setAttribute("aria-checked", String(on));
+  button.innerHTML = `<span class="switch-dot"></span>`;
+  let state = on;
+  button.onclick = async () => {
+    state = !state;
+    button.className = state ? "switch on" : "switch";
+    button.setAttribute("aria-checked", String(state));
+    await onChange(state);
+  };
+  return button;
+}
+
+function value(text: string): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "cfg-v";
+  el.textContent = text;
+  return el;
+}
+
+function button(label: string, run: (b: HTMLButtonElement) => Promise<void> | void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "small-btn";
+  b.textContent = label;
+  b.onclick = () => run(b);
+  return b;
+}
+
+/// Anything that undoes something asks once more in the same button, so a
+/// misplaced click never costs anything.
+function confirming(label: string, confirm: string, run: () => Promise<void>): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "small-btn danger";
+  b.textContent = label;
+  let armed = false;
+  b.onclick = async () => {
+    if (!armed) {
+      armed = true;
+      b.textContent = confirm;
+      setTimeout(() => {
+        if (armed) {
+          armed = false;
+          b.textContent = label;
+        }
+      }, 4000);
+      return;
+    }
+    armed = false;
+    b.disabled = true;
+    await run();
+    b.textContent = "Done";
+  };
+  return b;
+}
+
+function section(title: string, ...children: HTMLElement[]): HTMLElement {
+  const sec = document.createElement("div");
+  sec.className = "sec";
+  const heading = document.createElement("div");
+  heading.className = "sec-h";
+  heading.textContent = title;
+  sec.append(heading, ...children);
+  return sec;
+}
+
+export async function renderSettings(): Promise<View> {
+  const [places, settings]: [Places, Settings] = await Promise.all([getPlaces(), getSettings()]);
+  const { rpcs3Version, firmwareVersion } = store.get();
+
+  const content = document.createElement("div");
+  content.className = "hw";
+
+  // ---- playing ----
+  const fullscreen = row("Start games in fullscreen", "Otherwise the game fills Omoio's window. F11 switches either way while playing.");
+  fullscreen.right.appendChild(
+    toggle(settings.start_fullscreen, (next) => setStartFullscreen(next))
+  );
+
+  const games = row("Games folder", "Where archives are unpacked. Games imported as folders stay where they are.");
+  const folderValue = value(places.games_folder ?? "Not chosen yet");
+  folderValue.classList.add("path");
+  games.right.append(
+    folderValue,
+    button("Change", async () => {
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        title: "Choose where to keep your games",
+      });
+      if (typeof picked !== "string") return;
+      await setGamesFolder(picked);
+      folderValue.textContent = picked;
+    })
+  );
+
+  content.appendChild(section("Playing", fullscreen.row, games.row));
+
+  // ---- emulator, and putting it right when it breaks ----
+  const rpcs3Row = row("RPCS3", "Reinstalling replaces the emulator. Your games and saves are untouched.");
+  const rpcs3Value = value(rpcs3Version ?? "Not installed");
+  const rpcs3Progress = document.createElement("span");
+  rpcs3Progress.className = "cfg-v";
+  // Only there while something is running, so there is nothing to press by
+  // mistake when nothing is happening.
+  const cancel = button("Cancel", () => cancelRpcs3Install());
+  cancel.hidden = true;
+
+  const reinstall = button(rpcs3Version ? "Reinstall" : "Install", async (b) => {
+    b.disabled = true;
+    cancel.hidden = false;
+    const unlisten = await onRpcs3InstallProgress((p: InstallProgress) => {
+      rpcs3Progress.textContent =
+        p.stage === "downloading" && p.total > 0
+          ? `Downloading ${Math.round((p.bytes / p.total) * 100)}%`
+          : `${p.stage}…`;
+    });
+    try {
+      const installed = await installRpcs3();
+      store.setRpcs3Version(installed);
+      rpcs3Value.textContent = installed;
+      rpcs3Progress.textContent = "";
+      b.textContent = "Reinstall";
+    } catch (err) {
+      rpcs3Progress.textContent = err === "cancelled" ? "" : "Couldn't install RPCS3.";
+    } finally {
+      unlisten();
+      cancel.hidden = true;
+      b.disabled = false;
+    }
+  });
+  rpcs3Row.right.append(rpcs3Progress, rpcs3Value, cancel, reinstall);
+
+  const firmwareRow = row("PS3 firmware", "Sony publishes it free. Download it yourself, then point Omoio at the file.");
+  const firmwareValue = value(firmwareVersion ?? "Not installed");
+  firmwareRow.right.append(
+    firmwareValue,
+    button("Sony's page", () => {
+      openUrl(SONY_FIRMWARE_PAGE);
+    }),
+    button(firmwareVersion ? "Replace" : "Install", async (b) => {
+      const picked = await open({
+        multiple: false,
+        directory: false,
+        title: "Choose a PS3 firmware file",
+        filters: [{ name: "PS3 firmware", extensions: ["pup"] }],
+      });
+      if (typeof picked !== "string") return;
+      b.disabled = true;
+      firmwareValue.textContent = "Installing…";
+      try {
+        const version = await installFirmware(picked);
+        store.setFirmwareVersion(version);
+        firmwareValue.textContent = version;
+      } catch (err) {
+        firmwareValue.textContent = typeof err === "string" ? err : "Couldn't install that firmware.";
+      } finally {
+        b.disabled = false;
+      }
+    })
+  );
+
+  content.appendChild(section("Emulator", rpcs3Row.row, firmwareRow.row));
+
+  // ---- session logs ----
+  const keep = row("Keep logs for", "Older sessions and their logs are deleted to save space.");
+  const keepValue = document.createElement("select");
+  keepValue.className = "select";
+  for (const n of [5, 10, 20, 50, 100]) {
+    const option = document.createElement("option");
+    option.value = String(n);
+    option.textContent = `${n} sessions`;
+    option.selected = n === settings.keep_sessions;
+    keepValue.appendChild(option);
+  }
+  keepValue.onchange = () => setKeepSessions(Number(keepValue.value));
+  keep.right.appendChild(keepValue);
+
+  const logsRow = row("Session logs", places.logs);
+  logsRow.right.append(
+    button("Open folder", () => revealFolder(places.logs)),
+    confirming("Delete all", "Click again to delete", () => clearSessionLogs())
+  );
+
+  content.appendChild(section("Session logs", keep.row, logsRow.row));
+
+  // ---- library ----
+  const count = store.get().games.length;
+  const libraryRow = row(
+    "Library",
+    `${count} ${count === 1 ? "game" : "games"} · ${places.library}`
+  );
+  libraryRow.right.append(
+    button("Open folder", () => revealFolder(places.library)),
+    confirming("Forget all games", "Click again to forget", async () => {
+      await forgetAllGames();
+      store.setGames(await listGames());
+    })
+  );
+
+  const coversRow = row("Cover art", places.covers);
+  coversRow.right.appendChild(button("Open folder", () => revealFolder(places.covers)));
+
+  const emulatorFolder = row("RPCS3 folder", places.rpcs3);
+  emulatorFolder.right.appendChild(button("Open folder", () => revealFolder(places.rpcs3)));
+
+  content.appendChild(section("Files", libraryRow.row, coversRow.row, emulatorFolder.row));
+
+  const note = document.createElement("div");
+  note.className = "note plain";
+  note.textContent =
+    "Forgetting games empties the list only. Omoio never deletes the game files themselves.";
+  content.appendChild(note);
+
+  return { title: "Settings", subtitle: "Omoio 0.1.0", content };
+}

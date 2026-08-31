@@ -57,6 +57,24 @@ pub fn attach(game: isize, host: isize) {
     }
 }
 
+/// True on the press, not while held, so one tap toggles once.
+///
+/// The game window has the keyboard while it runs, so Omoio never sees a key
+/// of its own. This reads the key globally instead, which is the only way out
+/// of fullscreen once the picture covers the screen.
+pub fn fullscreen_key_pressed() -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F11};
+
+    static WAS_DOWN: AtomicBool = AtomicBool::new(false);
+    let down = unsafe { GetAsyncKeyState(VK_F11.0 as i32) } as u16 & 0x8000 != 0;
+    let pressed = down && !WAS_DOWN.swap(down, Ordering::Relaxed);
+    if !down {
+        WAS_DOWN.store(false, Ordering::Relaxed);
+    }
+    pressed
+}
+
 pub fn place(game: isize, x: i32, y: i32, width: i32, height: i32) {
     if width <= 0 || height <= 0 {
         return;

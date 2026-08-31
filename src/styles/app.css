@@ -463,6 +463,145 @@ button {
   background: #2a7bff;
 }
 
+/* ---------- session logs ---------- */
+.session {
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 13px 15px;
+  margin-bottom: 12px;
+}
+.session-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.session-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.session-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--dim);
+}
+.session-meta .id {
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+.session-ending {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--mute);
+}
+.session-ending.go {
+  color: var(--go);
+}
+.session-ending.warn {
+  color: var(--warn);
+}
+.session-summary {
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--mute);
+}
+.session-list {
+  margin-top: 9px;
+  padding: 10px 11px;
+  background: var(--void);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--mute);
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.notice.plain,
+.note.plain {
+  border-left-color: var(--line2);
+  text-align: left;
+}
+
+/* ---------- settings ---------- */
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.setting:last-child {
+  border-bottom: none;
+}
+.setting-k {
+  font-size: 13px;
+  font-weight: 550;
+}
+.setting-hint {
+  font-size: 11.5px;
+  color: var(--dim);
+  margin-top: 3px;
+  line-height: 1.45;
+  max-width: 460px;
+}
+.cfg-v.path {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switch {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--raise2);
+  border: 1px solid var(--line2);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  transition: background 0.14s, border-color 0.14s;
+}
+.switch-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--mute);
+  margin-left: 2px;
+  transition: transform 0.14s cubic-bezier(0.2, 0.8, 0.3, 1), background 0.14s;
+}
+.switch.on {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.switch.on .switch-dot {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+.select {
+  background: var(--raise);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 5px 8px;
+}
+.select:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
 /* ---------- playing ---------- */
 .playing-bar {
   display: flex;

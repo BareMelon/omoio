@@ -20,6 +20,16 @@ const MAINTENANCE_NAV: NavItem[] = [
     label: "System",
     icon: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/>',
   },
+  {
+    id: "logs",
+    label: "Logs",
+    icon: '<rect x="2.5" y="2" width="11" height="12" rx="1.5"/><path d="M5 5.5h6M5 8h6M5 10.5h3.5"/>',
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: '<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/><circle cx="5.5" cy="4.5" r="1.6" fill="var(--panel)"/><circle cx="10" cy="8" r="1.6" fill="var(--panel)"/><circle cx="6.5" cy="11.5" r="1.6" fill="var(--panel)"/>',
+  },
 ];
 
 function navLabel(text: string): HTMLElement {

@@ -108,6 +108,85 @@ export function onGameStopped(handler: () => void): Promise<UnlistenFn> {
   return listen("game-stopped", () => handler());
 }
 
+export function onGameFullscreen(handler: (on: boolean) => void): Promise<UnlistenFn> {
+  return listen<boolean>("game-fullscreen", (event) => handler(event.payload));
+}
+
+export interface Machine {
+  rpcs3: string | null;
+  cpu: string | null;
+  os: string | null;
+  gpu: string | null;
+  renderer: string | null;
+}
+
+export interface PlaySession {
+  title_id: string;
+  title: string;
+  started: string;
+  seconds: number;
+  ending: "stopped" | "closed" | "crashed";
+  machine: Machine;
+  problems: string[];
+  log_file: string;
+}
+
+export function listSessions(titleId?: string): Promise<PlaySession[]> {
+  return invoke("list_sessions", { titleId: titleId ?? null });
+}
+
+export function readSessionLog(path: string): Promise<string> {
+  return invoke("read_session_log", { path });
+}
+
+export function sessionPrompt(logFile: string): Promise<string> {
+  return invoke("session_prompt", { logFile });
+}
+
+export interface Places {
+  data: string;
+  library: string;
+  settings: string;
+  logs: string;
+  covers: string;
+  rpcs3: string;
+  games_folder: string | null;
+}
+
+export function getPlaces(): Promise<Places> {
+  return invoke("get_places");
+}
+
+export interface Settings {
+  games_folder: string | null;
+  start_fullscreen: boolean;
+  keep_sessions: number;
+}
+
+export function getSettings(): Promise<Settings> {
+  return invoke("get_settings");
+}
+
+export function setStartFullscreen(on: boolean): Promise<void> {
+  return invoke("set_start_fullscreen", { on });
+}
+
+export function setKeepSessions(keep: number): Promise<void> {
+  return invoke("set_keep_sessions", { keep });
+}
+
+export function revealFolder(path: string): Promise<void> {
+  return invoke("reveal_folder", { path });
+}
+
+export function forgetAllGames(): Promise<void> {
+  return invoke("forget_all_games");
+}
+
+export function clearSessionLogs(): Promise<void> {
+  return invoke("clear_session_logs");
+}
+
 export function getGamesFolder(): Promise<string | null> {
   return invoke("get_games_folder");
 }
