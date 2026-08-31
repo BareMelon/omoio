@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { launchGame, listGames, removeGame, type Game } from "../api";
+import { gameSettings, launchGame, listGames, removeGame, type Game } from "../api";
+import { openGameSettings } from "./gameSettingsSheet";
 import { store } from "../state";
 
 function formatSize(bytes: number): string {
@@ -25,17 +26,22 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     </button>
     <div class="note" id="detail-note"></div>
     <div class="sec">
-      <div class="sec-h">This game</div>
+      <div class="sec-h">Details</div>
       ${row("Version", game.version ? game.version : "unknown")}
       ${row("Size on disk", formatSize(game.size_bytes))}
       ${row(
         "Files",
-        game.available ? "Where you left them" : "Not found",
+        game.available ? "Available" : "Not found",
         game.available ? "" : "warn"
       )}
     </div>
     <div class="sec">
-      <div class="sec-h">Where it lives</div>
+      <div class="sec-h">Emulator</div>
+      <button class="small-btn wide" id="detail-settings">Change settings</button>
+      <div class="note plain" id="detail-settings-note"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-h">Location</div>
       <div class="d-path"></div>
       <button class="link-btn" id="detail-remove">Remove from library</button>
     </div>
@@ -64,6 +70,17 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       play.disabled = false;
     }
   };
+
+  const settingsNote = body.querySelector<HTMLElement>("#detail-settings-note")!;
+  gameSettings(game.title_id).then(([, chosen]) => {
+    const changed = Object.values(chosen).reduce((n, keys) => n + Object.keys(keys).length, 0);
+    settingsNote.textContent =
+      changed === 0
+        ? "Running with RPCS3's own settings."
+        : `${changed} setting${changed === 1 ? "" : "s"} changed for this game.`;
+  });
+  body.querySelector<HTMLButtonElement>("#detail-settings")!.onclick = () =>
+    openGameSettings(game.title_id, game.title);
 
   body.querySelector<HTMLButtonElement>("#detail-remove")!.onclick = async () => {
     await removeGame(game.title_id);

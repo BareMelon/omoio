@@ -1,4 +1,5 @@
 pub mod firmware;
+pub mod game_config;
 pub mod launch;
 #[cfg(windows)]
 pub mod overlay;

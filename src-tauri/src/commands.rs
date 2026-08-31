@@ -275,6 +275,29 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// The settings Omoio offers per game, and what this game is currently set to.
+#[tauri::command]
+pub fn game_settings(
+    app: AppHandle,
+    title_id: String,
+) -> (&'static [rpcs3::game_config::Option_], rpcs3::game_config::Chosen) {
+    (
+        rpcs3::game_config::OPTIONS,
+        rpcs3::game_config::read(&app, &title_id),
+    )
+}
+
+/// Saves only what was chosen. Clearing everything removes the file, so the
+/// game runs exactly as RPCS3 would run it.
+#[tauri::command]
+pub fn set_game_settings(
+    app: AppHandle,
+    title_id: String,
+    chosen: rpcs3::game_config::Chosen,
+) -> Result<(), String> {
+    rpcs3::game_config::write(&app, &title_id, &chosen)
+}
+
 #[tauri::command]
 pub fn stop_game(app: AppHandle) {
     app.state::<Session>().stop();

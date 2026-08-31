@@ -47,6 +47,8 @@ pub fn run() {
             commands::list_games,
             commands::import_game,
             commands::launch_game,
+            commands::game_settings,
+            commands::set_game_settings,
             commands::stop_game,
             commands::playing_game,
             commands::set_game_fullscreen,

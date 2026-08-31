@@ -157,6 +157,28 @@ export function getPlaces(): Promise<Places> {
   return invoke("get_places");
 }
 
+export interface GameOption {
+  key: string;
+  section: string;
+  label: string;
+  hint: string;
+  kind: "choice" | "number" | "switch";
+  choices: string[];
+  min: number;
+  max: number;
+}
+
+/// section -> key -> value. Anything absent is RPCS3's own default.
+export type ChosenSettings = Record<string, Record<string, string>>;
+
+export function gameSettings(titleId: string): Promise<[GameOption[], ChosenSettings]> {
+  return invoke("game_settings", { titleId });
+}
+
+export function setGameSettings(titleId: string, chosen: ChosenSettings): Promise<void> {
+  return invoke("set_game_settings", { titleId, chosen });
+}
+
 export interface Settings {
   games_folder: string | null;
   start_fullscreen: boolean;
