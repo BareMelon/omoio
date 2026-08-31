@@ -38,6 +38,9 @@ topbar.innerHTML = `
 const viewTitle = topbar.querySelector<HTMLElement>(".view-title")!;
 const viewSub = topbar.querySelector<HTMLElement>(".view-sub")!;
 
+const searchBox = topbar.querySelector<HTMLInputElement>(".search input")!;
+searchBox.oninput = () => store.setSearch(searchBox.value);
+
 const content = document.createElement("div");
 content.className = "content";
 

@@ -50,6 +50,16 @@ fn sfo_path(root: &Path) -> Option<PathBuf> {
     None
 }
 
+/// The tile art shipped inside the dump itself. Using it costs nothing and
+/// needs no metadata service, which is why it is the default before one exists.
+pub fn icon_path(root: &Path) -> Option<PathBuf> {
+    let candidates = [
+        root.join("PS3_GAME").join("ICON0.PNG"),
+        root.join("ICON0.PNG"),
+    ];
+    candidates.into_iter().find(|p| p.is_file())
+}
+
 /// Archives usually extract into a folder of their own name, so the dump often
 /// sits one level below whatever the user picked. Looking one level down costs
 /// nothing and saves them from having to find the real root themselves.
@@ -249,6 +259,23 @@ mod tests {
         dir.write("one/PS3_GAME/PARAM.SFO", &sfo(&disc_game()));
         dir.write("two/PS3_GAME/PARAM.SFO", &sfo(&disc_game()));
         assert_eq!(identify(&dir.0).unwrap_err(), Error::NotAGameDump);
+    }
+
+    #[test]
+    fn finds_the_tile_art_in_both_dump_shapes() {
+        let dir = TempDir::new("icons");
+        dir.write("disc/PS3_GAME/ICON0.PNG", b"png");
+        dir.write("hdd/ICON0.PNG", b"png");
+
+        assert_eq!(
+            icon_path(&dir.0.join("disc")),
+            Some(dir.0.join("disc").join("PS3_GAME").join("ICON0.PNG"))
+        );
+        assert_eq!(
+            icon_path(&dir.0.join("hdd")),
+            Some(dir.0.join("hdd").join("ICON0.PNG"))
+        );
+        assert_eq!(icon_path(&dir.0.join("nothing")), None);
     }
 
     #[test]

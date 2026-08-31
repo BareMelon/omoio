@@ -63,6 +63,8 @@ export interface Game {
   size_bytes: number;
   /// False when the folder isn't reachable right now, e.g. an external drive.
   available: boolean;
+  /// Cached copy of the dump's own ICON0.PNG, or null if it had none.
+  cover: string | null;
 }
 
 export function listGames(): Promise<Game[]> {

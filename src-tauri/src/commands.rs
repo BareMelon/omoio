@@ -141,7 +141,7 @@ pub async fn import_archive(
         let mut library = Library::load(&library_file);
         library.upsert(game.clone());
         library.save(&library_file)?;
-        Ok(entry(game))
+        Ok(entry(&app, game))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -182,9 +182,25 @@ fn free_space(_path: &Path) -> Option<u64> {
     None
 }
 
-fn entry(game: crate::core::library::Game) -> GameEntry {
+/// Keeps a copy of the dump's tile art under our own folder. Done once per
+/// game, and only while the drive is there, so the library keeps its art after
+/// the drive goes away.
+fn cached_cover(app: &AppHandle, game: &crate::core::library::Game) -> Option<String> {
+    let covers = omoio_data_dir(app).ok()?.join("covers");
+    let cached = covers.join(format!("{}.png", game.title_id));
+
+    if !cached.is_file() {
+        let source = import::icon_path(&game.path)?;
+        std::fs::create_dir_all(&covers).ok()?;
+        std::fs::copy(source, &cached).ok()?;
+    }
+    Some(cached.to_string_lossy().into_owned())
+}
+
+fn entry(app: &AppHandle, game: crate::core::library::Game) -> GameEntry {
     GameEntry {
         available: game.path.is_dir(),
+        cover: cached_cover(app, &game),
         game,
     }
 }
@@ -192,7 +208,7 @@ fn entry(game: crate::core::library::Game) -> GameEntry {
 #[tauri::command]
 pub fn list_games(app: AppHandle) -> Result<Vec<GameEntry>, String> {
     let library = Library::load(&library_path(&app)?);
-    Ok(library.games().iter().cloned().map(entry).collect())
+    Ok(library.games().iter().cloned().map(|g| entry(&app, g)).collect())
 }
 
 #[tauri::command]
@@ -205,7 +221,7 @@ pub async fn import_game(app: AppHandle, path: String) -> Result<GameEntry, Stri
         let mut library = Library::load(&library_file);
         library.upsert(game.clone());
         library.save(&library_file)?;
-        Ok(entry(game))
+        Ok(entry(&app, game))
     })
     .await
     .map_err(|e| e.to_string())?

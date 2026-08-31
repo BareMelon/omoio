@@ -41,6 +41,9 @@ pub struct GameEntry {
     #[serde(flatten)]
     pub game: crate::core::library::Game,
     pub available: bool,
+    /// The dump's own tile art, copied somewhere we control so it still shows
+    /// when the drive holding the game is unplugged.
+    pub cover: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

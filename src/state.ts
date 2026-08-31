@@ -7,6 +7,8 @@ interface AppState {
   rpcs3Version: string | null;
   firmwareVersion: string | null;
   games: Game[];
+  search: string;
+  notice: string | null;
 }
 
 type Listener = (state: AppState) => void;
@@ -21,6 +23,8 @@ class Store {
     rpcs3Version: null,
     firmwareVersion: null,
     games: [],
+    search: "",
+    notice: null,
   };
   private listeners = new Set<Listener>();
 
@@ -46,6 +50,17 @@ class Store {
 
   setGames(games: Game[]): void {
     this.state = { ...this.state, games };
+    this.notify();
+  }
+
+  setSearch(search: string): void {
+    if (search === this.state.search) return;
+    this.state = { ...this.state, search };
+    this.notify();
+  }
+
+  setNotice(notice: string | null): void {
+    this.state = { ...this.state, notice };
     this.notify();
   }
 
