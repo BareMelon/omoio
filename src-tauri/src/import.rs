@@ -103,7 +103,9 @@ pub fn identify(picked: &Path) -> Result<Game, Error> {
 /// the interface is never worth failing an import over.
 fn directory_size(root: &Path) -> u64 {
     let mut total = 0;
-    let mut stack = vec![root.to_path_buf()];
+    // Dumps nest past Windows' 260-character path limit, and this walk would
+    // quietly skip whatever sat beyond it and report a size that was too small.
+    let mut stack = vec![crate::archive::extended_length(root)];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;

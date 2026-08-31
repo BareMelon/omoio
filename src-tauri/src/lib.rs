@@ -1,3 +1,4 @@
+pub mod archive;
 mod backends;
 mod commands;
 pub mod core;
@@ -25,6 +26,10 @@ pub fn run() {
             commands::list_games,
             commands::import_game,
             commands::remove_game,
+            commands::get_games_folder,
+            commands::set_games_folder,
+            commands::import_archive,
+            commands::cancel_import,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

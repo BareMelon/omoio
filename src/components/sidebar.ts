@@ -1,4 +1,4 @@
-import { startImport } from "../importFlow";
+import { openImportSheet } from "./importSheet";
 import { store, type ViewId } from "../state";
 
 interface NavItem {
@@ -65,7 +65,7 @@ export function renderSidebar(): HTMLElement {
 
   const rpcs3Stat = foot.querySelector<HTMLElement>("#rpcs3-stat")!;
   const firmwareStat = foot.querySelector<HTMLElement>("#firmware-stat")!;
-  foot.querySelector<HTMLButtonElement>("#import-game")!.onclick = startImport;
+  foot.querySelector<HTMLButtonElement>("#import-game")!.onclick = openImportSheet;
 
   store.subscribe((state) => {
     side.querySelectorAll<HTMLButtonElement>(".nav-item").forEach((btn) => {

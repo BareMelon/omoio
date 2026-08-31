@@ -7,8 +7,6 @@ interface AppState {
   rpcs3Version: string | null;
   firmwareVersion: string | null;
   games: Game[];
-  importing: boolean;
-  importError: string | null;
 }
 
 type Listener = (state: AppState) => void;
@@ -23,8 +21,6 @@ class Store {
     rpcs3Version: null,
     firmwareVersion: null,
     games: [],
-    importing: false,
-    importError: null,
   };
   private listeners = new Set<Listener>();
 
@@ -50,16 +46,6 @@ class Store {
 
   setGames(games: Game[]): void {
     this.state = { ...this.state, games };
-    this.notify();
-  }
-
-  setImporting(importing: boolean): void {
-    this.state = { ...this.state, importing, importError: null };
-    this.notify();
-  }
-
-  setImportError(message: string): void {
-    this.state = { ...this.state, importing: false, importError: message };
     this.notify();
   }
 

@@ -390,6 +390,79 @@ button {
   margin-top: 8px;
 }
 
+/* ---------- import sheet ---------- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 11, 0.72);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.scrim.on {
+  opacity: 1;
+}
+.sheet {
+  width: 470px;
+  max-width: calc(100vw - 48px);
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.8);
+  transform: scale(0.97) translateY(6px);
+  transition: transform 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.scrim.on .sheet {
+  transform: none;
+}
+.sheet-h {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.sheet-p {
+  font-size: 12.5px;
+  color: var(--mute);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.sheet-actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 18px;
+}
+.btn {
+  flex: 1;
+  padding: 9px;
+  border-radius: var(--r);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  transition: background 0.12s, transform 0.1s;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn.ghost {
+  border: 1px solid var(--line2);
+  color: var(--mute);
+}
+.btn.ghost:hover {
+  background: var(--raise);
+  color: var(--ink);
+}
+.btn.solid {
+  background: var(--brand);
+  color: #fff;
+}
+.btn.solid:hover {
+  background: #2a7bff;
+}
+
 .game-row {
   display: flex;
   align-items: center;

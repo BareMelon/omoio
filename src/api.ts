@@ -77,6 +77,32 @@ export function removeGame(titleId: string): Promise<void> {
   return invoke("remove_game", { titleId });
 }
 
+export function getGamesFolder(): Promise<string | null> {
+  return invoke("get_games_folder");
+}
+
+export function setGamesFolder(path: string): Promise<void> {
+  return invoke("set_games_folder", { path });
+}
+
+export function importArchive(path: string): Promise<Game> {
+  return invoke("import_archive", { path });
+}
+
+export function cancelImport(): Promise<void> {
+  return invoke("cancel_import");
+}
+
+export interface ImportProgress {
+  stage: "unpacking" | "identifying";
+  bytes: number;
+  total: number;
+}
+
+export function onImportProgress(handler: (progress: ImportProgress) => void): Promise<UnlistenFn> {
+  return listen<ImportProgress>("import-progress", (event) => handler(event.payload));
+}
+
 export function getFirmwareVersion(): Promise<string | null> {
   return invoke("get_firmware_version");
 }

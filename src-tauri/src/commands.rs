@@ -1,28 +1,24 @@
+use crate::archive;
 use crate::backends::rpcs3;
 use crate::core::library::Library;
-use crate::core::types::{GameEntry, HardwareInfo};
+use crate::core::settings::Settings;
+use crate::core::types::{GameEntry, HardwareInfo, Progress};
 use crate::hardware;
 use crate::import;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 pub fn get_hardware_info() -> HardwareInfo {
     hardware::detect()
 }
 
+#[derive(Default)]
 pub struct InstallState {
     cancel: Arc<AtomicBool>,
-}
-
-impl Default for InstallState {
-    fn default() -> Self {
-        Self {
-            cancel: Arc::new(AtomicBool::new(false)),
-        }
-    }
+    cancel_import: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -47,9 +43,143 @@ pub fn get_firmware_version(app: AppHandle) -> Option<String> {
     rpcs3::firmware::detect_version(&app)
 }
 
-fn library_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn omoio_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let data = app.path().data_dir().map_err(|e| e.to_string())?;
-    Ok(data.join("Omoio").join("library.json"))
+    Ok(data.join("Omoio"))
+}
+
+fn library_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(omoio_data_dir(app)?.join("library.json"))
+}
+
+fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(omoio_data_dir(app)?.join("settings.json"))
+}
+
+#[tauri::command]
+pub fn get_games_folder(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(Settings::load(&settings_path(&app)?)
+        .games_folder
+        .map(|p| p.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+pub fn set_games_folder(app: AppHandle, path: String) -> Result<(), String> {
+    let file = settings_path(&app)?;
+    let mut settings = Settings::load(&file);
+    settings.games_folder = Some(PathBuf::from(path));
+    settings.save(&file)
+}
+
+#[tauri::command]
+pub fn cancel_import(state: State<'_, InstallState>) {
+    state.cancel_import.store(true, Ordering::Relaxed);
+}
+
+/// Unpacks a compressed dump into the games folder, then imports what came out.
+#[tauri::command]
+pub async fn import_archive(
+    app: AppHandle,
+    path: String,
+    state: State<'_, InstallState>,
+) -> Result<GameEntry, String> {
+    state.cancel_import.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_import.clone();
+
+    let games_folder = Settings::load(&settings_path(&app)?)
+        .games_folder
+        .ok_or("Choose a games folder first.")?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = PathBuf::from(&path);
+        let kind = archive::detect_kind(&source)
+            .ok_or("That file isn't a .7z or .zip archive.")?;
+
+        let needed = archive::unpacked_size(&source, kind)?;
+        let free = free_space(&games_folder);
+        if free.is_some_and(|free| free < needed) {
+            return Err(format!(
+                "This game needs {} GB unpacked and the drive has less than that free.",
+                needed / 1024u64.pow(3)
+            ));
+        }
+
+        let name = source
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .ok_or("That file has no name.")?;
+        let dest = games_folder.join(&name);
+        if dest.exists() {
+            return Err("There's already a folder with that name in your games folder.".to_string());
+        }
+
+        let mut last_sent = 0u64;
+        let outcome = archive::extract(&source, kind, &dest, &cancel, &mut |done| {
+            // One event per percent rather than per chunk: 3900 files would
+            // otherwise flood the interface with redundant redraws.
+            let step = (needed / 100).max(1);
+            if done - last_sent >= step || done >= needed {
+                last_sent = done;
+                emit_import_progress(&app, "unpacking", done, needed);
+            }
+        })?;
+        if outcome.is_err() {
+            return Err("cancelled".to_string());
+        }
+
+        emit_import_progress(&app, "identifying", needed, needed);
+        let game = match import::identify(&dest) {
+            Ok(game) => game,
+            Err(e) => {
+                // Nothing importable came out, so don't leave it behind.
+                let _ = std::fs::remove_dir_all(&dest);
+                return Err(e.to_string());
+            }
+        };
+
+        let library_file = library_path(&app)?;
+        let mut library = Library::load(&library_file);
+        library.upsert(game.clone());
+        library.save(&library_file)?;
+        Ok(entry(game))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn emit_import_progress(app: &AppHandle, stage: &str, bytes: u64, total: u64) {
+    let _ = app.emit(
+        "import-progress",
+        Progress {
+            stage: stage.to_string(),
+            bytes,
+            total,
+        },
+    );
+}
+
+#[cfg(windows)]
+fn free_space(path: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    // The folder may not exist yet, so ask about the nearest parent that does.
+    let mut probe = path;
+    while !probe.exists() {
+        probe = probe.parent()?;
+    }
+    let wide: Vec<u16> = probe.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut available = 0u64;
+    unsafe {
+        GetDiskFreeSpaceExW(PCWSTR(wide.as_ptr()), Some(&mut available), None, None).ok()?;
+    }
+    Some(available)
+}
+
+#[cfg(not(windows))]
+fn free_space(_path: &Path) -> Option<u64> {
+    None
 }
 
 fn entry(game: crate::core::library::Game) -> GameEntry {

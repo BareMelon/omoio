@@ -1,6 +1,6 @@
 import type { Game } from "../api";
 import { removeGame, listGames } from "../api";
-import { startImport } from "../importFlow";
+import { openImportSheet } from "../components/importSheet";
 import { store } from "../state";
 import { emptyState, type View } from "./view";
 
@@ -52,38 +52,19 @@ function gameRow(game: Game): HTMLElement {
 }
 
 export function renderLibrary(): View {
-  const { games, importing, importError } = store.get();
+  const { games } = store.get();
 
   const content = document.createElement("div");
 
-  if (importing) {
-    const progress = document.createElement("div");
-    progress.className = "progress-row";
-    progress.innerHTML = `
-      <div class="progress-label"><span>Reading the game…</span></div>
-      <div class="progress"><div class="progress-fill indeterminate"></div></div>
-    `;
-    content.appendChild(progress);
-  }
-
-  if (importError) {
-    const error = document.createElement("div");
-    error.className = "notice";
-    error.textContent = importError;
-    content.appendChild(error);
-  }
-
   if (games.length === 0) {
-    if (!importing) {
-      const empty = emptyState("No games yet", "Import a game folder to add it to your library.");
-      const button = document.createElement("button");
-      button.className = "small-btn";
-      button.textContent = "Import game";
-      button.style.marginTop = "14px";
-      button.onclick = startImport;
-      empty.appendChild(button);
-      content.appendChild(empty);
-    }
+    const empty = emptyState("No games yet", "Import a game to add it to your library.");
+    const button = document.createElement("button");
+    button.className = "small-btn";
+    button.textContent = "Import game";
+    button.style.marginTop = "14px";
+    button.onclick = openImportSheet;
+    empty.appendChild(button);
+    content.appendChild(empty);
   } else {
     const list = document.createElement("div");
     list.className = "sec";

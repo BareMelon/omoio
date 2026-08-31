@@ -27,9 +27,11 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Gdi",
     "Win32_Foundation",
+    "Win32_Storage_FileSystem",
 ] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
 sevenz-rust2 = "0.22"
+zip = "4"
 tokio = { version = "1", features = ["fs", "io-util"] }
 futures-util = "0.3"
 sha2 = "0.11"
