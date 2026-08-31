@@ -158,18 +158,23 @@ export function getPlaces(): Promise<Places> {
 }
 
 export interface GameOption {
+  /// The setting's full path through RPCS3's config, joined with newlines.
+  /// A section name can contain a slash, so nothing gentler is safe.
   key: string;
-  section: string;
+  group: string;
+  name: string;
   label: string;
   hint: string;
-  kind: "choice" | "number" | "switch";
+  kind: "choice" | "number" | "switch" | "text";
   choices: string[];
+  default: string;
   min: number;
   max: number;
+  common: boolean;
 }
 
-/// section -> key -> value. Anything absent is RPCS3's own default.
-export type ChosenSettings = Record<string, Record<string, string>>;
+/// path -> value. Anything absent is RPCS3's own default.
+export type ChosenSettings = Record<string, string>;
 
 export function gameSettings(titleId: string): Promise<[GameOption[], ChosenSettings]> {
   return invoke("game_settings", { titleId });

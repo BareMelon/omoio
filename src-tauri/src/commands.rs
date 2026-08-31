@@ -280,9 +280,9 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
 pub fn game_settings(
     app: AppHandle,
     title_id: String,
-) -> (&'static [rpcs3::game_config::Option_], rpcs3::game_config::Chosen) {
+) -> (Vec<rpcs3::game_config::Setting>, rpcs3::game_config::Chosen) {
     (
-        rpcs3::game_config::OPTIONS,
+        rpcs3::game_config::catalogue(&app),
         rpcs3::game_config::read(&app, &title_id),
     )
 }
