@@ -553,6 +553,14 @@ button {
   line-height: 1.45;
   max-width: 460px;
 }
+/* A select is as wide as its longest option, which left the controls in a
+   ragged column. Fixing the width lines them up; the full text is still there
+   when the list is open. */
+.settings-scroll select {
+  flex: none;
+  width: 250px;
+  text-overflow: ellipsis;
+}
 .cfg-v.path {
   max-width: 320px;
   overflow: hidden;

@@ -72,15 +72,17 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   };
 
   const settingsNote = body.querySelector<HTMLElement>("#detail-settings-note")!;
-  gameSettings(game.title_id).then(([, chosen]) => {
+  const showSettingsCount = async () => {
+    const [, chosen] = await gameSettings(game.title_id);
     const changed = Object.values(chosen).reduce((n, keys) => n + Object.keys(keys).length, 0);
     settingsNote.textContent =
       changed === 0
         ? "Running with RPCS3's own settings."
         : `${changed} setting${changed === 1 ? "" : "s"} changed for this game.`;
-  });
+  };
+  showSettingsCount();
   body.querySelector<HTMLButtonElement>("#detail-settings")!.onclick = () =>
-    openGameSettings(game.title_id, game.title);
+    openGameSettings(game.title_id, game.title, showSettingsCount);
 
   body.querySelector<HTMLButtonElement>("#detail-remove")!.onclick = async () => {
     await removeGame(game.title_id);

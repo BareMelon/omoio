@@ -69,7 +69,11 @@ function control(option: GameOption, current: string, onChange: (value: string) 
   return wrap;
 }
 
-export async function openGameSettings(titleId: string, title: string): Promise<void> {
+export async function openGameSettings(
+  titleId: string,
+  title: string,
+  onSaved: () => void
+): Promise<void> {
   const [options, saved] = await gameSettings(titleId);
   // Worked on as a copy, so Cancel really does leave things as they were.
   const chosen: ChosenSettings = JSON.parse(JSON.stringify(saved));
@@ -166,6 +170,7 @@ export async function openGameSettings(titleId: string, title: string): Promise<
   reset.textContent = "Reset all";
   reset.onclick = async () => {
     await setGameSettings(titleId, {});
+    onSaved();
     close();
   };
   const cancel = document.createElement("button");
@@ -178,6 +183,7 @@ export async function openGameSettings(titleId: string, title: string): Promise<
   save.onclick = async () => {
     save.disabled = true;
     await setGameSettings(titleId, chosen);
+    onSaved();
     close();
   };
 
