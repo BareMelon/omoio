@@ -17,9 +17,12 @@ function formatSize(bytes: number): string {
 export async function openUpdates(
   titleId: string,
   title: string,
-  installed: string | null,
+  installedWhenOpened: string | null,
   onChanged: () => void
 ): Promise<void> {
+  // Moves as updates are installed, so the heading and the "Installed" mark
+  // do not go on describing the version the game was on when this opened.
+  let installed = installedWhenOpened;
   const scrim = document.createElement("div");
   scrim.className = "scrim";
   const sheet = document.createElement("div");
@@ -65,6 +68,7 @@ export async function openUpdates(
     const unlisten = await onUpdateProgress((progress) => showProgress(update, progress));
     try {
       await installUpdate(titleId, update);
+      installed = update.version;
       store.setGames(await listGames());
       busy = false;
       onChanged();

@@ -174,8 +174,12 @@ mod tests {
     /// Passing that on turns a dead end into an instruction.
     #[test]
     fn says_which_version_an_update_follows_on_from() {
-        let refused = "\u{b7}E {PKG Installer} PKG: The installed app version (01.33) does not match the target app version (01.32)\n";
-        assert_eq!(target_version(refused).as_deref(), Some("01.32"));
+        // Both wordings RPCS3 uses, taken from real refusals.
+        let mismatch = "\u{b7}E {PKG Installer} PKG: The installed app version (01.33) does not match the target app version (01.32)\n";
+        assert_eq!(target_version(mismatch).as_deref(), Some("01.32"));
+
+        let nothing_installed = "\u{b7}E {PKG Installer} PKG: A target app version is required (01.32), but no PARAM.SFO was found for BCES00850.\n";
+        assert_eq!(target_version(nothing_installed).as_deref(), Some("01.32"));
 
         assert_eq!(target_version("\u{b7}! nothing of the sort\n"), None);
     }
@@ -322,17 +326,30 @@ pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(),
     Err("RPCS3 couldn't install that update.".to_string())
 }
 
-/// The version a refused package was expecting, out of RPCS3's own complaint:
-/// "The installed app version (01.33) does not match the target app version
-/// (01.32)".
+/// The version a refused package was expecting.
+///
+/// RPCS3 says it two ways, depending on whether the game has an update
+/// installed already:
+///
+/// - "The installed app version (01.33) does not match the target app version
+///   (01.32)"
+/// - "A target app version is required (01.32), but no PARAM.SFO was found"
+///
+/// Both name the wanted version in brackets right after "target app version",
+/// which is what this reads.
 fn target_version(log: &str) -> Option<String> {
     let line = log
         .lines()
-        .find(|line| line.contains("does not match the target app version"))?;
+        .find(|line| line.contains("target app version"))?;
     let after = line.rsplit_once("target app version")?.1;
     let start = after.find('(')? + 1;
     let end = after[start..].find(')')? + start;
-    Some(after[start..end].to_string())
+    let version = &after[start..end];
+    // Only a version, never a stray sentence from some other message.
+    if version.is_empty() || !version.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return None;
+    }
+    Some(version.to_string())
 }
 
 fn log_since(log: &std::path::Path, from: u64) -> String {
