@@ -41,6 +41,13 @@ sha2 = "0.11"
 # at the top level. Only used to read it; our own files keep the small writer
 # in game_config.rs.
 yaml-rust2 = "0.10"
+# All three are already in the build as dependencies of something else, so
+# naming them here adds no new code. Sony's update manifest is XML, its
+# packages are checksummed with SHA-1, and reaching the manifest needs a
+# certificate check of our own. See updates.rs.
+quick-xml = "0.41"
+sha1 = "0.10"
+rustls = { version = "0.23", default-features = false }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

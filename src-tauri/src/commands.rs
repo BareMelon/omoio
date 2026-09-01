@@ -21,6 +21,7 @@ pub fn get_hardware_info() -> HardwareInfo {
 pub struct InstallState {
     cancel: Arc<AtomicBool>,
     cancel_import: Arc<AtomicBool>,
+    cancel_update: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -499,11 +500,31 @@ pub struct PatchView {
     pub patches: Vec<rpcs3::patches::Patch>,
 }
 
+/// The version that actually runs: the official update when one is installed,
+/// otherwise what the dump reports.
+fn running_version(app: &AppHandle, title_id: &str) -> String {
+    library_path(app)
+        .map(|file| Library::load(&file))
+        .ok()
+        .and_then(|library| {
+            library
+                .games()
+                .iter()
+                .find(|g| g.title_id == title_id)
+                .and_then(|g| g.running_version().map(str::to_string))
+        })
+        .unwrap_or_default()
+}
+
+/// Patches are matched against the version that actually runs, so a game with
+/// an official update installed sees the patches written for it rather than
+/// the ones for the version its disc shipped with.
 #[tauri::command]
-pub fn game_patches(app: AppHandle, title_id: String, app_version: String) -> PatchView {
+pub fn game_patches(app: AppHandle, title_id: String) -> PatchView {
+    let version = running_version(&app, &title_id);
     PatchView {
         have_list: rpcs3::patches::have_catalogue(&app),
-        patches: rpcs3::patches::for_title(&app, &title_id, &app_version),
+        patches: rpcs3::patches::for_title(&app, &title_id, &version),
     }
 }
 
@@ -512,10 +533,10 @@ pub fn set_patch_enabled(
     app: AppHandle,
     patch: rpcs3::patches::Patch,
     title_id: String,
-    app_version: String,
     enabled: bool,
 ) -> Result<(), String> {
-    rpcs3::patches::set_enabled(&app, &patch, &title_id, &app_version, enabled)
+    let version = running_version(&app, &title_id);
+    rpcs3::patches::set_enabled(&app, &patch, &title_id, &version, enabled)
 }
 
 #[tauri::command]
@@ -618,4 +639,54 @@ pub async fn scan_folder(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn game_updates(title_id: String) -> Result<Vec<rpcs3::updates::Update>, String> {
+    rpcs3::updates::available(&title_id).await
+}
+
+#[tauri::command]
+pub fn cancel_update(state: State<'_, InstallState>) {
+    state.cancel_update.store(true, Ordering::Relaxed);
+}
+
+/// Downloads one official update and installs it.
+///
+/// The version installed is recorded against the game, because the update
+/// lives in the emulator's storage and the dump keeps reporting the version it
+/// shipped with. Without this the library would still say 01.00 after
+/// updating, and patches written for the new version would look inapplicable.
+#[tauri::command]
+pub async fn install_update(
+    app: AppHandle,
+    title_id: String,
+    update: rpcs3::updates::Update,
+    state: State<'_, InstallState>,
+) -> Result<(), String> {
+    state.cancel_update.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_update.clone();
+
+    let emitter = app.clone();
+    let mut last = 0u64;
+    rpcs3::updates::install(&app, &update, &cancel, move |done, total| {
+        // One event per percent, not per chunk.
+        let step = (total / 100).max(1);
+        if done - last >= step || done >= total {
+            last = done;
+            let _ = emitter.emit(
+                "update-progress",
+                Progress { stage: "downloading".into(), bytes: done, total },
+            );
+        }
+    })
+    .await?;
+
+    let file = library_path(&app)?;
+    let mut library = Library::load(&file);
+    if let Some(game) = library.get_mut(&title_id) {
+        game.update_version = Some(update.version.clone());
+        library.save(&file)?;
+    }
+    Ok(())
 }

@@ -9,9 +9,28 @@ use std::path::{Path, PathBuf};
 pub struct Game {
     pub title_id: String,
     pub title: String,
+    /// The version of the dump itself, out of its PARAM.SFO.
     pub version: Option<String>,
+    /// The official update Omoio installed, if any.
+    ///
+    /// An update lives in the emulator's own storage rather than in the dump,
+    /// so the dump keeps saying what it always said. RPCS3's game-data folder
+    /// does hold a version, but it is written for reasons of its own and did
+    /// not match either the disc or anything we installed, so it is not
+    /// something to read a version out of. What we put there ourselves is.
+    #[serde(default)]
+    pub update_version: Option<String>,
     pub path: PathBuf,
     pub size_bytes: u64,
+}
+
+impl Game {
+    /// The version that actually runs, which is the update when there is one.
+    pub fn running_version(&self) -> Option<&str> {
+        self.update_version
+            .as_deref()
+            .or(self.version.as_deref())
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -32,6 +51,10 @@ impl Library {
             Some(existing) => *existing = game,
             None => self.games.push(game),
         }
+    }
+
+    pub fn get_mut(&mut self, title_id: &str) -> Option<&mut Game> {
+        self.games.iter_mut().find(|g| g.title_id == title_id)
     }
 
     pub fn remove(&mut self, title_id: &str) -> bool {
@@ -78,6 +101,7 @@ mod tests {
             title_id: title_id.to_string(),
             title: title.to_string(),
             version: Some("01.00".to_string()),
+            update_version: None,
             path: PathBuf::from(format!("D:\\games\\{title_id}")),
             size_bytes: 8_200_000_000,
         }
@@ -100,6 +124,17 @@ mod tests {
         assert_eq!(library.games().len(), 2);
         let entry = library.games().iter().find(|g| g.title_id == "BCES00141").unwrap();
         assert_eq!(entry.version.as_deref(), Some("02.00"));
+    }
+
+    #[test]
+    fn an_installed_update_is_the_version_that_runs() {
+        let mut entry = game("BCES00850", "LittleBigPlanet 2");
+        assert_eq!(entry.running_version(), Some("01.00"));
+
+        // The dump still says what it always said; the update is what runs.
+        entry.update_version = Some("01.33".to_string());
+        assert_eq!(entry.running_version(), Some("01.33"));
+        assert_eq!(entry.version.as_deref(), Some("01.00"));
     }
 
     #[test]

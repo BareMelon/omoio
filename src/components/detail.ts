@@ -2,6 +2,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   gameCompatibility,
   gamePatches,
+  gameUpdates,
   gameSettings,
   launchGame,
   listGames,
@@ -11,6 +12,7 @@ import {
 } from "../api";
 import { openGameSettings } from "./gameSettingsSheet";
 import { openPatches } from "./patchesSheet";
+import { openUpdates } from "./updatesSheet";
 import { store } from "../state";
 
 function formatSize(bytes: number): string {
@@ -44,6 +46,12 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
         game.available ? "Available" : "Not found",
         game.available ? "" : "warn"
       )}
+    </div>
+    <div class="sec">
+      <div class="sec-h">Game version</div>
+      <button class="small-btn wide" id="detail-update">Check for updates</button>
+      <div class="note plain" id="detail-update-note"></div>
+      <button class="link-btn gone" id="detail-update-more">Choose another version</button>
     </div>
     <div class="sec">
       <div class="sec-h">How well it runs</div>
@@ -91,6 +99,53 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     }
   };
 
+  const running = game.update_version ?? game.version;
+  const updateButton = body.querySelector<HTMLButtonElement>("#detail-update")!;
+  const updateNote = body.querySelector<HTMLElement>("#detail-update-note")!;
+  const moreVersions = body.querySelector<HTMLButtonElement>("#detail-update-more")!;
+
+  const reload = async () => store.setGames(await listGames());
+  const openList = () =>
+    openUpdates(game.title_id, game.title, running, () => {
+      void reload();
+      void showPatchCount();
+    });
+
+  updateNote.textContent = game.update_version
+    ? `Running version ${game.update_version}, updated by Omoio.`
+    : `Running version ${game.version ?? "unknown"}, as the game shipped.`;
+
+  // Checked on demand rather than on every selection: it is a request to
+  // Sony, and opening a game should not quietly make one.
+  updateButton.onclick = async () => {
+    updateButton.disabled = true;
+    updateButton.textContent = "Checking…";
+    try {
+      const updates = await gameUpdates(game.title_id);
+      const newest = updates[0];
+      if (!newest) {
+        updateNote.textContent = "Sony never published an update for this game.";
+      } else if (newest.version === running) {
+        updateNote.textContent = `Version ${newest.version} is the newest there is.`;
+        moreVersions.classList.remove("gone");
+      } else {
+        updateButton.textContent = `Update to ${newest.version}`;
+        updateButton.onclick = openList;
+        updateNote.textContent = `Version ${newest.version} is available.`;
+        moreVersions.classList.remove("gone");
+      }
+    } catch (err) {
+      updateNote.textContent =
+        typeof err === "string" ? err : "Couldn't reach Sony's update service.";
+    } finally {
+      updateButton.disabled = false;
+      if (updateButton.textContent === "Checking…") {
+        updateButton.textContent = "Check for updates";
+      }
+    }
+  };
+  moreVersions.onclick = openList;
+
   const badge = body.querySelector<HTMLElement>("#detail-compat-badge")!;
   const compatNote = body.querySelector<HTMLElement>("#detail-compat-note")!;
   const getList = body.querySelector<HTMLButtonElement>("#detail-compat-get")!;
@@ -123,7 +178,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
 
   const patchesNote = body.querySelector<HTMLElement>("#detail-patches-note")!;
   const showPatchCount = async () => {
-    const { have_list, patches } = await gamePatches(game.title_id, game.version ?? "");
+    const { have_list, patches } = await gamePatches(game.title_id);
     const fits = patches.filter((p) => p.applies);
     const on = fits.filter((p) => p.enabled).length;
     patchesNote.textContent = !have_list
@@ -136,7 +191,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   };
   showPatchCount();
   body.querySelector<HTMLButtonElement>("#detail-patches")!.onclick = () =>
-    openPatches(game.title_id, game.title, game.version ?? "", showPatchCount);
+    openPatches(game.title_id, game.title, showPatchCount);
 
   const settingsNote = body.querySelector<HTMLElement>("#detail-settings-note")!;
   const showSettingsCount = async () => {

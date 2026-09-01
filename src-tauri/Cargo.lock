@@ -2807,10 +2807,13 @@ name = "omoio"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "quick-xml",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "sevenz-rust2",
+ "sha1",
  "sha2 0.11.0",
  "sysinfo",
  "tauri",

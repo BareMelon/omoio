@@ -140,6 +140,46 @@ pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
 mod tests {
     use super::*;
 
+    /// RPCS3 reports a crash on the way out of a headless run even when the
+    /// package went in, so success is read from the log. It has to be this
+    /// run's log, or installing the same update twice would look successful
+    /// the second time no matter what happened.
+    #[test]
+    fn reads_success_only_from_what_this_run_wrote() {
+        use std::io::Write;
+
+        let log = std::env::temp_dir().join(format!("omoio-pkg-log-{}.txt", std::process::id()));
+        let package = std::path::PathBuf::from("D:/updates/GAME-A0133.pkg");
+        let success = "\u{b7}S GUI: Successfully installed D:/updates/GAME-A0133.pkg (version=01.33).\n";
+
+        // An earlier run already reported installing this very package.
+        std::fs::write(&log, success).unwrap();
+        let before = std::fs::metadata(&log).unwrap().len();
+        assert!(
+            !installed_according_to_log(&log, before, &package),
+            "a line from a previous run must not count"
+        );
+
+        let mut file = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        write!(file, "\u{b7}! nothing to do with packages\n").unwrap();
+        assert!(!installed_according_to_log(&log, before, &package));
+
+        write!(file, "{success}").unwrap();
+        assert!(installed_according_to_log(&log, before, &package));
+
+        let _ = std::fs::remove_file(&log);
+    }
+
+    /// Updates follow on from each other, and RPCS3 names the one it wanted.
+    /// Passing that on turns a dead end into an instruction.
+    #[test]
+    fn says_which_version_an_update_follows_on_from() {
+        let refused = "\u{b7}E {PKG Installer} PKG: The installed app version (01.33) does not match the target app version (01.32)\n";
+        assert_eq!(target_version(refused).as_deref(), Some("01.32"));
+
+        assert_eq!(target_version("\u{b7}! nothing of the sort\n"), None);
+    }
+
     #[test]
     fn writes_the_line_the_way_rpcs3_does() {
         let line = games_list_line(
@@ -235,4 +275,85 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
     }
+}
+
+/// Hands a downloaded update to RPCS3 to install.
+///
+/// `--installpkg` is RPCS3's own flag, confirmed against the installed build's
+/// help output. It is paired with `--headless` rather than `--no-gui`, which
+/// was tried first and never returns: without a window there is still an event
+/// loop, and it sits there once the work is done. Headless installs and exits
+/// in a few seconds.
+///
+/// The exit code is not the answer, though. RPCS3 falls over on the way out of
+/// a headless run and reports a crash even when the package went in perfectly,
+/// so success is read from what it wrote in its own log instead.
+pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(), String> {
+    let exe = super::exe_path(app)?;
+    if !exe.exists() {
+        return Err("Install RPCS3 first, then updates can be installed.".to_string());
+    }
+
+    let log = super::install_dir(app)?.join("log").join("RPCS3.log");
+    // Anything already in the log is from before, and must not be mistaken for
+    // this run having succeeded.
+    let before = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
+
+    super::command(&exe)
+        .arg("--headless")
+        .arg("--installpkg")
+        .arg(package)
+        .status()
+        .map_err(|e| e.to_string())?;
+
+    if installed_according_to_log(&log, before, package) {
+        return Ok(());
+    }
+    let written = log_since(&log, before);
+
+    // Updates are sequential: each package expects the one before it. RPCS3
+    // says exactly which version it wanted, and passing that on saves the user
+    // guessing why a perfectly good download was refused.
+    if let Some(wanted) = target_version(&written) {
+        return Err(format!(
+            "This update follows on from version {wanted}. Install that one first."
+        ));
+    }
+    Err("RPCS3 couldn't install that update.".to_string())
+}
+
+/// The version a refused package was expecting, out of RPCS3's own complaint:
+/// "The installed app version (01.33) does not match the target app version
+/// (01.32)".
+fn target_version(log: &str) -> Option<String> {
+    let line = log
+        .lines()
+        .find(|line| line.contains("does not match the target app version"))?;
+    let after = line.rsplit_once("target app version")?.1;
+    let start = after.find('(')? + 1;
+    let end = after[start..].find(')')? + start;
+    Some(after[start..end].to_string())
+}
+
+fn log_since(log: &std::path::Path, from: u64) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let Ok(mut file) = std::fs::File::open(log) else {
+        return String::new();
+    };
+    if file.seek(SeekFrom::Start(from)).is_err() {
+        return String::new();
+    }
+    let mut written = String::new();
+    let _ = file.read_to_string(&mut written);
+    written
+}
+
+/// Whether RPCS3 said it installed this package, looking only at what it wrote
+/// during this run.
+fn installed_according_to_log(log: &std::path::Path, from: u64, package: &std::path::Path) -> bool {
+    let name = package.file_name().unwrap_or_default().to_string_lossy();
+    log_since(log, from)
+        .lines()
+        .any(|line| line.contains("Successfully installed") && line.contains(name.as_ref()))
 }

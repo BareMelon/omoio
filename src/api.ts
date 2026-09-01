@@ -58,7 +58,10 @@ export function onRpcs3InstallProgress(handler: (progress: InstallProgress) => v
 export interface Game {
   title_id: string;
   title: string;
+  /// What the dump itself reports.
   version: string | null;
+  /// The official update Omoio installed, if any. This is what actually runs.
+  update_version: string | null;
   path: string;
   size_bytes: number;
   /// False when the folder isn't reachable right now, e.g. an external drive.
@@ -283,17 +286,16 @@ export interface PatchList {
   patches: Patch[];
 }
 
-export function gamePatches(titleId: string, appVersion: string): Promise<PatchList> {
-  return invoke("game_patches", { titleId, appVersion });
+export function gamePatches(titleId: string): Promise<PatchList> {
+  return invoke("game_patches", { titleId });
 }
 
 export function setPatchEnabled(
   patch: Patch,
   titleId: string,
-  appVersion: string,
   enabled: boolean
 ): Promise<void> {
-  return invoke("set_patch_enabled", { patch, titleId, appVersion, enabled });
+  return invoke("set_patch_enabled", { patch, titleId, enabled });
 }
 
 export function refreshPatches(): Promise<number> {
@@ -320,4 +322,28 @@ export function scanFolder(path: string): Promise<ScanResult> {
 
 export function onScanProgress(handler: (progress: ScanProgress) => void): Promise<UnlistenFn> {
   return listen<ScanProgress>("scan-progress", (event) => handler(event.payload));
+}
+
+export interface GameUpdate {
+  version: string;
+  size: number;
+  sha1: string;
+  url: string;
+  firmware: string;
+}
+
+export function gameUpdates(titleId: string): Promise<GameUpdate[]> {
+  return invoke("game_updates", { titleId });
+}
+
+export function installUpdate(titleId: string, update: GameUpdate): Promise<void> {
+  return invoke("install_update", { titleId, update });
+}
+
+export function cancelUpdate(): Promise<void> {
+  return invoke("cancel_update");
+}
+
+export function onUpdateProgress(handler: (progress: ImportProgress) => void): Promise<UnlistenFn> {
+  return listen<ImportProgress>("update-progress", (event) => handler(event.payload));
 }

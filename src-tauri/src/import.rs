@@ -104,6 +104,7 @@ pub fn identify(picked: &Path) -> Result<Game, Error> {
         title_id,
         title,
         version: sfo.app_version().map(str::to_string),
+        update_version: None,
         size_bytes: directory_size(&root),
         path: root,
     })

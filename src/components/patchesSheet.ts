@@ -19,7 +19,6 @@ function toggle(on: boolean): HTMLButtonElement {
 function patchRow(
   patch: Patch,
   titleId: string,
-  appVersion: string,
   onChanged: () => void
 ): HTMLElement {
   const row = document.createElement("div");
@@ -65,7 +64,7 @@ function patchRow(
       const next = !patch.enabled;
       control.disabled = true;
       try {
-        await setPatchEnabled(patch, titleId, appVersion, next);
+        await setPatchEnabled(patch, titleId, next);
         patch.enabled = next;
         control.className = next ? "switch on" : "switch";
         control.setAttribute("aria-checked", String(next));
@@ -84,7 +83,6 @@ function patchRow(
 export async function openPatches(
   titleId: string,
   title: string,
-  appVersion: string,
   onChanged: () => void
 ): Promise<void> {
   const scrim = document.createElement("div");
@@ -134,7 +132,7 @@ export async function openPatches(
 
   async function show() {
     body.textContent = "";
-    const { have_list, patches } = await gamePatches(titleId, appVersion);
+    const { have_list, patches } = await gamePatches(titleId);
     get.textContent = have_list ? "Get the latest" : "Get patches";
 
     if (!have_list) {
@@ -160,7 +158,7 @@ export async function openPatches(
     note.textContent = on === 0 ? `${fits} available` : `${on} of ${fits} on`;
 
     for (const patch of patches) {
-      body.appendChild(patchRow(patch, titleId, appVersion, () => {
+      body.appendChild(patchRow(patch, titleId, () => {
         void show();
         onChanged();
       }));
