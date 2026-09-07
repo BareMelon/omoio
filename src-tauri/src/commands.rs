@@ -725,3 +725,37 @@ pub fn restore_saves(app: AppHandle, title_id: String, made: u64) -> Result<(), 
 pub fn forget_backup(app: AppHandle, title_id: String, made: u64) -> Result<(), String> {
     rpcs3::saves::forget(&app, &title_id, made)
 }
+
+#[tauri::command]
+pub fn get_account(app: AppHandle) -> rpcs3::account::Account {
+    rpcs3::account::read(&app)
+}
+
+#[tauri::command]
+pub fn list_regions() -> Vec<rpcs3::account::RegionChoice> {
+    rpcs3::account::regions()
+}
+
+#[tauri::command]
+pub fn set_username(app: AppHandle, name: String) -> Result<String, String> {
+    rpcs3::account::set_username(&app, &name)
+}
+
+#[tauri::command]
+pub fn set_region(app: AppHandle, id: String) -> Result<(), String> {
+    rpcs3::account::set_region(&app, &id)
+}
+
+/// Whether the first-run questions still need asking.
+#[tauri::command]
+pub fn needs_setup(app: AppHandle) -> Result<bool, String> {
+    Ok(!Settings::load(&settings_path(&app)?).set_up)
+}
+
+#[tauri::command]
+pub fn finish_setup(app: AppHandle) -> Result<(), String> {
+    let file = settings_path(&app)?;
+    let mut settings = Settings::load(&file);
+    settings.set_up = true;
+    settings.save(&file)
+}

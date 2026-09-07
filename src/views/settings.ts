@@ -4,16 +4,20 @@ import {
   cancelRpcs3Install,
   clearSessionLogs,
   forgetAllGames,
+  getAccount,
   getPlaces,
   getSettings,
   installFirmware,
   installRpcs3,
   listGames,
+  listRegions,
   onRpcs3InstallProgress,
   revealFolder,
   setGamesFolder,
   setKeepSessions,
+  setRegion,
   setStartFullscreen,
+  setUsername,
   type InstallProgress,
   type Places,
   type Settings,
@@ -142,6 +146,51 @@ export async function renderSettings(): Promise<View> {
     })
   );
 
+  // ---- the console games see ----
+  const account = await getAccount();
+  const regions = await listRegions();
+
+  const nameRow = row("Username", "The name games show for you.");
+  const nameInput = document.createElement("input");
+  nameInput.className = "text-in";
+  nameInput.maxLength = 16;
+  nameInput.spellcheck = false;
+  nameInput.value = account.username;
+  const nameSaid = document.createElement("span");
+  nameSaid.className = "cfg-v";
+  nameInput.onchange = async () => {
+    try {
+      nameInput.value = await setUsername(nameInput.value);
+      nameSaid.textContent = "Saved";
+    } catch (err) {
+      nameSaid.textContent = typeof err === "string" ? err : "Couldn't save that name.";
+    }
+  };
+  nameRow.right.append(nameSaid, nameInput);
+
+  const regionRow = row("Region", "Sets the language games start in.");
+  const regionSelect = document.createElement("select");
+  regionSelect.className = "select";
+  for (const choice of regions) {
+    const option = document.createElement("option");
+    option.value = choice.id;
+    option.textContent = `${choice.name} · ${choice.language}`;
+    option.selected = choice.id === account.region;
+    regionSelect.appendChild(option);
+  }
+  const regionSaid = document.createElement("span");
+  regionSaid.className = "cfg-v";
+  regionSelect.onchange = async () => {
+    try {
+      await setRegion(regionSelect.value);
+      regionSaid.textContent = "Saved";
+    } catch (err) {
+      regionSaid.textContent = typeof err === "string" ? err : "Couldn't change the region.";
+    }
+  };
+  regionRow.right.append(regionSaid, regionSelect);
+
+  content.appendChild(section("Console", nameRow.row, regionRow.row));
   content.appendChild(section("Playing", fullscreen.row, games.row));
 
   // ---- emulator, and putting it right when it breaks ----

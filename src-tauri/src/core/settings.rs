@@ -14,6 +14,10 @@ pub struct Settings {
     /// How many played sessions to keep logs for.
     #[serde(default = "default_keep_sessions")]
     pub keep_sessions: usize,
+    /// Whether the first-run questions have been answered. Asked once, then
+    /// never again; both answers stay changeable in Settings.
+    #[serde(default)]
+    pub set_up: bool,
 }
 
 fn default_keep_sessions() -> usize {
@@ -26,6 +30,7 @@ impl Default for Settings {
             games_folder: None,
             start_fullscreen: false,
             keep_sessions: default_keep_sessions(),
+            set_up: false,
         }
     }
 }
@@ -66,6 +71,7 @@ mod tests {
             games_folder: Some(PathBuf::from("D:\\PS3")),
             start_fullscreen: true,
             keep_sessions: 5,
+            set_up: true,
         };
         settings.save(&path).unwrap();
 

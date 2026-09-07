@@ -50,7 +50,7 @@ export async function openSaves(
     <div class="sheet-p"></div>
   `;
   head.querySelector<HTMLElement>(".sheet-p")!.textContent =
-    `Copies of your saves for ${title}, kept outside the emulator. One is taken automatically before an update is installed.`;
+    `${title}. One is taken automatically before every update, and reinstalling RPCS3 does not touch these.`;
   sheet.appendChild(head);
 
   const list = document.createElement("div");

@@ -1,3 +1,4 @@
+pub mod account;
 pub mod compat;
 pub mod firmware;
 pub mod game_config;

@@ -11,6 +11,7 @@ import {
   playingGame,
 } from "./api";
 import { renderPlayingBar } from "./components/playingBar";
+import { openSetupIfNeeded } from "./components/setupSheet";
 import { store, type ViewId } from "./state";
 import { renderTitlebar } from "./components/titlebar";
 import { renderSidebar } from "./components/sidebar";
@@ -93,6 +94,9 @@ getRpcs3Version().then((version) => store.setRpcs3Version(version));
 getFirmwareVersion().then((version) => store.setFirmwareVersion(version));
 listGames().then((games) => store.setGames(games));
 playingGame().then((playing) => store.setPlaying(playing));
+
+// Asked once, before anything else is worth doing.
+openSetupIfNeeded();
 
 onGameStarted((playing) => store.setPlaying(playing));
 onGameFullscreen((on) => store.setGameFullscreen(on));

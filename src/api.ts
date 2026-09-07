@@ -370,3 +370,39 @@ export function restoreSaves(titleId: string, made: number): Promise<void> {
 export function forgetBackup(titleId: string, made: number): Promise<void> {
   return invoke("forget_backup", { titleId, made });
 }
+
+export interface Account {
+  username: string;
+  /// Empty when RPCS3 is set to a combination no region of ours describes.
+  region: string;
+}
+
+export interface RegionChoice {
+  id: string;
+  name: string;
+  language: string;
+}
+
+export function getAccount(): Promise<Account> {
+  return invoke("get_account");
+}
+
+export function listRegions(): Promise<RegionChoice[]> {
+  return invoke("list_regions");
+}
+
+export function setUsername(name: string): Promise<string> {
+  return invoke("set_username", { name });
+}
+
+export function setRegion(id: string): Promise<void> {
+  return invoke("set_region", { id });
+}
+
+export function needsSetup(): Promise<boolean> {
+  return invoke("needs_setup");
+}
+
+export function finishSetup(): Promise<void> {
+  return invoke("finish_setup");
+}
