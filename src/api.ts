@@ -347,3 +347,26 @@ export function cancelUpdate(): Promise<void> {
 export function onUpdateProgress(handler: (progress: ImportProgress) => void): Promise<UnlistenFn> {
   return listen<ImportProgress>("update-progress", (event) => handler(event.payload));
 }
+
+export interface SaveBackup {
+  /// Seconds since the epoch, like the session logs use.
+  made: number;
+  bytes: number;
+  folders: number;
+}
+
+export function gameSaves(titleId: string): Promise<[boolean, SaveBackup[]]> {
+  return invoke("game_saves", { titleId });
+}
+
+export function backUpSaves(titleId: string): Promise<SaveBackup | null> {
+  return invoke("back_up_saves", { titleId });
+}
+
+export function restoreSaves(titleId: string, made: number): Promise<void> {
+  return invoke("restore_saves", { titleId, made });
+}
+
+export function forgetBackup(titleId: string, made: number): Promise<void> {
+  return invoke("forget_backup", { titleId, made });
+}

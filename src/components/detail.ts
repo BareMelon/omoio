@@ -2,8 +2,9 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   gameCompatibility,
   gamePatches,
-  gameUpdates,
+  gameSaves,
   gameSettings,
+  gameUpdates,
   launchGame,
   listGames,
   refreshCompatibility,
@@ -12,6 +13,7 @@ import {
 } from "../api";
 import { openGameSettings } from "./gameSettingsSheet";
 import { openPatches } from "./patchesSheet";
+import { openSaves } from "./savesSheet";
 import { openUpdates } from "./updatesSheet";
 import { store } from "../state";
 
@@ -52,6 +54,11 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       <button class="small-btn wide" id="detail-update">Check for updates</button>
       <div class="note plain" id="detail-update-note"></div>
       <button class="link-btn gone" id="detail-update-more">Choose another version</button>
+    </div>
+    <div class="sec">
+      <div class="sec-h">Saved games</div>
+      <button class="small-btn wide" id="detail-saves">Back up and restore</button>
+      <div class="note plain" id="detail-saves-note"></div>
     </div>
     <div class="sec">
       <div class="sec-h">How well it runs</div>
@@ -145,6 +152,21 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     }
   };
   moreVersions.onclick = openList;
+
+  const savesNote = body.querySelector<HTMLElement>("#detail-saves-note")!;
+  const showSaves = async () => {
+    const [hasSaves, backups] = await gameSaves(game.title_id);
+    savesNote.textContent = !hasSaves
+      ? "Nothing saved yet."
+      : backups.length === 0
+        ? "No copies kept yet."
+        : backups.length === 1
+          ? "1 copy kept."
+          : `${backups.length} copies kept.`;
+  };
+  showSaves();
+  body.querySelector<HTMLButtonElement>("#detail-saves")!.onclick = () =>
+    openSaves(game.title_id, game.title, showSaves);
 
   const badge = body.querySelector<HTMLElement>("#detail-compat-badge")!;
   const compatNote = body.querySelector<HTMLElement>("#detail-compat-note")!;

@@ -5,6 +5,7 @@ pub mod launch;
 #[cfg(windows)]
 pub mod overlay;
 pub mod patches;
+pub mod saves;
 pub mod updates;
 
 use crate::core::types::Progress;

@@ -667,6 +667,15 @@ pub async fn install_update(
     state.cancel_update.store(false, Ordering::Relaxed);
     let cancel = state.cancel_update.clone();
 
+    // Updating is the moment saves are worth keeping: going back to an older
+    // version afterwards is possible, but a save written by the newer one may
+    // not load on it. Told to back up and given no way to, people would not.
+    // A failure here is not a reason to refuse the update; it is reported and
+    // the update goes ahead.
+    if let Err(e) = rpcs3::saves::back_up(&app, &title_id) {
+        let _ = app.emit("saves-backup-failed", e);
+    }
+
     let emitter = app.clone();
     let mut last = 0u64;
     rpcs3::updates::install(&app, &update, &cancel, move |done, total| {
@@ -689,4 +698,30 @@ pub async fn install_update(
         library.save(&file)?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn game_saves(app: AppHandle, title_id: String) -> (bool, Vec<rpcs3::saves::Backup>) {
+    (
+        rpcs3::saves::has_saves(&app, &title_id),
+        rpcs3::saves::list(&app, &title_id),
+    )
+}
+
+#[tauri::command]
+pub fn back_up_saves(
+    app: AppHandle,
+    title_id: String,
+) -> Result<Option<rpcs3::saves::Backup>, String> {
+    rpcs3::saves::back_up(&app, &title_id)
+}
+
+#[tauri::command]
+pub fn restore_saves(app: AppHandle, title_id: String, made: u64) -> Result<(), String> {
+    rpcs3::saves::restore(&app, &title_id, made)
+}
+
+#[tauri::command]
+pub fn forget_backup(app: AppHandle, title_id: String, made: u64) -> Result<(), String> {
+    rpcs3::saves::forget(&app, &title_id, made)
 }
