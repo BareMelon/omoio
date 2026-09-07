@@ -1,19 +1,42 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   finishSetup,
   getAccount,
+  getFirmwareVersion,
+  getRpcs3Version,
+  installFirmware,
+  installRpcs3,
   listRegions,
   needsSetup,
+  onRpcs3InstallProgress,
   setRegion,
   setUsername,
+  type InstallProgress,
   type RegionChoice,
 } from "../api";
+import { store } from "../state";
 
-/// Asked once, on the first run. Both answers stay changeable in Settings, and
-/// the sheet says so rather than making the choice feel final.
+/// Sony publishes the firmware free. We never fetch it: the user downloads the
+/// file themselves and points us at it, which is what RPCS3 does too.
+const SONY_FIRMWARE_PAGE =
+  "https://www.playstation.com/en-us/support/hardware/ps3/system-software/";
+
+const STAGE: Record<InstallProgress["stage"], string> = {
+  checking: "Looking for the latest build",
+  downloading: "Downloading",
+  verifying: "Checking the download",
+  extracting: "Unpacking",
+  done: "Done",
+};
+
+/// Asked once, on the first run.
+///
+/// It does the work rather than listing it. Everything here was previously
+/// something the user had to discover on their own, after being turned away
+/// from the Play button with an instruction and no route.
 export async function openSetupIfNeeded(): Promise<void> {
   if (!(await needsSetup())) return;
-
-  const [account, regions] = await Promise.all([getAccount(), listRegions()]);
 
   const scrim = document.createElement("div");
   scrim.className = "scrim";
@@ -22,6 +45,22 @@ export async function openSetupIfNeeded(): Promise<void> {
   scrim.appendChild(sheet);
   document.body.appendChild(scrim);
   requestAnimationFrame(() => scrim.classList.add("on"));
+
+  function close() {
+    scrim.classList.remove("on");
+    setTimeout(() => scrim.remove(), 200);
+  }
+
+  await askWhoAndWhere(sheet);
+  await getEmulator(sheet);
+  await getFirmware(sheet);
+
+  await finishSetup();
+  close();
+}
+
+async function askWhoAndWhere(sheet: HTMLElement): Promise<void> {
+  const [account, regions] = await Promise.all([getAccount(), listRegions()]);
 
   sheet.innerHTML = `
     <div class="sheet-h">Before you play</div>
@@ -49,7 +88,7 @@ export async function openSetupIfNeeded(): Promise<void> {
 
     <div class="note plain" id="setup-note"></div>
     <div class="sheet-actions">
-      <button class="btn solid" id="setup-done">Save and continue</button>
+      <button class="btn solid" id="setup-next">Continue</button>
     </div>
   `;
 
@@ -64,25 +103,149 @@ export async function openSetupIfNeeded(): Promise<void> {
     option.selected = choice.id === account.region;
     region.appendChild(option);
   }
-  // Nothing matched, so start somewhere rather than on a blank.
   if (!account.region) region.value = "eu-en";
 
   const note = sheet.querySelector<HTMLElement>("#setup-note")!;
-  const done = sheet.querySelector<HTMLButtonElement>("#setup-done")!;
+  const next = sheet.querySelector<HTMLButtonElement>("#setup-next")!;
 
-  await new Promise<void>((finished) => {
-    done.onclick = async () => {
-      done.disabled = true;
+  await new Promise<void>((done) => {
+    next.onclick = async () => {
+      next.disabled = true;
       try {
         await setUsername(name.value);
-        await setRegion(region.value);
-        await finishSetup();
-        scrim.classList.remove("on");
-        setTimeout(() => scrim.remove(), 200);
-        finished();
+        // The region needs RPCS3's config, which may not exist yet on a fresh
+        // machine. Remembered and applied once the emulator is there.
+        pendingRegion = region.value;
+        done();
       } catch (err) {
         note.textContent = typeof err === "string" ? err : "Couldn't save that.";
-        done.disabled = false;
+        next.disabled = false;
+      }
+    };
+  });
+}
+
+let pendingRegion = "";
+
+/// Downloads RPCS3 without being asked.
+///
+/// This is Omoio's own download of an official build, so there is nothing for
+/// the user to decide. It shows what it is doing and can be skipped, but it
+/// starts on its own.
+async function getEmulator(sheet: HTMLElement): Promise<void> {
+  if (await getRpcs3Version()) {
+    await applyRegion();
+    return;
+  }
+
+  sheet.innerHTML = `
+    <div class="sheet-h">Getting the emulator</div>
+    <div class="sheet-p">Omoio downloads RPCS3 and manages it for you. Nothing to install by hand.</div>
+    <div class="progress-row" style="margin-top:14px">
+      <div class="progress-label">
+        <span id="setup-stage">Starting</span>
+        <span class="pct" id="setup-pct"></span>
+      </div>
+      <div class="progress"><div class="progress-fill indeterminate" id="setup-bar"></div></div>
+    </div>
+    <div class="note plain" id="setup-note"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="setup-skip">Skip for now</button>
+    </div>
+  `;
+
+  const stage = sheet.querySelector<HTMLElement>("#setup-stage")!;
+  const pct = sheet.querySelector<HTMLElement>("#setup-pct")!;
+  const bar = sheet.querySelector<HTMLElement>("#setup-bar")!;
+  const note = sheet.querySelector<HTMLElement>("#setup-note")!;
+  const skip = sheet.querySelector<HTMLButtonElement>("#setup-skip")!;
+
+  const unlisten = await onRpcs3InstallProgress((p) => {
+    stage.textContent = STAGE[p.stage];
+    if (p.stage === "downloading" && p.total > 0) {
+      const done = Math.round((p.bytes / p.total) * 100);
+      pct.textContent = `${done}%`;
+      bar.classList.remove("indeterminate");
+      bar.style.width = `${done}%`;
+    } else {
+      pct.textContent = "";
+      bar.classList.add("indeterminate");
+      bar.style.width = "";
+    }
+  });
+
+  await new Promise<void>((done) => {
+    skip.onclick = () => done();
+    installRpcs3()
+      .then(async (version) => {
+        store.setRpcs3Version(version);
+        await applyRegion();
+        done();
+      })
+      .catch(() => {
+        note.textContent = "Couldn't get RPCS3. You can install it later from System.";
+        skip.textContent = "Continue";
+      });
+  });
+  unlisten();
+}
+
+/// The region is two lines in RPCS3's config, which only exists once the
+/// emulator does.
+async function applyRegion(): Promise<void> {
+  if (!pendingRegion) return;
+  try {
+    await setRegion(pendingRegion);
+  } catch {
+    // Settings can still set it; not worth stopping setup over.
+  }
+  pendingRegion = "";
+}
+
+/// Firmware is the one thing Omoio cannot fetch. Sony publishes it free, the
+/// user downloads it, and we take the file from there.
+async function getFirmware(sheet: HTMLElement): Promise<void> {
+  if (!(await getRpcs3Version())) return;
+  if (await getFirmwareVersion()) return;
+
+  sheet.innerHTML = `
+    <div class="sheet-h">PS3 firmware</div>
+    <div class="sheet-p">Games need it. Sony publishes it free, and you download the file yourself.</div>
+    <div class="note plain" id="setup-note"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="setup-skip">Skip for now</button>
+      <button class="btn ghost" id="setup-open">Open Sony's page</button>
+      <button class="btn solid" id="setup-pick">Choose the file</button>
+    </div>
+  `;
+
+  const note = sheet.querySelector<HTMLElement>("#setup-note")!;
+  const skip = sheet.querySelector<HTMLButtonElement>("#setup-skip")!;
+  const pick = sheet.querySelector<HTMLButtonElement>("#setup-pick")!;
+  sheet.querySelector<HTMLButtonElement>("#setup-open")!.onclick = () =>
+    openUrl(SONY_FIRMWARE_PAGE);
+
+  await new Promise<void>((done) => {
+    skip.onclick = () => done();
+    pick.onclick = async () => {
+      const picked = await open({
+        multiple: false,
+        directory: false,
+        title: "Choose the firmware file",
+        filters: [{ name: "PS3 firmware", extensions: ["PUP", "pup"] }],
+      });
+      if (typeof picked !== "string") return;
+
+      pick.disabled = true;
+      note.textContent = "Installing…";
+      try {
+        const version = await installFirmware(picked);
+        store.setFirmwareVersion(version);
+        done();
+      } catch (err) {
+        note.textContent =
+          typeof err === "string" ? err : "Couldn't read that firmware file.";
+        pick.disabled = false;
       }
     };
   });
