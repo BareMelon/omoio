@@ -103,6 +103,45 @@ pub fn have_list(app: &AppHandle) -> bool {
     read_cache(app).is_some()
 }
 
+/// Every title we know the newest version of, so the library can be checked
+/// against it without asking Sony about each game in turn.
+pub fn newest_versions(app: &AppHandle) -> BTreeMap<String, String> {
+    read_cache(app)
+        .map(|cache| {
+            cache
+                .titles
+                .into_iter()
+                .filter(|(_, entry)| !entry.update.is_empty())
+                .map(|(id, entry)| (id, entry.update))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Whether `newer` is a later game version than `installed`.
+///
+/// Compared piece by piece as numbers. These look like decimals but are not:
+/// 01.10 comes after 01.09, which comparing them as decimals gets backwards.
+pub fn is_newer(newer: &str, installed: &str) -> bool {
+    fn parts(version: &str) -> Vec<u32> {
+        version
+            .split('.')
+            .map(|piece| piece.trim().parse().unwrap_or(0))
+            .collect()
+    }
+    let (a, b) = (parts(newer), parts(installed));
+    for i in 0..a.len().max(b.len()) {
+        let (x, y) = (
+            a.get(i).copied().unwrap_or(0),
+            b.get(i).copied().unwrap_or(0),
+        );
+        if x != y {
+            return x > y;
+        }
+    }
+    false
+}
+
 /// Downloads the list and keeps the parts worth keeping. Returns how many
 /// titles it now knows about.
 pub async fn refresh(app: &AppHandle) -> Result<usize, String> {
@@ -180,6 +219,24 @@ mod tests {
         }
         assert!(describe("Wishlist").is_none());
         assert!(describe("").is_none());
+    }
+
+    #[test]
+    fn reads_game_versions_as_pieces_rather_than_decimals() {
+        // The one that matters: as decimals 01.10 would look older than 01.09.
+        assert!(is_newer("01.10", "01.09"));
+        assert!(is_newer("01.33", "01.00"));
+        assert!(is_newer("02.00", "01.99"));
+
+        assert!(!is_newer("01.00", "01.33"));
+        assert!(!is_newer("01.33", "01.33"), "the same version is not newer");
+
+        // A missing piece counts as zero, so 01.33 and 01.33.0 are the same.
+        assert!(!is_newer("01.33", "01.33.0"));
+        assert!(is_newer("01.33.1", "01.33"));
+
+        // Nothing to compare against is not an update.
+        assert!(!is_newer("", ""));
     }
 
     #[test]

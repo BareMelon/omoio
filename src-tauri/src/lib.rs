@@ -74,6 +74,7 @@ pub fn run() {
             commands::set_region,
             commands::needs_setup,
             commands::finish_setup,
+            commands::pending_updates,
             commands::get_settings,
             commands::set_start_fullscreen,
             commands::set_keep_sessions,

@@ -406,3 +406,14 @@ export function needsSetup(): Promise<boolean> {
 export function finishSetup(): Promise<void> {
   return invoke("finish_setup");
 }
+
+export interface PendingUpdate {
+  title_id: string;
+  title: string;
+  installed: string;
+  newest: string;
+}
+
+export function pendingUpdates(): Promise<[boolean, PendingUpdate[]]> {
+  return invoke("pending_updates");
+}

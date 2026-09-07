@@ -759,3 +759,41 @@ pub fn finish_setup(app: AppHandle) -> Result<(), String> {
     settings.set_up = true;
     settings.save(&file)
 }
+
+#[derive(serde::Serialize)]
+pub struct PendingUpdate {
+    pub title_id: String,
+    pub title: String,
+    pub installed: String,
+    pub newest: String,
+}
+
+/// Which games in the library have a newer version published.
+///
+/// Answered from the compatibility list we already keep, which carries the
+/// newest version for every title. No request is made per game, so this is
+/// instant and works with the network off.
+#[tauri::command]
+pub fn pending_updates(app: AppHandle) -> Result<(bool, Vec<PendingUpdate>), String> {
+    let newest = rpcs3::compat::newest_versions(&app);
+    let have_list = rpcs3::compat::have_list(&app);
+    let library = Library::load(&library_path(&app)?);
+
+    let mut waiting: Vec<PendingUpdate> = library
+        .games()
+        .iter()
+        .filter_map(|game| {
+            let installed = game.running_version()?;
+            let published = newest.get(&game.title_id)?;
+            rpcs3::compat::is_newer(published, installed).then(|| PendingUpdate {
+                title_id: game.title_id.clone(),
+                title: game.title.clone(),
+                installed: installed.to_string(),
+                newest: published.clone(),
+            })
+        })
+        .collect();
+    waiting.sort_by(|a, b| a.title.cmp(&b.title));
+
+    Ok((have_list, waiting))
+}
