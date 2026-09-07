@@ -21,3 +21,6 @@ src-tauri/gen/
 .idea/
 .DS_Store
 Thumbs.db
+
+# working notes, kept on this machine and not published
+docs/
