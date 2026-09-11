@@ -4,6 +4,7 @@
 //! launch and cover art go through here, so adding an emulator means adding an
 //! implementation and a line in `all`, not touching the library or a screen.
 
+pub mod cemu;
 pub mod rpcs3;
 
 use crate::core::console::{Console, Features};
@@ -39,11 +40,17 @@ pub trait EmulatorBackend: Sync {
 
     /// Starts the game and returns the emulator's process id.
     fn launch(&self, app: &AppHandle, game: &Game) -> Result<u32, String>;
+
+    /// The installed version, or `None` when it is not installed.
+    fn detect_version(&self, app: &AppHandle) -> Option<String>;
+
+    /// Where the emulator writes the log of the session that just ran.
+    fn log_file(&self, app: &AppHandle) -> Option<PathBuf>;
 }
 
 /// Every emulator Omoio can run, one per console.
 pub fn all() -> &'static [&'static dyn EmulatorBackend] {
-    &[&rpcs3::Rpcs3]
+    &[&rpcs3::Rpcs3, &cemu::Cemu]
 }
 
 pub fn for_console(console: Console) -> Option<&'static dyn EmulatorBackend> {
@@ -97,5 +104,6 @@ mod tests {
             assert!(seen.insert(backend.console()), "{:?} twice", backend.console());
         }
         assert!(for_console(Console::Ps3).is_some());
+        assert!(for_console(Console::WiiU).is_some());
     }
 }

@@ -19,6 +19,8 @@ const CONTENT_TOP: f64 = 38.0 + 52.0;
 pub struct Playing {
     pub title_id: String,
     pub title: String,
+    /// Which console, so the right emulator's log is kept afterwards.
+    pub console: crate::core::console::Console,
 }
 
 #[derive(Default)]
@@ -207,16 +209,16 @@ pub fn watch(app: AppHandle, pid: u32) {
     });
 }
 
-/// Copies what RPCS3 said about this session somewhere it will survive, and
-/// records how it ended. RPCS3 overwrites its own log on the next launch, so
-/// this is the only chance to keep it.
+/// Copies what the emulator said about this session somewhere it will survive,
+/// and records how it ended. Emulators overwrite their own log on the next
+/// launch, so this is the only chance to keep it.
 fn keep_session_log(app: &AppHandle, playing: &Playing, seconds: u64, stopped_by_us: bool) {
     use crate::core::playlog::{self, Ending, Session as LoggedSession};
 
-    let Ok(rpcs3_dir) = crate::backends::rpcs3::install_dir(app) else {
-        return;
-    };
-    let log = std::fs::read_to_string(rpcs3_dir.join("log").join("RPCS3.log")).unwrap_or_default();
+    let log = crate::backends::for_console(playing.console)
+        .and_then(|backend| backend.log_file(app))
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_default();
 
     let ending = if stopped_by_us {
         Ending::Stopped
@@ -241,6 +243,7 @@ fn keep_session_log(app: &AppHandle, playing: &Playing, seconds: u64, stopped_by
     let _ = std::fs::write(&log_file, &log);
 
     let session = LoggedSession {
+        console: playing.console,
         title_id: playing.title_id.clone(),
         title: playing.title.clone(),
         started: stamp.to_string(),

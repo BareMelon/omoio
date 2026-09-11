@@ -38,6 +38,8 @@ pub struct Features {
     pub settings: bool,
     /// Backing saves up and putting them back.
     pub saves: bool,
+    /// A compatibility result for the game. RPCS3's list covers the PS3 only.
+    pub compatibility: bool,
 }
 
 #[cfg(test)]

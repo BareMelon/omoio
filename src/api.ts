@@ -76,7 +76,13 @@ export interface Game {
   /// Which console the game is for, and so which emulator runs it.
   console: "ps3" | "wiiu";
   /// What its emulator can do beyond starting it.
-  features: { updates: boolean; patches: boolean; settings: boolean; saves: boolean };
+  features: {
+    updates: boolean;
+    patches: boolean;
+    settings: boolean;
+    saves: boolean;
+    compatibility: boolean;
+  };
 }
 
 export function listGames(): Promise<Game[]> {
@@ -133,6 +139,8 @@ export interface Machine {
 }
 
 export interface PlaySession {
+  /// Which console it ran on. Sessions kept before this was recorded were PS3.
+  console?: "ps3" | "wiiu";
   title_id: string;
   title: string;
   started: string;
@@ -559,4 +567,26 @@ export function fetchCovers(): Promise<number> {
 /// are off.
 export function catalogueCover(titleId: string, name: string): Promise<string | null> {
   return invoke("catalogue_cover", { titleId, name });
+}
+
+export interface EmulatorVersion {
+  console: "ps3" | "wiiu";
+  /// Null when it is not installed.
+  version: string | null;
+}
+
+export function emulatorVersions(): Promise<EmulatorVersion[]> {
+  return invoke("emulator_versions");
+}
+
+export function installCemu(): Promise<string> {
+  return invoke("install_cemu");
+}
+
+export function cancelCemuInstall(): Promise<void> {
+  return invoke("cancel_cemu_install");
+}
+
+export function onCemuInstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
+  return listen<InstallProgress>("cemu-install-progress", (event) => handler(event.payload));
 }

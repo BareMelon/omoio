@@ -84,6 +84,9 @@ function sessionCard(session: PlaySession): HTMLElement {
   };
 
   const promptButton = card.querySelector<HTMLButtonElement>('[data-act="prompt"]')!;
+  // The prompt describes how Omoio drives RPCS3, so it is offered for a PS3
+  // session only. Another emulator's session would get advice for the wrong one.
+  if (session.console && session.console !== "ps3") promptButton.classList.add("gone");
   promptButton.onclick = async () => {
     // Built in the backend from the log itself, so it says only what was recorded.
     await copy(await sessionPrompt(session.log_file), promptButton, "Copied");

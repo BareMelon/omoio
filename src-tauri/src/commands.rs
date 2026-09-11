@@ -23,6 +23,7 @@ pub struct InstallState {
     cancel_import: Arc<AtomicBool>,
     cancel_update: Arc<AtomicBool>,
     cancel_compat: Arc<AtomicBool>,
+    cancel_cemu: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -351,6 +352,7 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
         Playing {
             title_id: game.title_id.clone(),
             title: game.title.clone(),
+            console: game.console,
         },
     );
     session.set_fullscreen(Settings::load(&settings_path(&app)?).start_fullscreen);
@@ -1035,16 +1037,16 @@ pub async fn fetch_covers(app: AppHandle) -> Result<usize, String> {
         .filter(|key| !key.is_empty())
         .ok_or("Add a RAWG key first.")?;
     let covers = omoio_data_dir(&app)?.join("covers");
-    let games: Vec<(String, String)> = Library::load(&library_path(&app)?)
+    let games: Vec<(String, String, crate::core::console::Console)> = Library::load(&library_path(&app)?)
         .games()
         .iter()
-        .map(|game| (game.title_id.clone(), game.title.clone()))
+        .map(|game| (game.title_id.clone(), game.title.clone(), game.console))
         .collect();
 
     let client = reqwest::Client::new();
     let mut found = 0;
-    for (title_id, title) in games {
-        if crate::covers::fetch(&client, &key, &covers, &title_id, &title).await? {
+    for (title_id, title, console) in games {
+        if crate::covers::fetch(&client, &key, &covers, &title_id, &title, console).await? {
             found += 1;
         }
     }
@@ -1062,7 +1064,9 @@ pub async fn catalogue_cover(app: AppHandle, title_id: String, name: String) -> 
     let key = settings.rawg_key.filter(|key| !key.is_empty())?;
     let covers = omoio_data_dir(&app).ok()?.join("covers");
     let client = reqwest::Client::new();
-    match crate::covers::fetch(&client, &key, &covers, &title_id, &name).await {
+    // The catalogue is RPCS3's list, so every title in it is a PS3 game.
+    let console = crate::core::console::Console::Ps3;
+    match crate::covers::fetch(&client, &key, &covers, &title_id, &name, console).await {
         Ok(true) => Some(
             crate::covers::cached_path(&covers, &title_id)
                 .to_string_lossy()
@@ -1070,4 +1074,35 @@ pub async fn catalogue_cover(app: AppHandle, title_id: String, name: String) -> 
         ),
         _ => None,
     }
+}
+
+#[derive(serde::Serialize)]
+pub struct EmulatorVersion {
+    pub console: crate::core::console::Console,
+    /// `None` when it is not installed.
+    pub version: Option<String>,
+}
+
+/// What each emulator Omoio runs has installed, for the Emulators screen.
+#[tauri::command]
+pub fn emulator_versions(app: AppHandle) -> Vec<EmulatorVersion> {
+    crate::backends::all()
+        .iter()
+        .map(|backend| EmulatorVersion {
+            console: backend.console(),
+            version: backend.detect_version(&app),
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn install_cemu(app: AppHandle, state: State<'_, InstallState>) -> Result<String, String> {
+    state.cancel_cemu.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_cemu.clone();
+    crate::backends::cemu::install(app, cancel).await
+}
+
+#[tauri::command]
+pub fn cancel_cemu_install(state: State<'_, InstallState>) {
+    state.cancel_cemu.store(true, Ordering::Relaxed);
 }

@@ -67,7 +67,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       <button class="small-btn wide" id="detail-saves">Back up and restore</button>
       <div class="note plain" id="detail-saves-note"></div>
     </div>
-    <div class="sec">
+    <div class="sec" id="sec-compat">
       <div class="sec-h">How well it runs</div>
       <div class="compat" id="detail-compat">
         <span class="status" id="detail-compat-badge"></span>
@@ -122,6 +122,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   const offers = game.features;
   if (!offers.updates) body.querySelector("#sec-version")?.classList.add("gone");
   if (!offers.saves) body.querySelector("#sec-saves")?.classList.add("gone");
+  if (!offers.compatibility) body.querySelector("#sec-compat")?.classList.add("gone");
   for (const [on, id] of [
     [offers.settings, "settings"],
     [offers.patches, "patches"],
@@ -238,7 +239,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       getList.disabled = false;
     }
   };
-  showCompat();
+  if (offers.compatibility) showCompat();
 
   const patchesNote = body.querySelector<HTMLElement>("#detail-patches-note")!;
   const showPatchCount = async () => {

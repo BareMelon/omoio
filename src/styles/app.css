@@ -1381,6 +1381,9 @@ button {
   font-size: 13.5px;
   font-weight: 600;
 }
+.emu-hero + .emu-hero {
+  margin-top: 10px;
+}
 .emu-hero .emu-name {
   font-size: 15px;
 }
@@ -1445,4 +1448,14 @@ button {
   border-radius: 4px;
   background: var(--glass);
   z-index: 2;
+}
+
+/* Installing an emulator from its card on the Emulators screen. */
+.emu-text > .small-btn {
+  margin-top: 8px;
+}
+.emu-progress {
+  margin-top: 8px;
+  padding: 0;
+  border-bottom: none;
 }

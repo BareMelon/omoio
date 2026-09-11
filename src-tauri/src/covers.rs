@@ -10,14 +10,23 @@
 //!   appear on. The interface does that wherever a RAWG cover is shown.
 //!
 //! RAWG knows games by name, not by title id, so a game is looked up by the
-//! name its own PARAM.SFO gives, and a result only counts when RAWG lists it
-//! for PlayStation 3. Each game is asked about once and the answer kept, found
+//! name its own metadata gives, and a result only counts when RAWG lists it
+//! for the game's own console. Each game is asked about once and the answer kept, found
 //! or not, so the monthly allowance lasts.
 
+use crate::core::console::Console;
 use std::path::{Path, PathBuf};
 
 const SEARCH: &str = "https://api.rawg.io/api/games";
-const PLATFORM: &str = "PlayStation 3";
+/// RAWG's name for each console's platform, as it appears in its results.
+/// The PS3's was read off real results. The Wii U's has not been seen in one
+/// yet.
+fn platform(console: Console) -> &'static str {
+    match console {
+        Console::Ps3 => "PlayStation 3",
+        Console::WiiU => "Wii U",
+    }
+}
 
 /// Where a RAWG cover for a title is kept, beside but apart from the dump's
 /// own ICON0, so switching RAWG off goes straight back to that.
@@ -34,7 +43,8 @@ fn miss_path(covers: &Path, title_id: &str) -> PathBuf {
 /// file name here, so anything with a separator or a dot is refused before a
 /// path is built from it.
 fn is_plain_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 12 && id.chars().all(|c| c.is_ascii_alphanumeric())
+    // Nine characters on the PS3, sixteen hex digits on the Wii U.
+    !id.is_empty() && id.len() <= 16 && id.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 /// Downloads an image, or nothing if what comes back is not one.
@@ -74,16 +84,16 @@ fn without_note(name: &str) -> &str {
     }
 }
 
-/// The image of the best PS3 match among RAWG's results, preferring the one
+/// The image of the best match on the right platform, preferring the one
 /// whose name is the same as ours once both are simplified.
-fn pick(results: &[serde_json::Value], name: &str) -> Option<String> {
+fn pick(results: &[serde_json::Value], name: &str, platform: &str) -> Option<String> {
     let wanted = simplify(name);
     let on_ps3 = |game: &&serde_json::Value| {
         game.get("platforms")
             .and_then(|p| p.as_array())
             .is_some_and(|platforms| {
                 platforms.iter().any(|p| {
-                    p.pointer("/platform/name").and_then(|n| n.as_str()) == Some(PLATFORM)
+                    p.pointer("/platform/name").and_then(|n| n.as_str()) == Some(platform)
                 })
             })
     };
@@ -114,6 +124,7 @@ pub async fn fetch(
     covers: &Path,
     title_id: &str,
     name: &str,
+    console: Console,
 ) -> Result<bool, String> {
     if !is_plain_id(title_id) {
         return Err("Couldn't look up that cover.".to_string());
@@ -157,7 +168,7 @@ pub async fn fetch(
         .unwrap_or_default();
 
     std::fs::create_dir_all(covers).map_err(|e| e.to_string())?;
-    let Some(url) = pick(&results, name) else {
+    let Some(url) = pick(&results, name, platform(console)) else {
         let _ = std::fs::write(miss_path(covers, title_id), b"");
         return Ok(false);
     };
@@ -199,7 +210,7 @@ mod tests {
 
     #[test]
     fn only_a_plain_id_is_allowed_near_a_file_name() {
-        for id in ["BLES01689", "NPEA00243", "MRTC00002"] {
+        for id in ["BLES01689", "NPEA00243", "MRTC00002", "0005000010101E00"] {
             assert!(is_plain_id(id), "{id} should pass");
         }
         for bad in ["", "..", "../x", "a/b", "a\\b", "C:", "BLES01689.jpg", "WAYTOOLONGTITLEID"] {
@@ -213,7 +224,7 @@ mod tests {
             game("Demon's Souls", "PlayStation 5", "https://a/ps5.jpg"),
             game("Demon's Souls", "PlayStation 3", "https://a/ps3.jpg"),
         ];
-        assert_eq!(pick(&results, "Demon's Souls™").as_deref(), Some("https://a/ps3.jpg"));
+        assert_eq!(pick(&results, "Demon's Souls™", "PlayStation 3").as_deref(), Some("https://a/ps3.jpg"));
     }
 
     #[test]
@@ -222,18 +233,18 @@ mod tests {
             game("LittleBigPlanet Karting", "PlayStation 3", "https://a/karting.jpg"),
             game("LittleBigPlanet 2", "PlayStation 3", "https://a/lbp2.jpg"),
         ];
-        assert_eq!(pick(&results, "LittleBigPlanet 2").as_deref(), Some("https://a/lbp2.jpg"));
+        assert_eq!(pick(&results, "LittleBigPlanet 2", "PlayStation 3").as_deref(), Some("https://a/lbp2.jpg"));
     }
 
     #[test]
     fn nothing_on_ps3_means_no_cover() {
         let results = [game("Halo 3", "Xbox 360", "https://a/halo.jpg")];
-        assert_eq!(pick(&results, "Halo 3"), None);
+        assert_eq!(pick(&results, "Halo 3", "PlayStation 3"), None);
     }
 
     #[test]
     fn an_image_that_is_not_https_is_refused() {
         let results = [game("Flower", "PlayStation 3", "http://a/flower.jpg")];
-        assert_eq!(pick(&results, "Flower"), None);
+        assert_eq!(pick(&results, "Flower", "PlayStation 3"), None);
     }
 }

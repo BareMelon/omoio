@@ -242,6 +242,7 @@ impl super::EmulatorBackend for Rpcs3 {
             patches: true,
             settings: true,
             saves: true,
+            compatibility: true,
         }
     }
 
@@ -274,5 +275,13 @@ impl super::EmulatorBackend for Rpcs3 {
 
     fn launch(&self, app: &AppHandle, game: &crate::core::library::Game) -> Result<u32, String> {
         launch::launch(app, game)
+    }
+
+    fn detect_version(&self, app: &AppHandle) -> Option<String> {
+        detect_version(app)
+    }
+
+    fn log_file(&self, app: &AppHandle) -> Option<PathBuf> {
+        install_dir(app).ok().map(|dir| dir.join("log").join("RPCS3.log"))
     }
 }

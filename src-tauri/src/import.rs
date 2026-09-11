@@ -120,7 +120,7 @@ pub fn identify(picked: &Path) -> Result<Game, Error> {
 
 /// Sums what it can and ignores what it cannot read, because a size shown in
 /// the interface is never worth failing an import over.
-fn directory_size(root: &Path) -> u64 {
+pub(crate) fn directory_size(root: &Path) -> u64 {
     let mut total = 0;
     // Dumps nest past Windows' 260-character path limit, and this walk would
     // quietly skip whatever sat beyond it and report a size that was too small.

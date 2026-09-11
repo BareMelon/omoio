@@ -47,6 +47,10 @@ pub struct Machine {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
+    /// Which console it ran on. Sessions kept before this was recorded were
+    /// all PS3.
+    #[serde(default)]
+    pub console: crate::core::console::Console,
     pub title_id: String,
     pub title: String,
     pub started: String,
@@ -294,6 +298,7 @@ Qt version: Compiled against Qt 6.11.2\n\
     #[test]
     fn writes_a_prompt_from_what_was_actually_recorded() {
         let session = Session {
+            console: crate::core::console::Console::Ps3,
             title_id: "BCES00850".into(),
             title: "LittleBigPlanet 2".into(),
             started: "2026-08-31T09:20:01".into(),
@@ -323,6 +328,7 @@ Qt version: Compiled against Qt 6.11.2\n\
     #[test]
     fn explains_the_setup_before_handing_over_the_log() {
         let session = Session {
+            console: crate::core::console::Console::Ps3,
             title_id: "BCES00850".into(),
             title: "LittleBigPlanet 2".into(),
             started: "2026-08-31T09:20:01".into(),
@@ -347,6 +353,7 @@ Qt version: Compiled against Qt 6.11.2\n\
     #[test]
     fn says_so_plainly_when_there_was_nothing_to_report() {
         let session = Session {
+            console: crate::core::console::Console::Ps3,
             title_id: "BCES00850".into(),
             title: "LittleBigPlanet 2".into(),
             started: "2026-08-31T09:20:01".into(),
