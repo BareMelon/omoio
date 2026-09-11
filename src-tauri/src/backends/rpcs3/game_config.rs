@@ -98,6 +98,7 @@ const CURATED: &[Curated] = &[
     choice("Video", "MSAA", "Anti-aliasing", "Smooths edges. Turn off if a game shows artefacts.", &["Auto", "Disabled"]),
     number("Video", "Anisotropic Filter Override", "Anisotropic filtering", "Sharpens textures seen at an angle. 0 leaves it to the game.", 0, 16),
     switch("Video", "Write Color Buffers", "Write colour buffers", "Needed by some games for effects to appear. Costs speed."),
+    switch("Video", "Read Color Buffers", "Read colour buffers", "Needed by some games whose effects read back the picture. Costs speed."),
     switch("Video", "Strict Rendering Mode", "Strict rendering", "Slow, but fixes games that render wrongly otherwise."),
     switch("Video", "Multithreaded RSX", "Multithreaded RSX", "Can help on many-core machines and hurt on few."),
     choice("Core", "PPU Decoder", "PPU decoder", "The recompiler is far faster. Interpreters are for when a game will not run at all.", &["Recompiler (LLVM)", "Interpreter (static)"]),
