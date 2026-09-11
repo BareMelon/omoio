@@ -141,31 +141,25 @@ mod tests {
     use super::*;
 
     /// RPCS3 reports a crash on the way out of a headless run even when the
-    /// package went in, so success is read from the log. It has to be this
-    /// run's log, or installing the same update twice would look successful
-    /// the second time no matter what happened.
+    /// package went in, so success is read from the log. RPCS3 starts the log
+    /// afresh on every run, so all of it counts, but only when it was written
+    /// after the run began: an older log is a previous run's.
     #[test]
-    fn reads_success_only_from_what_this_run_wrote() {
-        use std::io::Write;
-
+    fn reads_success_only_from_a_log_this_run_wrote() {
         let log = std::env::temp_dir().join(format!("omoio-pkg-log-{}.txt", std::process::id()));
-        let package = std::path::PathBuf::from("D:/updates/GAME-A0133.pkg");
         let success = "\u{b7}S GUI: Successfully installed D:/updates/GAME-A0133.pkg (version=01.33).\n";
 
-        // An earlier run already reported installing this very package.
+        // A log left by an earlier run says nothing about this one.
+        std::fs::write(&log, format!("{success}{}", "\u{b7}! an earlier, longer run\n".repeat(50))).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let started = std::time::SystemTime::now();
+        assert_eq!(this_run(&log, started), "", "a previous run's log must not count");
+
+        // The new run rewrites the log from the start, shorter than the last
+        // one, which is what the old offset-based reading missed.
+        std::thread::sleep(std::time::Duration::from_millis(20));
         std::fs::write(&log, success).unwrap();
-        let before = std::fs::metadata(&log).unwrap().len();
-        assert!(
-            !installed_according_to_log(&log, before, &package),
-            "a line from a previous run must not count"
-        );
-
-        let mut file = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
-        write!(file, "\u{b7}! nothing to do with packages\n").unwrap();
-        assert!(!installed_according_to_log(&log, before, &package));
-
-        write!(file, "{success}").unwrap();
-        assert!(installed_according_to_log(&log, before, &package));
+        assert!(this_run(&log, started).contains("Successfully installed"));
 
         let _ = std::fs::remove_file(&log);
     }
@@ -299,9 +293,7 @@ pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(),
     }
 
     let log = super::install_dir(app)?.join("log").join("RPCS3.log");
-    // Anything already in the log is from before, and must not be mistaken for
-    // this run having succeeded.
-    let before = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
+    let started = std::time::SystemTime::now();
 
     super::command(&exe)
         .arg("--headless")
@@ -310,10 +302,14 @@ pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(),
         .status()
         .map_err(|e| e.to_string())?;
 
-    if installed_according_to_log(&log, before, package) {
+    let written = this_run(&log, started);
+    let name = package.file_name().unwrap_or_default().to_string_lossy();
+    if written
+        .lines()
+        .any(|line| line.contains("Successfully installed") && line.contains(name.as_ref()))
+    {
         return Ok(());
     }
-    let written = log_since(&log, before);
 
     // Updates are sequential: each package expects the one before it. RPCS3
     // says exactly which version it wanted, and passing that on saves the user
@@ -352,25 +348,19 @@ fn target_version(log: &str) -> Option<String> {
     Some(version.to_string())
 }
 
-fn log_since(log: &std::path::Path, from: u64) -> String {
-    use std::io::{Read, Seek, SeekFrom};
-
-    let Ok(mut file) = std::fs::File::open(log) else {
-        return String::new();
-    };
-    if file.seek(SeekFrom::Start(from)).is_err() {
+/// What RPCS3 wrote during the run that began at `started`.
+///
+/// RPCS3 starts its log afresh on every run, so the whole file is this run's.
+/// Reading on from where the previous log ended, as this once did, skipped
+/// straight past a shorter new log and reported a package that went in
+/// perfectly as refused. A log older than `started` is from before: RPCS3
+/// never got as far as writing one, and it says nothing about this run.
+fn this_run(log: &std::path::Path, started: std::time::SystemTime) -> String {
+    let fresh = std::fs::metadata(log)
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|modified| modified >= started);
+    if !fresh {
         return String::new();
     }
-    let mut written = String::new();
-    let _ = file.read_to_string(&mut written);
-    written
-}
-
-/// Whether RPCS3 said it installed this package, looking only at what it wrote
-/// during this run.
-fn installed_according_to_log(log: &std::path::Path, from: u64, package: &std::path::Path) -> bool {
-    let name = package.file_name().unwrap_or_default().to_string_lossy();
-    log_since(log, from)
-        .lines()
-        .any(|line| line.contains("Successfully installed") && line.contains(name.as_ref()))
+    String::from_utf8_lossy(&std::fs::read(log).unwrap_or_default()).into_owned()
 }

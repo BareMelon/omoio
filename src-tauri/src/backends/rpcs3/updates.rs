@@ -323,6 +323,26 @@ pub fn chain(updates: &[Update], installed: &str, target: &str) -> Vec<Update> {
     steps
 }
 
+/// The version RPCS3 has installed for a game, read from the PARAM.SFO its
+/// updates leave in dev_hdd0. `None` when no update has been installed.
+///
+/// This is what a run starts from. Omoio's own note of the version can fall
+/// behind, as it did when an update went in and Omoio misread the log.
+pub fn installed_version(app: &AppHandle, title_id: &str) -> Option<String> {
+    if title_id.is_empty() || title_id.contains(['/', '\\', '.', ':']) {
+        return None;
+    }
+    let path = super::install_dir(app)
+        .ok()?
+        .join("dev_hdd0")
+        .join("game")
+        .join(title_id)
+        .join("PARAM.SFO");
+    let bytes = std::fs::read(path).ok()?;
+    let sfo = crate::core::sfo::Sfo::parse(&bytes).ok()?;
+    sfo.text("APP_VER").map(str::to_string)
+}
+
 fn downloads_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(super::install_dir(app)?.join("omoio-updates"))
 }

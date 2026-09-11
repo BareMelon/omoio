@@ -854,12 +854,26 @@ pub async fn install_update(
     let cancel = state.cancel_update.clone();
 
     let file = library_path(&app)?;
-    let installed = Library::load(&file)
-        .games()
-        .iter()
-        .find(|g| g.title_id == title_id)
-        .and_then(|g| g.update_version.clone().or_else(|| g.version.clone()))
+    // What RPCS3 itself has installed comes first; the library's note of it
+    // can fall behind.
+    let installed = rpcs3::updates::installed_version(&app, &title_id)
+        .or_else(|| {
+            Library::load(&file)
+                .games()
+                .iter()
+                .find(|g| g.title_id == title_id)
+                .and_then(|g| g.update_version.clone().or_else(|| g.version.clone()))
+        })
         .unwrap_or_default();
+    // Already there, so only the library's note needs catching up.
+    if installed == update.version {
+        let mut library = Library::load(&file);
+        if let Some(game) = library.get_mut(&title_id) {
+            game.update_version = Some(installed);
+            library.save(&file)?;
+        }
+        return Ok(());
+    }
     let published = rpcs3::updates::available(&title_id).await?;
     let mut steps = rpcs3::updates::chain(&published, &installed, &update.version);
     // Going back to an older version is one package on its own.
