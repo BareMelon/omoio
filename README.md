@@ -3,8 +3,7 @@
 Omoio is a desktop app for PS3 emulation. You point it at a game you already own,
 and it handles the setup, updates and configuration that RPCS3 leaves to you.
 
-In development. It runs, imports and launches games today; the catalogue and
-homebrew screens are not built yet.
+In development, and usable.
 
 ![Library](design/screenshots/library.png)
 
@@ -14,6 +13,10 @@ Omoio installs and manages RPCS3 for you, detects your hardware, imports a game
 folder or archive in one step, finds official updates, applies community patches,
 and launches the game. No manual folder work, no title ID lookups, no emulator
 menus.
+
+It also browses every PS3 title with a known compatibility result, so you can
+check how a game runs before setting it up, and installs a .pkg you already have
+onto the emulated console.
 
 ## What it does not do
 

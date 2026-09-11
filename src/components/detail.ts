@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
+  addToLibrary,
   gameCompatibility,
   gamePatches,
   gameSaves,
@@ -11,7 +12,12 @@ import {
   removeGame,
   type Game,
 } from "../api";
+import { placeholderArt } from "./art";
+import type { CatalogueSelection } from "../state";
 import { openGameSettings } from "./gameSettingsSheet";
+import { openImportSheet } from "./importSheet";
+import { rawgCredit } from "./rawgCredit";
+import { knownCover } from "./catalogueCovers";
 import { openPatches } from "./patchesSheet";
 import { openSaves } from "./savesSheet";
 import { openUpdates } from "./updatesSheet";
@@ -31,6 +37,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   hero.innerHTML = game.cover
     ? `<img src="${convertFileSrc(game.cover)}" alt="">`
     : `<div class="d-art-blank"></div>`;
+  if (game.cover_source === "rawg") hero.appendChild(rawgCredit());
 
   body.innerHTML = `
     <div class="d-title"></div>
@@ -39,7 +46,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       <svg viewBox="0 0 12 14" fill="currentColor"><path d="M1 1l10 6-10 6z"/></svg>Play
     </button>
     <div class="note" id="detail-note"></div>
-    <div class="sec">
+    <div class="sec" id="sec-details">
       <div class="sec-h">Details</div>
       ${row("Version", game.version ? game.version : "unknown")}
       ${row("Size on disk", formatSize(game.size_bytes))}
@@ -49,13 +56,13 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
         game.available ? "" : "warn"
       )}
     </div>
-    <div class="sec">
+    <div class="sec" id="sec-version">
       <div class="sec-h">Game version</div>
       <button class="small-btn wide" id="detail-update">Check for updates</button>
       <div class="note plain" id="detail-update-note"></div>
       <button class="link-btn gone" id="detail-update-more">Choose another version</button>
     </div>
-    <div class="sec">
+    <div class="sec" id="sec-saves">
       <div class="sec-h">Saved games</div>
       <button class="small-btn wide" id="detail-saves">Back up and restore</button>
       <div class="note plain" id="detail-saves-note"></div>
@@ -68,14 +75,14 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       </div>
       <div class="note plain" id="detail-compat-note"></div>
     </div>
-    <div class="sec">
+    <div class="sec" id="sec-emulator">
       <div class="sec-h">Emulator</div>
       <button class="small-btn wide" id="detail-settings">Change settings</button>
       <div class="note plain" id="detail-settings-note"></div>
       <button class="small-btn wide" id="detail-patches">Patches</button>
       <div class="note plain" id="detail-patches-note"></div>
     </div>
-    <div class="sec">
+    <div class="sec" id="sec-location">
       <div class="sec-h">Location</div>
       <div class="d-path"></div>
       <button class="link-btn" id="detail-remove">Remove from library</button>
@@ -91,7 +98,26 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   const note = body.querySelector<HTMLElement>("#detail-note")!;
   const play = body.querySelector<HTMLButtonElement>("#detail-play")!;
   play.disabled = !game.available;
-  if (!game.available) {
+  if (!game.set_up) {
+    // Noted from the catalogue and never imported. It says what to do and
+    // gives you the way to do it, rather than reporting a fault.
+    note.textContent = "Import this game's files to play it.";
+    const importIt = document.createElement("button");
+    importIt.className = "small-btn wide";
+    importIt.textContent = "Import game";
+    importIt.onclick = openImportSheet;
+    note.after(importIt);
+
+    // Nothing about a size, a version, saves or the emulator means anything
+    // until the files are here. How well it runs still does: it says whether
+    // this is worth setting up at all. Location keeps its Remove button, since
+    // taking the note back off the list has to stay possible.
+    for (const id of ["details", "version", "saves", "emulator"]) {
+      body.querySelector(`#sec-${id}`)?.classList.add("gone");
+    }
+    body.querySelector(".d-path")!.classList.add("gone");
+  }
+  if (game.set_up && !game.available) {
     note.textContent = "Reconnect the drive this game is on to play it.";
   }
   play.onclick = async () => {
@@ -235,6 +261,120 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   };
 }
 
+/// A title from the catalogue: not owned, maybe never seen, so everything here
+/// is about whether it is worth getting and what is known about it.
+function fillListing(body: HTMLElement, hero: HTMLElement, { listing, siblings }: CatalogueSelection): void {
+  // The tile is drawn to fill a portrait card by cropping. The hero is wide and
+  // short, where cropping leaves a sliver of the ring, so here it is shown whole.
+  const cover = knownCover(listing.title_id);
+  if (cover) {
+    hero.innerHTML = `<img src="${convertFileSrc(cover)}" alt="">`;
+    hero.appendChild(rawgCredit());
+  } else {
+    hero.innerHTML = placeholderArt(listing.title_id, listing.name).replace(
+      "xMidYMid slice",
+      "xMidYMid meet"
+    );
+  }
+  body.innerHTML = `
+    <div class="d-title"></div>
+    <div class="d-sub"></div>
+    <button class="play" id="listing-add"></button>
+    <div class="note" id="listing-note"></div>
+    <div class="sec">
+      <div class="sec-h">How well it runs</div>
+      <div class="compat"><span class="status" id="listing-compat"></span></div>
+      <div class="note plain" id="listing-compat-note"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-h">Official updates</div>
+      <button class="small-btn wide" id="listing-updates">Check for updates</button>
+      <div class="note plain" id="listing-updates-note"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-h">Community patches</div>
+      <div class="note plain" id="listing-patches"></div>
+    </div>
+    <div class="sec gone" id="listing-others">
+      <div class="sec-h">Also released as</div>
+      <div id="listing-others-rows"></div>
+    </div>
+  `;
+  // A game's own name, so never through innerHTML.
+  body.querySelector<HTMLElement>(".d-title")!.textContent = listing.name;
+  body.querySelector<HTMLElement>(".d-sub")!.textContent = [listing.title_id, listing.region]
+    .filter(Boolean)
+    .join(" · ");
+
+  const note = body.querySelector<HTMLElement>("#listing-note")!;
+  const add = body.querySelector<HTMLButtonElement>("#listing-add")!;
+  const owned = (store.get().games ?? []).some((game) => game.title_id === listing.title_id);
+  add.textContent = owned ? "In your library" : "Add to library";
+  add.disabled = owned;
+  add.onclick = async () => {
+    add.disabled = true;
+    try {
+      await addToLibrary(listing.title_id, listing.name);
+      add.textContent = "In your library";
+      note.textContent = "Import its files from the library to play it.";
+      store.setGames(await listGames());
+    } catch (err) {
+      note.textContent = typeof err === "string" ? err : "Couldn't add that game.";
+      add.disabled = false;
+    }
+  };
+
+  const badge = body.querySelector<HTMLElement>("#listing-compat")!;
+  const compatNote = body.querySelector<HTMLElement>("#listing-compat-note")!;
+  void gameCompatibility(listing.title_id).then((compat) => {
+    badge.textContent = compat.label;
+    badge.className = `status ${compat.tone}`;
+    compatNote.textContent = compat.checked
+      ? `${compat.explanation} Last reported ${compat.checked}.`
+      : compat.explanation;
+  });
+
+  // Asked only when pressed, the same as for a game in the library: it is a
+  // request to Sony, and opening a title should not quietly make one.
+  const updates = body.querySelector<HTMLButtonElement>("#listing-updates")!;
+  const updatesNote = body.querySelector<HTMLElement>("#listing-updates-note")!;
+  updates.onclick = async () => {
+    updates.disabled = true;
+    updates.textContent = "Checking…";
+    try {
+      const found = await gameUpdates(listing.title_id);
+      updatesNote.textContent =
+        found.length === 0
+          ? "Sony never published an update for this game."
+          : found.length === 1
+            ? `Sony published one update, version ${found[0].version}.`
+            : `Sony published ${found.length} updates, up to version ${found[0].version}.`;
+    } catch (err) {
+      updatesNote.textContent = typeof err === "string" ? err : "Couldn't reach Sony's update service.";
+    } finally {
+      updates.disabled = false;
+      updates.textContent = "Check for updates";
+    }
+  };
+
+  const patchesNote = body.querySelector<HTMLElement>("#listing-patches")!;
+  void gamePatches(listing.title_id).then(({ have_list, patches }) => {
+    patchesNote.textContent = !have_list
+      ? "No patch list yet."
+      : patches.length === 0
+        ? "None published for this game."
+        : patches.length === 1
+          ? "One published for this game."
+          : `${patches.length} published for this game.`;
+  });
+
+  if (siblings.length > 0) {
+    body.querySelector("#listing-others")!.classList.remove("gone");
+    const rows = body.querySelector<HTMLElement>("#listing-others-rows")!;
+    rows.innerHTML = siblings.map((other) => row(other.region || "Other", other.title_id)).join("");
+  }
+}
+
 export function renderDetail(): HTMLElement {
   const detail = document.createElement("aside");
   detail.className = "detail hidden";
@@ -250,14 +390,35 @@ export function renderDetail(): HTMLElement {
   const hero = detail.querySelector<HTMLElement>(".d-art")!;
   const body = detail.querySelector<HTMLElement>(".d-body")!;
 
-  detail.querySelector<HTMLButtonElement>(".d-close")!.onclick = () => store.setSelected(null);
+  detail.querySelector<HTMLButtonElement>(".d-close")!.onclick = () => {
+    store.setSelected(null);
+    store.setCatalogueSelected(null);
+  };
+
+  let shownListing: string | null = null;
 
   store.subscribe((state) => {
-    // The game picture covers this side of the window, so nothing is shown
-    // here while one is running.
-    const game = state.playing
-      ? undefined
-      : state.games.find((g) => g.title_id === state.selected);
+    if (!state.playing && state.view === "catalogue" && state.catalogueSelected) {
+      detail.classList.remove("hidden");
+      // Filled once per pick. Typing in the search box notifies too, and
+      // refilling would ask for the same answers again on every letter.
+      const picked = state.catalogueSelected.listing.title_id;
+      if (picked !== shownListing) {
+        shownListing = picked;
+        fillListing(body, hero, state.catalogueSelected);
+      }
+      return;
+    }
+    shownListing = null;
+
+    // This panel belongs to the library. It stays out of the way while a game
+    // runs, since the picture covers this side of the window, and while any
+    // other screen is up, where a game selected earlier is not what you are
+    // looking at.
+    const game =
+      state.playing || state.view !== "library"
+        ? undefined
+        : state.games?.find((g) => g.title_id === state.selected);
     detail.classList.toggle("hidden", !game);
     if (game) fill(body, hero, game);
   });

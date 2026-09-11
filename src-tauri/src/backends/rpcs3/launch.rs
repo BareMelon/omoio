@@ -295,7 +295,7 @@ mod tests {
 pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(), String> {
     let exe = super::exe_path(app)?;
     if !exe.exists() {
-        return Err("Install RPCS3 first, then updates can be installed.".to_string());
+        return Err("Install RPCS3 first, then packages can be installed.".to_string());
     }
 
     let log = super::install_dir(app)?.join("log").join("RPCS3.log");
@@ -323,7 +323,7 @@ pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(),
             "This update follows on from version {wanted}. Install that one first."
         ));
     }
-    Err("RPCS3 couldn't install that update.".to_string())
+    Err("RPCS3 couldn't install that package.".to_string())
 }
 
 /// The version a refused package was expecting.

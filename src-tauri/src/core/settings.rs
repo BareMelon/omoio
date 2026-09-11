@@ -18,6 +18,21 @@ pub struct Settings {
     /// never again; both answers stay changeable in Settings.
     #[serde(default)]
     pub set_up: bool,
+    /// Set once Omoio has sized the picture for this machine. It happens once,
+    /// so a scale the user picks afterwards is never put back.
+    #[serde(default)]
+    pub tuned: bool,
+    /// The scale that was, for the System screen.
+    #[serde(default)]
+    pub tuned_scale: Option<u32>,
+    /// Real covers from RAWG in place of the generated tiles. Off until the
+    /// user turns it on.
+    #[serde(default)]
+    pub covers: bool,
+    /// The user's own RAWG key. Kept in this file on their machine, never
+    /// shipped with the app.
+    #[serde(default)]
+    pub rawg_key: Option<String>,
 }
 
 fn default_keep_sessions() -> usize {
@@ -31,6 +46,10 @@ impl Default for Settings {
             start_fullscreen: false,
             keep_sessions: default_keep_sessions(),
             set_up: false,
+            tuned: false,
+            tuned_scale: None,
+            covers: false,
+            rawg_key: None,
         }
     }
 }
@@ -72,6 +91,10 @@ mod tests {
             start_fullscreen: true,
             keep_sessions: 5,
             set_up: true,
+            tuned: true,
+            tuned_scale: Some(200),
+            covers: true,
+            rawg_key: Some("k".to_string()),
         };
         settings.save(&path).unwrap();
 
@@ -79,6 +102,8 @@ mod tests {
         assert_eq!(loaded.games_folder, Some(PathBuf::from("D:\\PS3")));
         assert!(loaded.start_fullscreen);
         assert_eq!(loaded.keep_sessions, 5);
+        assert!(loaded.tuned);
+        assert_eq!(loaded.tuned_scale, Some(200));
         let _ = std::fs::remove_file(&path);
     }
 

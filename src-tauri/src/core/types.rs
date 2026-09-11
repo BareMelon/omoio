@@ -33,17 +33,23 @@ pub struct DisplayInfo {
     pub refresh_hz: u32,
 }
 
-/// A library entry as the interface needs it. `available` is false when the
-/// folder is gone right now, which for a game on an external drive is a normal
-/// state rather than a broken entry.
+/// A library entry as the interface needs it.
+///
+/// Two different absences, told apart on purpose. `set_up` is false for a game
+/// added from the catalogue that has no files yet. `available` is false for a
+/// game that does have files, on a drive that is not plugged in right now,
+/// which is normal rather than broken.
 #[derive(Serialize)]
 pub struct GameEntry {
     #[serde(flatten)]
     pub game: crate::core::library::Game,
     pub available: bool,
+    pub set_up: bool,
     /// The dump's own tile art, copied somewhere we control so it still shows
     /// when the drive holding the game is unplugged.
     pub cover: Option<String>,
+    /// "dump" for the game's own icon, "rawg" for a RAWG cover.
+    pub cover_source: Option<&'static str>,
 }
 
 #[derive(Clone, Serialize)]

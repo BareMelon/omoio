@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   cancelRpcs3Install,
   getHardwareInfo,
+  getSettings,
   installFirmware,
   installRpcs3,
   onRpcs3InstallProgress,
@@ -60,7 +61,10 @@ function statusRow(label: string, valueId: string): HTMLElement {
   return row;
 }
 
-function renderEmulator(rpcs3Version: string | null, firmwareVersion: string | null): HTMLElement {
+function renderEmulator(
+  rpcs3Version: string | null | undefined,
+  firmwareVersion: string | null | undefined
+): HTMLElement {
   const el = document.createElement("div");
   el.className = "sec";
   el.innerHTML = `<div class="sec-h">Emulator</div>`;
@@ -78,7 +82,7 @@ function renderEmulator(rpcs3Version: string | null, firmwareVersion: string | n
 
   let installedRpcs3 = rpcs3Version;
 
-  function showRpcs3Idle(current: string | null) {
+  function showRpcs3Idle(current: string | null | undefined) {
     installedRpcs3 = current;
     rpcs3VersionEl.textContent = current ?? "Not installed";
     rpcs3Action.innerHTML = current
@@ -130,7 +134,7 @@ function renderEmulator(rpcs3Version: string | null, firmwareVersion: string | n
     }
   }
 
-  function showFirmwareIdle(current: string | null, note?: string) {
+  function showFirmwareIdle(current: string | null | undefined, note?: string) {
     firmwareVersionEl.textContent = current ?? "Not installed";
     if (current) {
       firmwareAction.innerHTML = "";
@@ -178,13 +182,31 @@ function renderEmulator(rpcs3Version: string | null, firmwareVersion: string | n
   return el;
 }
 
+/// What Omoio set the picture to, and why, so the choice can be seen rather than
+/// having happened behind the user’s back.
+function renderPicture(hw: HardwareInfo, scale: number | null): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "sec";
+  const display = hw.display ? `${hw.display.width}×${hw.display.height}` : "";
+  el.innerHTML = `
+    <div class="sec-h">Picture</div>
+    ${hwRow("Scale", scale ? `${scale}%` : "Not set yet", display)}
+    <div class="note plain"></div>
+  `;
+  el.querySelector<HTMLElement>(".note")!.textContent = scale
+    ? `Games draw at ${scale}% of the PS3’s 1280×720, sized for this display and graphics card.`
+    : "Set the first time a game starts, from this display and graphics card.";
+  return el;
+}
+
 export async function renderSystem(): Promise<View> {
-  const hw = await getHardwareInfo();
+  const [hw, settings] = await Promise.all([getHardwareInfo(), getSettings()]);
   const { rpcs3Version, firmwareVersion } = store.get();
 
   const content = document.createElement("div");
   content.className = "hw";
   content.appendChild(renderHardware(hw));
+  content.appendChild(renderPicture(hw, settings.tuned_scale));
   content.appendChild(renderEmulator(rpcs3Version, firmwareVersion));
 
   return {

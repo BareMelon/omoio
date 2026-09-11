@@ -12,6 +12,7 @@ import {
 } from "./api";
 import { renderPlayingBar } from "./components/playingBar";
 import { openSetupIfNeeded } from "./components/setupSheet";
+import { watchForDroppedGames } from "./components/dropZone";
 import { store, type ViewId } from "./state";
 import { renderTitlebar } from "./components/titlebar";
 import { renderSidebar } from "./components/sidebar";
@@ -19,6 +20,8 @@ import { renderDetail } from "./components/detail";
 import { renderLibrary } from "./views/library";
 import { renderCatalogue } from "./views/catalogue";
 import { renderHomebrew } from "./views/homebrew";
+import { renderController } from "./views/controller";
+import { renderEmulators } from "./views/emulators";
 import { renderUpdates } from "./views/updates";
 import { renderSystem } from "./views/system";
 import { renderLogs } from "./views/logs";
@@ -29,6 +32,8 @@ const VIEWS: Record<ViewId, () => View | Promise<View>> = {
   library: renderLibrary,
   catalogue: renderCatalogue,
   homebrew: renderHomebrew,
+  controller: renderController,
+  emulators: renderEmulators,
   updates: renderUpdates,
   system: renderSystem,
   logs: renderLogs,
@@ -53,7 +58,19 @@ const viewTitle = topbar.querySelector<HTMLElement>(".view-title")!;
 const viewSub = topbar.querySelector<HTMLElement>(".view-sub")!;
 
 const searchBox = topbar.querySelector<HTMLInputElement>(".search input")!;
-searchBox.oninput = () => store.setSearch(searchBox.value);
+
+// One box, searching whatever is on screen. The library holds a handful of
+// games and filters as you type; the catalogue holds thousands and is asked
+// once you pause, so the grid does not rebuild faster than it can be read.
+let searchDelay: number | undefined;
+searchBox.oninput = () => {
+  window.clearTimeout(searchDelay);
+  if (store.get().view === "catalogue") {
+    searchDelay = window.setTimeout(() => store.setCatalogueQuery(searchBox.value), 200);
+  } else {
+    store.setSearch(searchBox.value);
+  }
+};
 
 const content = document.createElement("div");
 content.className = "content";
@@ -71,15 +88,41 @@ app.append(renderTitlebar(), shell);
 const topbarNormal = [...topbar.children];
 
 let renderToken = 0;
+let searchingIn: ViewId | null = null;
+// What the top bar is currently showing. Putting the same children back is not
+// free: it takes the search box out of the document and returns it, which drops
+// focus, so typing a second letter was impossible.
+let barShowing: string | null = null;
+
 store.subscribe((state) => {
   // While a game runs, its picture covers the content area, so the top bar
   // becomes the controls for it and the view underneath is left alone.
   if (state.playing) {
-    topbar.replaceChildren(renderPlayingBar(state.playing));
+    if (barShowing !== state.playing.title_id) {
+      barShowing = state.playing.title_id;
+      topbar.replaceChildren(renderPlayingBar(state.playing));
+    }
     content.replaceChildren();
     return;
   }
-  topbar.replaceChildren(...topbarNormal);
+  if (barShowing !== null) {
+    barShowing = null;
+    topbar.replaceChildren(...topbarNormal);
+  }
+
+  // Only when the view changes, so what is being typed is never overwritten.
+  if (state.view !== searchingIn) {
+    searchingIn = state.view;
+    const catalogue = state.view === "catalogue";
+    searchBox.placeholder = catalogue ? "Search every PS3 game…" : "Search your games…";
+    searchBox.value = catalogue ? state.catalogueQuery : state.search;
+    // Nothing else has a search, so the box goes away rather than sitting
+    // there doing nothing.
+    searchBox.parentElement!.classList.toggle(
+      "gone",
+      state.view !== "catalogue" && state.view !== "library"
+    );
+  }
 
   const token = ++renderToken;
   Promise.resolve(VIEWS[state.view]()).then((view) => {
@@ -97,6 +140,9 @@ playingGame().then((playing) => store.setPlaying(playing));
 
 // Asked once, before anything else is worth doing.
 openSetupIfNeeded();
+
+// Dragging a game onto the window imports it, the same as the Import button.
+void watchForDroppedGames();
 
 onGameStarted((playing) => store.setPlaying(playing));
 onGameFullscreen((on) => store.setGameFullscreen(on));

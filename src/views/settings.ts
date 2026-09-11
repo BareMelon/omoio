@@ -17,6 +17,9 @@ import {
   setKeepSessions,
   setRegion,
   setStartFullscreen,
+  setCovers,
+  setRawgKey,
+  fetchCovers,
   setUsername,
   type InstallProgress,
   type Places,
@@ -193,6 +196,51 @@ export async function renderSettings(): Promise<View> {
   content.appendChild(section("Console", nameRow.row, regionRow.row));
   content.appendChild(section("Playing", fullscreen.row, games.row));
 
+  // ---- cover art ----
+  const rawgRow = row(
+    "Real covers from RAWG",
+    "Box art in place of the generated tiles. Needs a free RAWG key, which stays on this computer."
+  );
+  const keyRow = row("RAWG key");
+  const keyInput = document.createElement("input");
+  keyInput.className = "text-in";
+  keyInput.type = "password";
+  keyInput.spellcheck = false;
+  keyInput.placeholder = "Paste your key";
+  keyInput.value = settings.rawg_key ?? "";
+  const coversSaid = document.createElement("span");
+  coversSaid.className = "cfg-v";
+  const getKey = document.createElement("button");
+  getKey.className = "link-btn";
+  getKey.textContent = "Get a free key";
+  getKey.onclick = () => void openUrl("https://rawg.io/apidocs");
+  const lookUp = async () => {
+    coversSaid.textContent = "Looking up covers…";
+    try {
+      const found = await fetchCovers();
+      coversSaid.textContent = found === 1 ? "1 cover" : `${found} covers`;
+    } catch (err) {
+      coversSaid.textContent = typeof err === "string" ? err : "Couldn't reach RAWG.";
+    }
+    store.setGames(await listGames());
+  };
+  keyInput.onchange = async () => {
+    await setRawgKey(keyInput.value.trim());
+    if (settings.covers && keyInput.value.trim()) await lookUp();
+  };
+  rawgRow.right.appendChild(
+    toggle(settings.covers, async (next) => {
+      await setCovers(next);
+      settings.covers = next;
+      keyRow.row.classList.toggle("gone", !next);
+      if (next && keyInput.value.trim()) await lookUp();
+      else store.setGames(await listGames());
+    })
+  );
+  keyRow.right.append(coversSaid, getKey, keyInput);
+  keyRow.row.classList.toggle("gone", !settings.covers);
+  content.appendChild(section("Cover art", rawgRow.row, keyRow.row));
+
   // ---- emulator, and putting it right when it breaks ----
   const rpcs3Row = row("RPCS3", "Reinstalling replaces the emulator. Your games and saves are untouched.");
   const rpcs3Value = value(rpcs3Version ?? "Not installed");
@@ -282,7 +330,7 @@ export async function renderSettings(): Promise<View> {
   content.appendChild(section("Session logs", keep.row, logsRow.row));
 
   // ---- library ----
-  const count = store.get().games.length;
+  const count = store.get().games?.length ?? 0;
   const libraryRow = row(
     "Library",
     `${count} ${count === 1 ? "game" : "games"} · ${places.library}`

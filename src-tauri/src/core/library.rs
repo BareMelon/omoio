@@ -31,6 +31,28 @@ impl Game {
             .as_deref()
             .or(self.version.as_deref())
     }
+
+    /// Whether this entry has files behind it.
+    ///
+    /// A game added from the catalogue has none yet: it is a note that the user
+    /// owns it, waiting for them to import it. That is a different thing from a
+    /// game whose drive is unplugged, and the interface has to say so
+    /// differently or the two look like the same fault.
+    pub fn is_set_up(&self) -> bool {
+        !self.path.as_os_str().is_empty()
+    }
+
+    /// An entry for a game the user says they own but has not imported.
+    pub fn not_set_up(title_id: String, title: String) -> Self {
+        Self {
+            title_id,
+            title,
+            version: None,
+            update_version: None,
+            path: PathBuf::new(),
+            size_bytes: 0,
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

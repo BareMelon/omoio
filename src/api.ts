@@ -68,6 +68,11 @@ export interface Game {
   available: boolean;
   /// Cached copy of the dump's own ICON0.PNG, or null if it had none.
   cover: string | null;
+  /// False for a game noted from the catalogue that has no files yet. Not the
+  /// same as `available`, which means the files exist but the drive is out.
+  set_up: boolean;
+  /// Where the cover came from: the dump's own icon, or RAWG.
+  cover_source: "dump" | "rawg" | null;
 }
 
 export function listGames(): Promise<Game[]> {
@@ -191,6 +196,12 @@ export interface Settings {
   games_folder: string | null;
   start_fullscreen: boolean;
   keep_sessions: number;
+  /// The resolution scale Omoio set for this machine, once it has.
+  tuned_scale: number | null;
+  /// Real covers from RAWG in place of the generated tiles. Off until asked for.
+  covers: boolean;
+  /// The user's own RAWG key, kept on this machine only.
+  rawg_key: string | null;
 }
 
 export function getSettings(): Promise<Settings> {
@@ -267,6 +278,22 @@ export function gameCompatibility(titleId: string): Promise<Compatibility> {
 
 export function refreshCompatibility(): Promise<number> {
   return invoke("refresh_compatibility");
+}
+
+export function cancelCompatibility(): Promise<void> {
+  return invoke("cancel_compatibility");
+}
+
+export interface CompatProgress {
+  stage: "names";
+  bytes: number;
+  total: number;
+}
+
+export function onCompatProgress(
+  handler: (progress: CompatProgress) => void
+): Promise<UnlistenFn> {
+  return listen<CompatProgress>("compat-progress", (event) => handler(event.payload));
 }
 
 export interface Patch {
@@ -416,4 +443,116 @@ export interface PendingUpdate {
 
 export function pendingUpdates(): Promise<[boolean, PendingUpdate[]]> {
   return invoke("pending_updates");
+}
+
+export interface Listing {
+  title_id: string;
+  /// The game's name, or its title id when Sony published none.
+  name: string;
+  status: string;
+  named: boolean;
+  /// Where the disc was sold, when the title id says. The same game is listed
+  /// once per region, so this is what tells two identical rows apart.
+  region: string;
+}
+
+export interface CatalogueView {
+  have_list: boolean;
+  total: number;
+  shown: Listing[];
+  in_library: string[];
+}
+
+export function catalogue(query: string, region: string): Promise<CatalogueView> {
+  return invoke("catalogue", { query, region });
+}
+
+export function addToLibrary(titleId: string, title: string): Promise<void> {
+  return invoke("add_to_library", { titleId, title });
+}
+
+export interface InstalledPackage {
+  title_id: string;
+  title: string;
+  version: string;
+  size_bytes: number;
+}
+
+export function installedPackages(): Promise<InstalledPackage[]> {
+  return invoke("installed_packages");
+}
+
+export function installPackage(path: string): Promise<void> {
+  return invoke("install_package", { path });
+}
+
+export function removePackage(titleId: string): Promise<void> {
+  return invoke("remove_package", { titleId });
+}
+
+export type DroppedKind = "folder" | "archive" | "unknown";
+
+export function droppedKind(path: string): Promise<DroppedKind> {
+  return invoke("dropped_kind", { path });
+}
+
+export interface ControllerInfo {
+  /// What RPCS3 stores for the pad, e.g. "XInput Pad #1".
+  device: string;
+  name: string;
+  handler: string;
+}
+
+export interface Binding {
+  /// The PS3 input, e.g. "Cross" or "Left Stick Up".
+  key: string;
+  /// The physical button, by its SDL name, e.g. "South".
+  button: string;
+}
+
+export interface ControllerView {
+  connected: ControllerInfo[];
+  bound: ControllerInfo | null;
+  own: boolean;
+  bindings: Binding[];
+  choices: string[];
+}
+
+export function controllerView(titleId: string): Promise<ControllerView> {
+  return invoke("controller_view", { titleId });
+}
+
+export function setUpController(titleId: string): Promise<ControllerInfo> {
+  return invoke("set_up_controller", { titleId });
+}
+
+export function saveController(
+  titleId: string,
+  controller: ControllerInfo,
+  bindings: Binding[]
+): Promise<void> {
+  return invoke("save_controller", { titleId, controller, bindings });
+}
+
+export function forgetController(titleId: string): Promise<void> {
+  return invoke("forget_controller", { titleId });
+}
+
+export function setCovers(on: boolean): Promise<void> {
+  return invoke("set_covers", { on });
+}
+
+export function setRawgKey(key: string): Promise<void> {
+  return invoke("set_rawg_key", { key });
+}
+
+/// Looks up covers for the library. Resolves to how many games have one.
+export function fetchCovers(): Promise<number> {
+  return invoke("fetch_covers");
+}
+
+/// The RAWG cover for a catalogue title, or null when there is none or covers
+/// are off.
+export function catalogueCover(titleId: string, name: string): Promise<string | null> {
+  return invoke("catalogue_cover", { titleId, name });
 }

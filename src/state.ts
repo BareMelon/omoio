@@ -1,9 +1,18 @@
-import type { Game, Playing } from "./api";
+import type { Game, Listing, Playing } from "./api";
+
+/// A catalogue title opened in the side panel, with the other regions' releases
+/// of the same game that were on screen when it was picked.
+export interface CatalogueSelection {
+  listing: Listing;
+  siblings: Listing[];
+}
 
 export type ViewId =
   | "library"
   | "catalogue"
   | "homebrew"
+  | "controller"
+  | "emulators"
   | "updates"
   | "system"
   | "logs"
@@ -11,10 +20,23 @@ export type ViewId =
 
 interface AppState {
   view: ViewId;
-  rpcs3Version: string | null;
-  firmwareVersion: string | null;
-  games: Game[];
+  /// `undefined` until the first check comes back. `null` means it came back
+  /// and there is nothing installed, which reads very differently.
+  rpcs3Version: string | null | undefined;
+  firmwareVersion: string | null | undefined;
+  /// `undefined` until the library has been read. An empty array means it was
+  /// read and there is nothing in it, which is what "No games yet" is for.
+  games: Game[] | undefined;
+  /// The library search box.
   search: string;
+  /// The catalogue has its own, over every PS3 game rather than yours.
+  catalogueQuery: string;
+  /// Which region the catalogue is showing, or empty for all of them.
+  catalogueRegion: string;
+  /// Whose controller layout is on screen: empty for every game, or a title id.
+  controllerScope: string;
+  /// The catalogue title open in the side panel, if any.
+  catalogueSelected: CatalogueSelection | null;
   notice: string | null;
   playing: Playing | null;
   gameFullscreen: boolean;
@@ -30,10 +52,14 @@ type Listener = (state: AppState) => void;
 class Store {
   private state: AppState = {
     view: "library",
-    rpcs3Version: null,
-    firmwareVersion: null,
-    games: [],
+    rpcs3Version: undefined,
+    firmwareVersion: undefined,
+    games: undefined,
     search: "",
+    catalogueQuery: "",
+    catalogueRegion: "",
+    controllerScope: "",
+    catalogueSelected: null,
     notice: null,
     playing: null,
     gameFullscreen: false,
@@ -69,6 +95,35 @@ class Store {
   setSearch(search: string): void {
     if (search === this.state.search) return;
     this.state = { ...this.state, search };
+    this.notify();
+  }
+
+  /// Redraw without anything having changed. The catalogue needs it after
+  /// fetching the list, where the state is the same but the answer is not.
+  redraw(): void {
+    this.notify();
+  }
+
+  setCatalogueSelected(catalogueSelected: CatalogueSelection | null): void {
+    this.state = { ...this.state, catalogueSelected };
+    this.notify();
+  }
+
+  setControllerScope(controllerScope: string): void {
+    if (controllerScope === this.state.controllerScope) return;
+    this.state = { ...this.state, controllerScope };
+    this.notify();
+  }
+
+  setCatalogueRegion(catalogueRegion: string): void {
+    if (catalogueRegion === this.state.catalogueRegion) return;
+    this.state = { ...this.state, catalogueRegion };
+    this.notify();
+  }
+
+  setCatalogueQuery(catalogueQuery: string): void {
+    if (catalogueQuery === this.state.catalogueQuery) return;
+    this.state = { ...this.state, catalogueQuery };
     this.notify();
   }
 

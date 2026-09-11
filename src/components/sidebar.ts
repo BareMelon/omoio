@@ -13,6 +13,19 @@ const GAMES_NAV: NavItem[] = [
   { id: "homebrew", label: "Homebrew", icon: '<path d="M8 2v8M5 7l3 3 3-3M3 13h10"/>' },
 ];
 
+const SETUP_NAV: NavItem[] = [
+  {
+    id: "controller",
+    label: "Controller",
+    icon: '<path d="M5 5h6a3 3 0 0 1 3 3.3l-.3 2.4a1.5 1.5 0 0 1-2.7.7L9.9 10H6.1L5 11.4a1.5 1.5 0 0 1-2.7-.7L2 8.3A3 3 0 0 1 5 5z"/><path d="M5.2 6.9v2.2M4.1 8h2.2"/><path d="M10.6 7.6h.01M11.6 8.6h.01"/>',
+  },
+  {
+    id: "emulators",
+    label: "Emulators",
+    icon: '<path d="M8 2.2l5.8 2.9L8 8 2.2 5.1z"/><path d="M2.2 8L8 10.9 13.8 8"/><path d="M2.2 10.9L8 13.8l5.8-2.9"/>',
+  },
+];
+
 const MAINTENANCE_NAV: NavItem[] = [
   { id: "updates", label: "Updates", icon: '<path d="M13.5 8a5.5 5.5 0 1 1-1.9-4.2M13 2v3.5h-3.5"/>' },
   {
@@ -51,12 +64,23 @@ function navButton(item: NavItem): HTMLButtonElement {
   return btn;
 }
 
+/// Blank while the first check is still out. Saying "Not installed" before we
+/// know makes a working install look like a fresh one for the first moment
+/// after the window opens.
+function installedVersion(known: string | null | undefined): string {
+  if (known === undefined) return "";
+  return known ?? "Not installed";
+}
+
 export function renderSidebar(): HTMLElement {
   const side = document.createElement("aside");
   side.className = "side";
 
   side.appendChild(navLabel("Games"));
   GAMES_NAV.forEach((item) => side.appendChild(navButton(item)));
+
+  side.appendChild(navLabel("Setup"));
+  SETUP_NAV.forEach((item) => side.appendChild(navButton(item)));
 
   side.appendChild(navLabel("Maintenance"));
   MAINTENANCE_NAV.forEach((item) => side.appendChild(navButton(item)));
@@ -81,8 +105,8 @@ export function renderSidebar(): HTMLElement {
     side.querySelectorAll<HTMLButtonElement>(".nav-item").forEach((btn) => {
       btn.classList.toggle("on", btn.dataset.view === state.view);
     });
-    rpcs3Stat.textContent = state.rpcs3Version ?? "Not installed";
-    firmwareStat.textContent = state.firmwareVersion ?? "Not installed";
+    rpcs3Stat.textContent = installedVersion(state.rpcs3Version);
+    firmwareStat.textContent = installedVersion(state.firmwareVersion);
   });
 
   return side;

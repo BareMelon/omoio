@@ -1,4 +1,5 @@
 pub mod archive;
+pub mod covers;
 mod backends;
 mod commands;
 pub mod core;
@@ -75,6 +76,21 @@ pub fn run() {
             commands::needs_setup,
             commands::finish_setup,
             commands::pending_updates,
+            commands::catalogue,
+            commands::add_to_library,
+            commands::installed_packages,
+            commands::install_package,
+            commands::remove_package,
+            commands::dropped_kind,
+            commands::cancel_compatibility,
+            commands::controller_view,
+            commands::set_up_controller,
+            commands::save_controller,
+            commands::forget_controller,
+            commands::set_covers,
+            commands::set_rawg_key,
+            commands::fetch_covers,
+            commands::catalogue_cover,
             commands::get_settings,
             commands::set_start_fullscreen,
             commands::set_keep_sessions,

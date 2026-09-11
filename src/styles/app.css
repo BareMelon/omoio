@@ -80,8 +80,8 @@ button {
   color: var(--ink);
 }
 .tb-btn.close:hover {
-  background: #c4383a;
-  color: #fff;
+  background: var(--close);
+  color: var(--on-brand);
 }
 .tb-btn svg {
   width: 10px;
@@ -133,7 +133,7 @@ button {
 }
 .nav-item.on {
   background: var(--brand-soft);
-  color: #8fbaff;
+  color: var(--brand-text);
 }
 .nav-item.on .nav-ico {
   color: var(--brand);
@@ -169,7 +169,7 @@ button {
   padding: 9px;
   border-radius: var(--r);
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   font-weight: 600;
   font-size: 12.5px;
   display: flex;
@@ -179,7 +179,7 @@ button {
   transition: transform 0.1s ease-out, background 0.12s;
 }
 .import-btn:hover {
-  background: #2a7bff;
+  background: var(--brand-lit);
 }
 .import-btn:active {
   transform: scale(0.975);
@@ -394,7 +394,7 @@ button {
 .scrim {
   position: fixed;
   inset: 0;
-  background: rgba(5, 7, 11, 0.72);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
   display: grid;
   place-items: center;
@@ -412,7 +412,7 @@ button {
   border: 1px solid var(--line2);
   border-radius: 12px;
   padding: 22px;
-  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 24px 60px -12px rgb(var(--shadow) / 0.8);
   transform: scale(0.97) translateY(6px);
   transition: transform 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
@@ -457,10 +457,10 @@ button {
 }
 .btn.solid {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 .btn.solid:hover {
-  background: #2a7bff;
+  background: var(--brand-lit);
 }
 
 /* ---------- session logs ---------- */
@@ -594,7 +594,7 @@ button {
 }
 .switch.on .switch-dot {
   transform: translateX(16px);
-  background: #fff;
+  background: var(--on-brand);
 }
 
 .select {
@@ -799,8 +799,8 @@ button {
 }
 .small-btn.danger:hover {
   background: var(--raise);
-  color: #ff8f8c;
-  border-color: #6d3130;
+  color: var(--bad-text);
+  border-color: var(--bad-line);
 }
 
 /* ---------- library grid ---------- */
@@ -820,7 +820,7 @@ button {
 }
 .card:hover .art {
   border-color: var(--line2);
-  box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 10px 24px -8px rgb(var(--shadow) / 0.7);
 }
 .card:active {
   transform: translateY(-1px) scale(0.99);
@@ -864,11 +864,15 @@ button {
   font-weight: 650;
   line-height: 1.2;
   letter-spacing: -0.01em;
-  color: #fff;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  color: var(--on-brand);
+  text-shadow: 0 1px 6px rgb(var(--shadow) / 0.7);
+  background: linear-gradient(transparent, rgb(var(--shadow) / 0.72));
 }
 /* A game whose drive is unplugged stays visible but reads as out of reach. */
+/* A catalogue tile carries its Add button underneath. */
+.card > .small-btn {
+  margin-top: 8px;
+}
 .card.ghost .art {
   opacity: 0.42;
   filter: saturate(0.35);
@@ -887,7 +891,7 @@ button {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  background: rgba(6, 9, 14, 0.72);
+  background: var(--glass);
   backdrop-filter: blur(8px);
 }
 .badge.warn {
@@ -904,6 +908,14 @@ button {
 .meta .id {
   font-family: var(--mono);
   font-size: 10.5px;
+}
+.meta .region {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 1px 4px;
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  color: var(--dim);
 }
 .card-actions {
   margin-top: 4px;
@@ -1001,7 +1013,7 @@ button {
   border-radius: 5px;
   display: grid;
   place-items: center;
-  background: rgba(6, 9, 14, 0.6);
+  background: var(--glass-soft);
   backdrop-filter: blur(6px);
   color: var(--mute);
 }
@@ -1040,7 +1052,7 @@ button {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(17, 21, 30, 0.9), rgba(17, 21, 30, 0.15));
+  background: linear-gradient(90deg, var(--panel-fade), var(--panel-fade-out));
 }
 .d-title {
   font-size: 19px;
@@ -1060,7 +1072,7 @@ button {
   padding: 11px;
   border-radius: var(--r);
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   font-weight: 650;
   font-size: 13.5px;
   display: flex;
@@ -1069,8 +1081,15 @@ button {
   gap: 8px;
   transition: transform 0.1s ease-out, background 0.12s;
 }
+/* A game with no files, or on a drive that is out. The button has to look as
+   dead as it is, or it reads as a fault when nothing happens. */
+.play[disabled] {
+  background: var(--raise2);
+  color: var(--dim);
+  pointer-events: none;
+}
 .play:hover {
-  background: #2a7bff;
+  background: var(--brand-lit);
 }
 .play:active {
   transform: scale(0.98);
@@ -1139,4 +1158,291 @@ button {
 .small-btn.danger {
   color: var(--bad);
   border-color: color-mix(in srgb, var(--bad) 50%, transparent);
+}
+
+/* The catalogue's cards carry an action, and its status sits with the id. */
+.card .small-btn.wide {
+  margin-top: 8px;
+}
+.status.tiny {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  font-weight: 500;
+}
+
+/* Dragging a game onto the window. Covers everything so there is one target
+   rather than a hunt for the right part of the screen. */
+.drop-over {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: var(--scrim);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.drop-over.on {
+  opacity: 1;
+}
+.drop-card {
+  padding: 34px 44px;
+  border-radius: var(--r);
+  border: 2px dashed var(--brand);
+  background: var(--panel);
+  text-align: center;
+  color: var(--ink);
+}
+.drop-card svg {
+  width: 30px;
+  height: 30px;
+  color: var(--brand);
+}
+.drop-t {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.drop-s {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+/* Catalogue filters. Console will sit alongside region here once there is a
+   second console to choose between. */
+.filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.chip {
+  padding: 4px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--mute);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.chip:hover {
+  background: var(--raise);
+  color: var(--ink);
+}
+.chip.on {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand-text);
+}
+
+/* ---------- controller ---------- */
+.pad-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.pad-status {
+  font-size: 13px;
+}
+.pads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pad-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--mute);
+}
+.pad-chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--go);
+}
+.pad-map {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.3fr) minmax(200px, 1fr);
+  gap: 22px;
+  margin-top: 18px;
+  align-items: start;
+}
+.map-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.map-group .sec-h {
+  margin-bottom: 4px;
+}
+.map-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.map-row:last-child {
+  border-bottom: none;
+}
+.map-k {
+  font-size: 12.5px;
+  color: var(--mute);
+}
+.map-v {
+  min-width: 128px;
+  padding: 4px 8px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+}
+.map-v:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+.pad-mid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pad-art {
+  width: 100%;
+  height: auto;
+}
+.pad-art .pad-body {
+  fill: var(--panel);
+  stroke: var(--line2);
+  stroke-width: 1.5;
+}
+.pad-art [data-part] {
+  fill: var(--raise);
+  stroke: var(--line2);
+  stroke-width: 1.2;
+  transition: fill 0.12s, stroke 0.12s;
+}
+.pad-art [data-part].hot {
+  fill: var(--brand-soft);
+  stroke: var(--brand);
+}
+
+/* ---------- emulators ---------- */
+.emu {
+  max-width: 980px;
+}
+.emu-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid transparent;
+  color: var(--on-brand);
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 4px rgb(var(--shadow) / 0.5);
+}
+.emu-badge.big {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  font-size: 17px;
+}
+.emu-badge.small {
+  width: 48px;
+  height: 48px;
+  border-radius: 11px;
+  font-size: 12.5px;
+}
+.emu-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.emu-text {
+  flex: 1;
+  min-width: 0;
+}
+.emu-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.emu-hero .emu-name {
+  font-size: 15px;
+}
+.emu-sub {
+  font-size: 12px;
+  color: var(--mute);
+  margin-top: 2px;
+}
+.emu-needs {
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 4px;
+}
+.emu-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.emu-ver {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+}
+.emu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.emu-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.emu-soon {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 2px 7px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+/* RAWG asks for a visible link wherever its images are shown. */
+.rawg-credit {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 11px;
+}
+.d-art .rawg-credit {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  margin: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--glass);
+  z-index: 2;
 }

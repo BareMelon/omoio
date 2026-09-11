@@ -1,5 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Game } from "../api";
+import { placeholderArt } from "../components/art";
+import { rawgCredit } from "../components/rawgCredit";
 import { openImportSheet } from "../components/importSheet";
 import { store } from "../state";
 import { emptyState, type View } from "./view";
@@ -10,28 +12,8 @@ function formatSize(bytes: number): string {
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
-/// Every title id gives the same colours every time, so a game without art
-/// still gets its own recognisable tile rather than a grey box.
-function placeholderArt(game: Game): string {
-  let hash = 0;
-  for (const ch of game.title_id) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffff;
-  const hue = hash % 360;
-  const back = `hsl(${hue} 32% 14%)`;
-  const front = `hsl(${(hue + 40) % 360} 58% 52%)`;
-  const initials = game.title.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase();
-  return `
-    <svg viewBox="0 0 100 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <rect width="100" height="120" fill="${back}"/>
-      <circle cx="50" cy="52" r="26" fill="none" stroke="${front}" stroke-width="2.5" opacity=".8"/>
-      <circle cx="50" cy="52" r="11" fill="${front}"/>
-      <text x="50" y="103" text-anchor="middle" fill="${front}"
-            font-size="15" font-weight="700" font-family="system-ui">${initials}</text>
-    </svg>`;
-}
-
 function gameCard(game: Game): HTMLElement {
   const card = document.createElement("button");
-  card.className = game.available ? "card" : "card ghost";
   card.title = game.title;
 
   // A dump's ICON0 is 320x176, landscape, while the tile is portrait like the
@@ -40,17 +22,28 @@ function gameCard(game: Game): HTMLElement {
   const art = game.cover
     ? `<img class="art-back" src="${convertFileSrc(game.cover)}" alt="" aria-hidden="true">
        <img class="art-fit" src="${convertFileSrc(game.cover)}" alt="" loading="lazy">`
-    : placeholderArt(game);
+    : placeholderArt(game.title_id, game.title);
 
+  // Three states, and only one of them is a problem. A game with no files yet
+  // is waiting to be imported; a game whose drive is out is fine and will come
+  // back. Saying "Offline" for both would make the first look broken.
+  const mark = !game.set_up
+    ? `<span class="badge">Not set up</span>`
+    : game.available
+      ? ""
+      : `<span class="badge warn">Offline</span>`;
+
+  // Dimmed either way: neither can be played right now.
+  card.className = game.set_up && game.available ? "card" : "card ghost";
   card.innerHTML = `
     <div class="art">
       ${art}
-      ${game.available ? "" : `<span class="badge warn">Offline</span>`}
+      ${mark}
       <span class="art-name"></span>
     </div>
     <div class="meta">
       <span class="id">${game.title_id}</span>
-      <span>· ${formatSize(game.size_bytes)}</span>
+      <span>· ${game.set_up ? formatSize(game.size_bytes) : "no files yet"}</span>
     </div>
   `;
   // Set through textContent so a game's own title can never be markup.
@@ -64,6 +57,14 @@ function gameCard(game: Game): HTMLElement {
 
 export function renderLibrary(): View {
   const { games, search, notice } = store.get();
+
+  // The library has not been read yet. Showing "No games yet" here would tell
+  // someone with a shelf full of games that they have none, for a moment, every
+  // time the window opens.
+  if (games === undefined) {
+    return { title: "Library", subtitle: "", content: document.createElement("div") };
+  }
+
   const query = search.trim().toLowerCase();
   const shown = query
     ? games.filter(
@@ -99,6 +100,7 @@ export function renderLibrary(): View {
     grid.className = "grid";
     shown.forEach((game) => grid.appendChild(gameCard(game)));
     content.appendChild(grid);
+    if (shown.some((game) => game.cover_source === "rawg")) content.appendChild(rawgCredit());
   }
 
   const total = games.reduce((sum, g) => sum + g.size_bytes, 0);

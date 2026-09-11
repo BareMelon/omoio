@@ -1,10 +1,13 @@
 pub mod account;
 pub mod compat;
+pub mod controllers;
 pub mod firmware;
 pub mod game_config;
+pub mod graphics;
 pub mod launch;
 #[cfg(windows)]
 pub mod overlay;
+pub mod packages;
 pub mod patches;
 pub mod saves;
 pub mod updates;

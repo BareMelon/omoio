@@ -16,6 +16,28 @@
      until compatibility did; this is the shade RPCS3 uses for the same two. */
   --bad: #e74c3c;
 
+  /* Text and edges that sit on a filled surface rather than on the background,
+     so they are named for the job rather than for the colour. */
+  --on-brand: #ffffff;
+  --brand-lit: #2a7bff;
+  --brand-text: #8fbaff;
+  --bad-text: #ff8f8c;
+  --bad-line: #6d3130;
+  /* Windows' own close-button red. Matching it is what makes the title bar
+     feel like a window rather than a web page. */
+  --close: #c4383a;
+
+  /* Surfaces that sit over other content, where the transparency is part of
+     the colour: a badge and a scrim are both the background, seen through. */
+  --scrim: rgba(5, 7, 11, 0.72);
+  --glass: rgba(6, 9, 14, 0.72);
+  --glass-soft: rgba(6, 9, 14, 0.6);
+  --panel-fade: rgba(17, 21, 30, 0.9);
+  --panel-fade-out: rgba(17, 21, 30, 0.15);
+  /* Shadows are one colour at several depths, so only the colour lives here
+     and each shadow keeps its own opacity: rgb(var(--shadow) / 0.7). */
+  --shadow: 0 0 0;
+
   --ui: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 

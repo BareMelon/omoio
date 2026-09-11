@@ -30,6 +30,7 @@ windows = { version = "0.62", features = [
     "Win32_Storage_FileSystem",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_XboxController",
 ] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
 sevenz-rust2 = "0.22"
@@ -48,6 +49,10 @@ yaml-rust2 = "0.10"
 quick-xml = "0.41"
 sha1 = "0.10"
 rustls = { version = "0.23", default-features = false }
+# Reads which gamepads are plugged in, so the profile Omoio writes for the
+# emulator names the controller that is actually there. Pure Rust, no DLL to
+# ship. See backends/rpcs3/controllers.rs.
+gilrs = "0.11"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

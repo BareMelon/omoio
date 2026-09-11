@@ -165,7 +165,7 @@ fn setting(config: &str, key: &str) -> Option<String> {
 /// The global config holds lists and nested maps that our own reader is not
 /// built to reproduce, so it is never parsed and re-emitted. Touching the one
 /// line means nothing else can be lost on the way through.
-fn replace_setting(config: &str, key: &str, value: &str) -> String {
+pub(super) fn replace_setting(config: &str, key: &str, value: &str) -> String {
     let mut out = String::with_capacity(config.len() + 32);
     let mut done = false;
 

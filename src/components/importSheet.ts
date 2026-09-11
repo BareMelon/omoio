@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   cancelImport,
+  droppedKind,
   getGamesFolder,
   importArchive,
   importGame,
@@ -20,6 +21,19 @@ function formatGB(bytes: number): string {
 }
 
 export function openImportSheet(): void {
+  sheet();
+}
+
+/// Paths dropped on the window skip the choices: the user has already said what
+/// they want imported.
+///
+/// Kept separate from `openImportSheet` so neither can be wired to `onclick`
+/// by mistake, which would hand a PointerEvent in as a list of paths.
+export function importDropped(paths: string[]): void {
+  sheet(paths);
+}
+
+function sheet(dropped?: string[]): void {
   const scrim = document.createElement("div");
   scrim.className = "scrim";
   const sheet = document.createElement("div");
@@ -65,7 +79,9 @@ export function openImportSheet(): void {
     sheet.querySelector<HTMLButtonElement>("#pick-scan")!.onclick = pickScan;
   }
 
-  function showProgress(progress: ImportProgress) {
+  /// `counter` is set only when more than one thing was dropped, so a single
+  /// import does not get a needless "1 of 1".
+  function showProgress(progress: ImportProgress, counter = "") {
     const pct =
       progress.stage === "unpacking" && progress.total > 0
         ? Math.min(100, Math.round((progress.bytes / progress.total) * 100))
@@ -75,7 +91,7 @@ export function openImportSheet(): void {
         ? "Reading the game…"
         : `Unpacking… ${formatGB(progress.bytes)} of ${formatGB(progress.total)}`;
     sheet.innerHTML = `
-      <div class="sheet-h">Importing</div>
+      <div class="sheet-h">Importing${counter ? ` ${counter}` : ""}</div>
       <div class="progress-row" style="margin-top:14px">
         <div class="progress-label">
           <span>${label}</span>
@@ -102,6 +118,20 @@ export function openImportSheet(): void {
     await run(() => importGame(picked));
   }
 
+  /// Unpacking needs somewhere to put 19 GB, so that is settled before an
+  /// archive starts rather than after the wait. False when the user backed out.
+  async function haveGamesFolder(): Promise<boolean> {
+    if (await getGamesFolder()) return true;
+    const chosen = await open({
+      directory: true,
+      multiple: false,
+      title: "Choose where to keep your games",
+    });
+    if (typeof chosen !== "string") return false;
+    await setGamesFolder(chosen);
+    return true;
+  }
+
   async function pickArchive() {
     const picked = await open({
       multiple: false,
@@ -110,19 +140,7 @@ export function openImportSheet(): void {
       filters: [{ name: "Game archive", extensions: ["7z", "zip"] }],
     });
     if (typeof picked !== "string") return;
-
-    // Unpacking needs somewhere to put 19 GB, so settle that before starting.
-    let folder = await getGamesFolder();
-    if (!folder) {
-      const chosen = await open({
-        directory: true,
-        multiple: false,
-        title: "Choose where to keep your games",
-      });
-      if (typeof chosen !== "string") return;
-      await setGamesFolder(chosen);
-      folder = chosen;
-    }
+    if (!(await haveGamesFolder())) return;
 
     await run(() => importArchive(picked));
   }
@@ -231,5 +249,49 @@ export function openImportSheet(): void {
     }
   }
 
-  showChoices();
+  /// Imports what was dropped, one at a time so a failure part way through
+  /// still leaves everything before it in the library.
+  async function runDropped(paths: string[]) {
+    busy = true;
+    const counter = (at: number) => (paths.length > 1 ? `${at + 1} of ${paths.length}` : "");
+    let added = 0;
+    let problem = "";
+
+    for (const [at, path] of paths.entries()) {
+      const kind = await droppedKind(path);
+      if (kind === "unknown") {
+        problem ||= "That isn't a game folder or a .7z or .zip archive.";
+        continue;
+      }
+      if (kind === "archive" && !(await haveGamesFolder())) break;
+
+      showProgress({ stage: "unpacking", bytes: 0, total: 0 }, counter(at));
+      const unlisten = await onImportProgress((progress) => showProgress(progress, counter(at)));
+      try {
+        await (kind === "archive" ? importArchive(path) : importGame(path));
+        added += 1;
+      } catch (err) {
+        // Cancelling stops the run rather than moving to the next one: the
+        // Cancel button means this, not this one.
+        if (err === "cancelled") break;
+        problem ||= typeof err === "string" ? err : "Couldn't import that game.";
+      } finally {
+        unlisten();
+      }
+    }
+
+    store.setGames(await listGames());
+    busy = false;
+    if (added > 0 && !problem) {
+      close();
+      return;
+    }
+    showChoices(problem || "Nothing was imported.");
+  }
+
+  if (dropped && dropped.length > 0) {
+    void runDropped(dropped);
+  } else {
+    showChoices();
+  }
 }

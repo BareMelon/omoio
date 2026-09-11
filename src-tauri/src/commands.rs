@@ -22,6 +22,7 @@ pub struct InstallState {
     cancel: Arc<AtomicBool>,
     cancel_import: Arc<AtomicBool>,
     cancel_update: Arc<AtomicBool>,
+    cancel_compat: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -221,12 +222,79 @@ fn cached_cover(app: &AppHandle, game: &crate::core::library::Game) -> Option<St
     Some(cached.to_string_lossy().into_owned())
 }
 
+/// The picture for a game: RAWG's cover when the user has switched that on
+/// and one was found, otherwise the dump's own icon.
+fn cover_for(
+    app: &AppHandle,
+    game: &crate::core::library::Game,
+) -> (Option<String>, Option<&'static str>) {
+    let rawg_on = settings_path(app)
+        .map(|file| Settings::load(&file).covers)
+        .unwrap_or(false);
+    if rawg_on {
+        if let Ok(dir) = omoio_data_dir(app) {
+            let path = crate::covers::cached_path(&dir.join("covers"), &game.title_id);
+            if path.is_file() {
+                return (Some(path.to_string_lossy().into_owned()), Some("rawg"));
+            }
+        }
+    }
+    let own = cached_cover(app, game);
+    let source = own.as_ref().map(|_| "dump");
+    (own, source)
+}
+
 fn entry(app: &AppHandle, game: crate::core::library::Game) -> GameEntry {
+    let (cover, cover_source) = cover_for(app, &game);
     GameEntry {
-        available: game.path.is_dir(),
-        cover: cached_cover(app, &game),
+        set_up: game.is_set_up(),
+        available: game.is_set_up() && game.path.is_dir(),
+        cover,
+        cover_source,
         game,
     }
+}
+
+/// Notes down a game the user says they own, without files behind it yet.
+///
+/// Nothing is downloaded and nothing is looked for. It is a placeholder that
+/// says what to do next, which is to import the game's own files.
+#[tauri::command]
+pub fn add_to_library(app: AppHandle, title_id: String, title: String) -> Result<(), String> {
+    let file = library_path(&app)?;
+    let mut library = Library::load(&file);
+    if library.games().iter().any(|g| g.title_id == title_id) {
+        return Err("That game is already in your library.".into());
+    }
+    library.upsert(crate::core::library::Game::not_set_up(title_id, title));
+    library.save(&file)
+}
+
+#[derive(serde::Serialize)]
+pub struct CatalogueView {
+    pub have_list: bool,
+    pub total: usize,
+    pub shown: Vec<rpcs3::compat::Listing>,
+    /// Title ids already in the library, so the catalogue can say so rather
+    /// than offering to add one twice.
+    pub in_library: Vec<String>,
+}
+
+#[tauri::command]
+pub fn catalogue(app: AppHandle, query: String, region: String) -> Result<CatalogueView, String> {
+    let (total, shown) = rpcs3::compat::search(&app, &query, &region, 60);
+    let in_library = Library::load(&library_path(&app)?)
+        .games()
+        .iter()
+        .map(|g| g.title_id.clone())
+        .collect();
+
+    Ok(CatalogueView {
+        have_list: rpcs3::compat::have_list(&app),
+        total,
+        shown,
+        in_library,
+    })
 }
 
 #[tauri::command]
@@ -262,6 +330,10 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
 
     // One game at a time: starting another stops the one already running.
     app.state::<Session>().stop();
+    // RPCS3 starts bound to the keyboard, so a pad plugged in for the first
+    // time would do nothing. Set it up here unless someone already has.
+    rpcs3::controllers::set_up_if_needed(&app);
+    tune_picture(&app);
     let pid = rpcs3::launch::launch(&app, game)?;
     let session = app.state::<Session>();
     session.begin(
@@ -489,9 +561,21 @@ pub fn game_compatibility(app: AppHandle, title_id: String) -> CompatView {
     }
 }
 
+/// Getting the list means one export plus a page-at-a-time pass for the names,
+/// which is around 22 seconds, so it reports progress and can be stopped.
 #[tauri::command]
-pub async fn refresh_compatibility(app: AppHandle) -> Result<usize, String> {
-    rpcs3::compat::refresh(&app).await
+pub async fn refresh_compatibility(
+    app: AppHandle,
+    state: State<'_, InstallState>,
+) -> Result<usize, String> {
+    state.cancel_compat.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_compat.clone();
+    rpcs3::compat::refresh(&app, &cancel).await
+}
+
+#[tauri::command]
+pub fn cancel_compatibility(state: State<'_, InstallState>) {
+    state.cancel_compat.store(true, Ordering::Relaxed);
 }
 
 #[derive(serde::Serialize)]
@@ -796,4 +880,184 @@ pub fn pending_updates(app: AppHandle) -> Result<(bool, Vec<PendingUpdate>), Str
     waiting.sort_by(|a, b| a.title.cmp(&b.title));
 
     Ok((have_list, waiting))
+}
+
+#[tauri::command]
+pub fn installed_packages(app: AppHandle) -> Result<Vec<rpcs3::packages::Installed>, String> {
+    rpcs3::packages::installed(&app)
+}
+
+/// Runs off the interface thread: RPCS3 is started to do the work and takes a
+/// few seconds over it, and a frozen window during that is worse than the wait.
+#[tauri::command]
+pub async fn install_package(app: AppHandle, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rpcs3::packages::install(&app, std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn remove_package(app: AppHandle, title_id: String) -> Result<(), String> {
+    rpcs3::packages::remove(&app, &title_id)
+}
+
+/// What a path dropped on the window is, so the interface can send it the right
+/// way without guessing from a file extension.
+///
+/// An archive is recognised by its first bytes rather than its name, the same
+/// way importing one does, so a .zip renamed to .bin is still an archive and a
+/// text file called game.zip is not.
+#[tauri::command]
+pub fn dropped_kind(path: String) -> &'static str {
+    let path = Path::new(&path);
+    if path.is_dir() {
+        "folder"
+    } else if archive::detect_kind(path).is_some() {
+        "archive"
+    } else {
+        "unknown"
+    }
+}
+
+/// Sizes the picture for this machine the first time it can, then never again.
+///
+/// RPCS3 writes its settings on its own first launch, so on a fresh install
+/// this takes effect from the second game started. Until then `apply` reports
+/// that there is nothing to change yet and this is tried again next time.
+fn tune_picture(app: &AppHandle) {
+    let Ok(file) = settings_path(app) else {
+        return;
+    };
+    let mut settings = Settings::load(&file);
+    if settings.tuned {
+        return;
+    }
+    let hw = hardware::detect();
+    let (Some(display), Some(gpu)) = (hw.display, hw.gpu) else {
+        return;
+    };
+    if let Ok(scale) = rpcs3::graphics::apply(app, display.height, gpu.dedicated_memory_bytes) {
+        settings.tuned = true;
+        settings.tuned_scale = scale;
+        let _ = settings.save(&file);
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct ControllerView {
+    /// Pads plugged in right now.
+    pub connected: Vec<rpcs3::controllers::Controller>,
+    /// The pad this layout is bound to, if it has been set up.
+    pub bound: Option<rpcs3::controllers::Controller>,
+    /// Whether this exact layout exists. For a game, false means it is using
+    /// the layout for every game.
+    pub own: bool,
+    pub bindings: Vec<rpcs3::controllers::Binding>,
+    pub choices: Vec<&'static str>,
+}
+
+/// `title_id` empty is the layout for every game.
+#[tauri::command]
+pub fn controller_view(app: AppHandle, title_id: String) -> ControllerView {
+    use rpcs3::controllers as pads;
+    let own = pads::have_profile(&app, &title_id);
+    // A game without its own layout plays with the one for every game, so
+    // that is what it shows until it is changed.
+    let source = if own { title_id.as_str() } else { "" };
+    ControllerView {
+        connected: pads::connected(),
+        bound: pads::bound(&app, source),
+        own,
+        bindings: pads::bindings(&app, source),
+        choices: pads::choices(),
+    }
+}
+
+#[tauri::command]
+pub fn set_up_controller(
+    app: AppHandle,
+    title_id: String,
+) -> Result<rpcs3::controllers::Controller, String> {
+    rpcs3::controllers::set_up(&app, &title_id)
+}
+
+#[tauri::command]
+pub fn save_controller(
+    app: AppHandle,
+    title_id: String,
+    controller: rpcs3::controllers::Controller,
+    bindings: Vec<rpcs3::controllers::Binding>,
+) -> Result<(), String> {
+    rpcs3::controllers::write_profile(&app, &title_id, &controller, &bindings)
+}
+
+#[tauri::command]
+pub fn forget_controller(app: AppHandle, title_id: String) -> Result<(), String> {
+    rpcs3::controllers::forget(&app, &title_id)
+}
+
+#[tauri::command]
+pub fn set_covers(app: AppHandle, on: bool) -> Result<(), String> {
+    let file = settings_path(&app)?;
+    let mut settings = Settings::load(&file);
+    settings.covers = on;
+    settings.save(&file)
+}
+
+#[tauri::command]
+pub fn set_rawg_key(app: AppHandle, key: String) -> Result<(), String> {
+    let file = settings_path(&app)?;
+    let mut settings = Settings::load(&file);
+    let key = key.trim().to_string();
+    settings.rawg_key = (!key.is_empty()).then_some(key);
+    settings.save(&file)
+}
+
+/// Looks up a cover for every game in the library. Each is asked about once,
+/// found or not, so calling this again only asks about new games.
+#[tauri::command]
+pub async fn fetch_covers(app: AppHandle) -> Result<usize, String> {
+    let settings = Settings::load(&settings_path(&app)?);
+    let key = settings
+        .rawg_key
+        .filter(|key| !key.is_empty())
+        .ok_or("Add a RAWG key first.")?;
+    let covers = omoio_data_dir(&app)?.join("covers");
+    let games: Vec<(String, String)> = Library::load(&library_path(&app)?)
+        .games()
+        .iter()
+        .map(|game| (game.title_id.clone(), game.title.clone()))
+        .collect();
+
+    let client = reqwest::Client::new();
+    let mut found = 0;
+    for (title_id, title) in games {
+        if crate::covers::fetch(&client, &key, &covers, &title_id, &title).await? {
+            found += 1;
+        }
+    }
+    Ok(found)
+}
+
+/// A cover for one catalogue title, fetched if it has not been asked about
+/// before. Nothing when covers are off, there is no key, or RAWG had none.
+#[tauri::command]
+pub async fn catalogue_cover(app: AppHandle, title_id: String, name: String) -> Option<String> {
+    let settings = Settings::load(&settings_path(&app).ok()?);
+    if !settings.covers {
+        return None;
+    }
+    let key = settings.rawg_key.filter(|key| !key.is_empty())?;
+    let covers = omoio_data_dir(&app).ok()?.join("covers");
+    let client = reqwest::Client::new();
+    match crate::covers::fetch(&client, &key, &covers, &title_id, &name).await {
+        Ok(true) => Some(
+            crate::covers::cached_path(&covers, &title_id)
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        _ => None,
+    }
 }
