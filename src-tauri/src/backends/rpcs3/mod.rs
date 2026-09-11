@@ -226,3 +226,53 @@ fn sha256_hex(path: &Path) -> Result<String, String> {
     }
     Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
+
+/// RPCS3 as the PS3's emulator, for the parts of Omoio that work across
+/// consoles. Each method hands on to the modules above.
+pub struct Rpcs3;
+
+impl super::EmulatorBackend for Rpcs3 {
+    fn console(&self) -> crate::core::console::Console {
+        crate::core::console::Console::Ps3
+    }
+
+    fn features(&self) -> crate::core::console::Features {
+        crate::core::console::Features {
+            updates: true,
+            patches: true,
+            settings: true,
+            saves: true,
+        }
+    }
+
+    fn recognises(&self, path: &Path) -> bool {
+        crate::import::recognises(path)
+    }
+
+    fn identify(&self, path: &Path) -> Result<crate::core::library::Game, String> {
+        crate::import::identify(path).map_err(|e| e.to_string())
+    }
+
+    fn icon(&self, game: &crate::core::library::Game) -> Option<PathBuf> {
+        crate::import::icon_path(&game.path)
+    }
+
+    fn prepare(&self, app: &AppHandle) {
+        // RPCS3 starts bound to the keyboard, so a pad plugged in for the
+        // first time would do nothing. Set it up unless someone already has.
+        controllers::set_up_if_needed(app);
+    }
+
+    fn tune_picture(
+        &self,
+        app: &AppHandle,
+        display_height: u32,
+        graphics_memory: u64,
+    ) -> Result<Option<u32>, String> {
+        graphics::apply(app, display_height, graphics_memory)
+    }
+
+    fn launch(&self, app: &AppHandle, game: &crate::core::library::Game) -> Result<u32, String> {
+        launch::launch(app, game)
+    }
+}

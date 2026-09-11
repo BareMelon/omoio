@@ -50,6 +50,9 @@ pub struct GameEntry {
     pub cover: Option<String>,
     /// "dump" for the game's own icon, "rawg" for a RAWG cover.
     pub cover_source: Option<&'static str>,
+    /// What this game's emulator can do, so the interface shows only what
+    /// applies.
+    pub features: crate::core::console::Features,
 }
 
 #[derive(Clone, Serialize)]

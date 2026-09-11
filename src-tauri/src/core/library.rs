@@ -2,11 +2,16 @@
 //! they already live rather than copied, so a dump on an external drive is
 //! normal and an entry whose path is missing is expected, not an error.
 
+use crate::core::console::Console;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
+    /// Which console the game is for, and so which emulator runs it. A library
+    /// written before this existed holds PS3 games only, so missing means PS3.
+    #[serde(default)]
+    pub console: Console,
     pub title_id: String,
     pub title: String,
     /// The version of the dump itself, out of its PARAM.SFO.
@@ -43,8 +48,9 @@ impl Game {
     }
 
     /// An entry for a game the user says they own but has not imported.
-    pub fn not_set_up(title_id: String, title: String) -> Self {
+    pub fn not_set_up(console: Console, title_id: String, title: String) -> Self {
         Self {
+            console,
             title_id,
             title,
             version: None,
@@ -120,6 +126,7 @@ mod tests {
 
     fn game(title_id: &str, title: &str) -> Game {
         Game {
+            console: Console::Ps3,
             title_id: title_id.to_string(),
             title: title.to_string(),
             version: Some("01.00".to_string()),
@@ -177,6 +184,23 @@ mod tests {
 
         let loaded = Library::load(&path);
         assert_eq!(loaded.games(), library.games());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Written before consoles were recorded. It must load, and load as what
+    /// it was: PS3 games.
+    #[test]
+    fn a_library_from_before_consoles_loads_as_ps3() {
+        let path = temp_path("before-consoles");
+        std::fs::write(
+            &path,
+            r#"{"games":[{"title_id":"BCES00850","title":"LittleBigPlanet 2","version":"01.00","path":"D:\\games\\lbp2","size_bytes":1}]}"#,
+        )
+        .unwrap();
+
+        let loaded = Library::load(&path);
+        assert_eq!(loaded.games().len(), 1);
+        assert_eq!(loaded.games()[0].console, Console::Ps3);
         let _ = std::fs::remove_file(&path);
     }
 

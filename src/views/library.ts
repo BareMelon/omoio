@@ -6,13 +6,16 @@ import { openImportSheet } from "../components/importSheet";
 import { store } from "../state";
 import { emptyState, type View } from "./view";
 
+/// How a console is written on a tile.
+const SHORT: Record<Game["console"], string> = { ps3: "PS3", wiiu: "Wii U" };
+
 function formatSize(bytes: number): string {
   if (bytes <= 0) return "";
   const gb = bytes / 1024 ** 3;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
-function gameCard(game: Game): HTMLElement {
+function gameCard(game: Game, mixed: boolean): HTMLElement {
   const card = document.createElement("button");
   card.title = game.title;
 
@@ -43,6 +46,7 @@ function gameCard(game: Game): HTMLElement {
     </div>
     <div class="meta">
       <span class="id">${game.title_id}</span>
+      ${mixed ? `<span class="region">${SHORT[game.console]}</span>` : ""}
       <span>· ${game.set_up ? formatSize(game.size_bytes) : "no files yet"}</span>
     </div>
   `;
@@ -98,7 +102,9 @@ export function renderLibrary(): View {
   } else {
     const grid = document.createElement("div");
     grid.className = "grid";
-    shown.forEach((game) => grid.appendChild(gameCard(game)));
+    // The console is only worth saying once there is more than one.
+    const mixed = new Set(games.map((game) => game.console)).size > 1;
+    shown.forEach((game) => grid.appendChild(gameCard(game, mixed)));
     content.appendChild(grid);
     if (shown.some((game) => game.cover_source === "rawg")) content.appendChild(rawgCredit());
   }

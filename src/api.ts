@@ -73,6 +73,10 @@ export interface Game {
   set_up: boolean;
   /// Where the cover came from: the dump's own icon, or RAWG.
   cover_source: "dump" | "rawg" | null;
+  /// Which console the game is for, and so which emulator runs it.
+  console: "ps3" | "wiiu";
+  /// What its emulator can do beyond starting it.
+  features: { updates: boolean; patches: boolean; settings: boolean; saves: boolean };
 }
 
 export function listGames(): Promise<Game[]> {

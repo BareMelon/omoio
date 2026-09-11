@@ -3,6 +3,7 @@
 //! Games are referenced where they already are. An 8 GB dump is not copied,
 //! so importing is immediate and a game on an external drive stays on it.
 
+use crate::core::console::Console;
 use crate::core::library::Game;
 use crate::core::sfo::{Category, Sfo};
 use std::path::{Path, PathBuf};
@@ -81,6 +82,12 @@ fn find_dump_root(picked: &Path) -> Option<PathBuf> {
     candidate
 }
 
+/// Whether a folder is a PS3 dump, without reading or measuring it. Every
+/// emulator is asked about every import, so this has to be cheap.
+pub fn recognises(picked: &Path) -> bool {
+    find_dump_root(picked).is_some()
+}
+
 pub fn identify(picked: &Path) -> Result<Game, Error> {
     let root = find_dump_root(picked).ok_or(Error::NotAGameDump)?;
     let sfo_file = sfo_path(&root).ok_or(Error::NotAGameDump)?;
@@ -101,6 +108,7 @@ pub fn identify(picked: &Path) -> Result<Game, Error> {
         .unwrap_or_else(|| title_id.clone());
 
     Ok(Game {
+        console: Console::Ps3,
         title_id,
         title,
         version: sfo.app_version().map(str::to_string),

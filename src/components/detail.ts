@@ -117,6 +117,22 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     }
     body.querySelector(".d-path")!.classList.add("gone");
   }
+  // Only what this game's emulator can do. A section with nothing behind it
+  // is left out rather than shown as a button that does nothing.
+  const offers = game.features;
+  if (!offers.updates) body.querySelector("#sec-version")?.classList.add("gone");
+  if (!offers.saves) body.querySelector("#sec-saves")?.classList.add("gone");
+  for (const [on, id] of [
+    [offers.settings, "settings"],
+    [offers.patches, "patches"],
+  ] as const) {
+    if (!on) {
+      body.querySelector(`#detail-${id}`)?.classList.add("gone");
+      body.querySelector(`#detail-${id}-note`)?.classList.add("gone");
+    }
+  }
+  if (!offers.settings && !offers.patches) body.querySelector("#sec-emulator")?.classList.add("gone");
+
   if (game.set_up && !game.available) {
     note.textContent = "Reconnect the drive this game is on to play it.";
   }
@@ -190,7 +206,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
           ? "1 copy kept."
           : `${backups.length} copies kept.`;
   };
-  showSaves();
+  if (offers.saves) showSaves();
   body.querySelector<HTMLButtonElement>("#detail-saves")!.onclick = () =>
     openSaves(game.title_id, game.title, showSaves);
 
@@ -237,7 +253,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
           ? `${fits.length} available, none on.`
           : `${on} of ${fits.length} on.`;
   };
-  showPatchCount();
+  if (offers.patches) showPatchCount();
   body.querySelector<HTMLButtonElement>("#detail-patches")!.onclick = () =>
     openPatches(game.title_id, game.title, showPatchCount);
 
@@ -250,7 +266,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
         ? "Running with RPCS3's own settings."
         : `${changed} setting${changed === 1 ? "" : "s"} changed for this game.`;
   };
-  showSettingsCount();
+  if (offers.settings) showSettingsCount();
   body.querySelector<HTMLButtonElement>("#detail-settings")!.onclick = () =>
     openGameSettings(game.title_id, game.title, showSettingsCount);
 

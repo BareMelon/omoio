@@ -153,7 +153,7 @@ pub async fn import_archive(
         }
 
         emit_import_progress(&app, "identifying", needed, needed);
-        let game = match import::identify(&dest) {
+        let game = match crate::backends::identify(&dest) {
             Ok(game) => game,
             Err(e) => {
                 // Nothing importable came out, so don't leave it behind.
@@ -215,7 +215,7 @@ fn cached_cover(app: &AppHandle, game: &crate::core::library::Game) -> Option<St
     let cached = covers.join(format!("{}.png", game.title_id));
 
     if !cached.is_file() {
-        let source = import::icon_path(&game.path)?;
+        let source = crate::backends::for_console(game.console)?.icon(game)?;
         std::fs::create_dir_all(&covers).ok()?;
         std::fs::copy(source, &cached).ok()?;
     }
@@ -251,6 +251,9 @@ fn entry(app: &AppHandle, game: crate::core::library::Game) -> GameEntry {
         available: game.is_set_up() && game.path.is_dir(),
         cover,
         cover_source,
+        features: crate::backends::for_console(game.console)
+            .map(|backend| backend.features())
+            .unwrap_or_default(),
         game,
     }
 }
@@ -266,7 +269,12 @@ pub fn add_to_library(app: AppHandle, title_id: String, title: String) -> Result
     if library.games().iter().any(|g| g.title_id == title_id) {
         return Err("That game is already in your library.".into());
     }
-    library.upsert(crate::core::library::Game::not_set_up(title_id, title));
+    library.upsert(crate::core::library::Game::not_set_up(
+        // The catalogue is RPCS3's list, so everything in it is a PS3 game.
+        crate::core::console::Console::Ps3,
+        title_id,
+        title,
+    ));
     library.save(&file)
 }
 
@@ -308,7 +316,7 @@ pub async fn import_game(app: AppHandle, path: String) -> Result<GameEntry, Stri
     // Measuring a dump means walking every file in it, so this stays off the
     // UI thread.
     tauri::async_runtime::spawn_blocking(move || {
-        let game = import::identify(Path::new(&path)).map_err(|e| e.to_string())?;
+        let game = crate::backends::identify(Path::new(&path))?;
         let library_file = library_path(&app)?;
         let mut library = Library::load(&library_file);
         library.upsert(game.clone());
@@ -330,11 +338,13 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
 
     // One game at a time: starting another stops the one already running.
     app.state::<Session>().stop();
-    // RPCS3 starts bound to the keyboard, so a pad plugged in for the first
-    // time would do nothing. Set it up here unless someone already has.
-    rpcs3::controllers::set_up_if_needed(&app);
-    tune_picture(&app);
-    let pid = rpcs3::launch::launch(&app, game)?;
+    let backend = crate::backends::for_console(game.console)
+        .ok_or("Omoio can't start games for this console yet.")?;
+    // Ready before the emulator starts: a pad plugged in for the first time
+    // works, and the picture fits this machine.
+    backend.prepare(&app);
+    tune_picture(&app, backend);
+    let pid = backend.launch(&app, game)?;
     let session = app.state::<Session>();
     session.begin(
         pid,
@@ -692,7 +702,7 @@ pub async fn scan_folder(
                 result.cancelled = true;
                 break;
             }
-            match import::identify(dump) {
+            match crate::backends::identify(dump) {
                 Ok(game) => {
                     if library.games().iter().any(|g| g.title_id == game.title_id) {
                         result.already_there += 1;
@@ -926,7 +936,7 @@ pub fn dropped_kind(path: String) -> &'static str {
 /// RPCS3 writes its settings on its own first launch, so on a fresh install
 /// this takes effect from the second game started. Until then `apply` reports
 /// that there is nothing to change yet and this is tried again next time.
-fn tune_picture(app: &AppHandle) {
+fn tune_picture(app: &AppHandle, backend: &dyn crate::backends::EmulatorBackend) {
     let Ok(file) = settings_path(app) else {
         return;
     };
@@ -938,7 +948,7 @@ fn tune_picture(app: &AppHandle) {
     let (Some(display), Some(gpu)) = (hw.display, hw.gpu) else {
         return;
     };
-    if let Ok(scale) = rpcs3::graphics::apply(app, display.height, gpu.dedicated_memory_bytes) {
+    if let Ok(scale) = backend.tune_picture(app, display.height, gpu.dedicated_memory_bytes) {
         settings.tuned = true;
         settings.tuned_scale = scale;
         let _ = settings.save(&file);
