@@ -1,3 +1,4 @@
+pub mod catalogue;
 pub mod console;
 pub mod library;
 pub mod playlog;

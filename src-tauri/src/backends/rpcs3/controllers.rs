@@ -1,6 +1,6 @@
-//! Making a controller work without the user configuring anything.
+//! Making controllers work without the user configuring anything.
 //!
-//! RPCS3 starts out bound to the keyboard. Its own dialog says a real
+//! RPCS3 starts out with no pad for anyone. Its own dialog says a real
 //! controller is recommended, but nothing happens until someone opens that
 //! dialog and picks a handler, and every button in a fresh profile is empty.
 //! So plugging in a pad and pressing Play does nothing at all.
@@ -15,13 +15,23 @@
 //! - Anything else, a DualSense or a Switch Pro or an 8BitDo, goes through SDL,
 //!   which reads the controller database RPCS3 ships. Its name is the pad's
 //!   SDL mapping name, which gilrs reads from the same database.
+//!
+//! Four players are set up from the start. A player the file leaves out has
+//! no pad, so a second pad plugged in used to do nothing. An XInput slot can
+//! be named before anything is in it (RPCS3's `xinput_pad_handler::get_device`
+//! takes any of the four), and RPCS3 notices when a pad arrives, so players
+//! two to four wait on the slots a second, third and fourth pad will take.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::AppHandle;
 
-/// A pad Omoio can see right now, and how RPCS3 will address it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// How many players Omoio sets up. RPCS3 takes seven, as the PS3 did, but
+/// games stop at four.
+pub const PLAYERS: usize = 4;
+
+/// A pad, and how RPCS3 will address it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Controller {
     /// What goes in the profile's `Device` line.
     pub device: String,
@@ -32,7 +42,7 @@ pub struct Controller {
 }
 
 /// One PS3 input and the physical button it is bound to.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Binding {
     /// RPCS3's name for the PS3 input, which is also the key in its file.
     pub key: String,
@@ -40,6 +50,13 @@ pub struct Binding {
     /// A, B, X and Y instead; that is translated when the file is written, so
     /// the interface only ever deals in one set of names.
     pub button: String,
+}
+
+/// One player's pad and layout.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Player {
+    pub controller: Controller,
+    pub bindings: Vec<Binding>,
 }
 
 /// RPCS3's own defaults, from `sdl_pad_handler::init_config`. XInput's are the
@@ -111,6 +128,30 @@ fn from_handler(button: &str, handler: &str) -> String {
     button.to_string()
 }
 
+/// What the interface calls a pad. RPCS3's own names are "XInput Pad #2", or
+/// an SDL name with an index on the end.
+fn display_name(handler: &str, device: &str) -> String {
+    if handler == "XInput" {
+        let slot = device.rsplit('#').next().unwrap_or("1");
+        format!("Xbox controller {slot}")
+    } else {
+        device
+            .trim_end_matches(|c: char| c.is_ascii_digit())
+            .trim_end()
+            .to_string()
+    }
+}
+
+/// One of the four XInput slots, counted from zero.
+fn xinput_slot(slot: usize) -> Controller {
+    let device = format!("XInput Pad #{}", slot + 1);
+    Controller {
+        name: display_name("XInput", &device),
+        device,
+        handler: "XInput".to_string(),
+    }
+}
+
 /// Which of the four XInput slots have a pad in them, the same slots RPCS3's
 /// XInput handler walks.
 #[cfg(windows)]
@@ -140,18 +181,7 @@ const MICROSOFT: u16 = 0x045E;
 /// people have.
 pub fn connected() -> Vec<Controller> {
     let slots = xinput_slots();
-    let mut found: Vec<Controller> = slots
-        .iter()
-        .map(|slot| Controller {
-            device: format!("XInput Pad #{}", slot + 1),
-            name: if slots.len() > 1 {
-                format!("Xbox controller {}", slot + 1)
-            } else {
-                "Xbox controller".to_string()
-            },
-            handler: "XInput".to_string(),
-        })
-        .collect();
+    let mut found: Vec<Controller> = slots.iter().map(|&slot| xinput_slot(slot as usize)).collect();
 
     if let Ok(gilrs) = gilrs::Gilrs::new() {
         // RPCS3 numbers pads of the same name from zero, which is how two
@@ -190,8 +220,8 @@ fn profile_path(app: &AppHandle, title_id: &str) -> Result<PathBuf, String> {
     Ok(profile_dir(app, title_id)?.join("Default.yml"))
 }
 
-/// An empty file is what RPCS3 itself writes for an untouched keyboard profile,
-/// so it does not count as set up.
+/// An empty file is what RPCS3 itself writes for an untouched profile, so it
+/// does not count as set up.
 pub fn have_profile(app: &AppHandle, title_id: &str) -> bool {
     profile_path(app, title_id)
         .map(|path| std::fs::metadata(&path).is_ok_and(|meta| meta.len() > 0))
@@ -207,8 +237,8 @@ fn read_profile(app: &AppHandle, title_id: &str) -> Option<String> {
 /// Reads one `Key: value` out of the profile.
 ///
 /// The file is ours: we write it, RPCS3 rewrites it in the same shape, and the
-/// values are short strings. A YAML parser would be a dependency for twenty
-/// lines of flat key-value.
+/// values are short strings. A YAML parser would be a dependency for a few
+/// dozen lines of flat key-value.
 fn read_value(text: &str, key: &str) -> Option<String> {
     text.lines()
         .map(str::trim)
@@ -216,77 +246,92 @@ fn read_value(text: &str, key: &str) -> Option<String> {
         .map(|line| line[key.len() + 1..].trim().trim_matches('"').to_string())
 }
 
-/// The controller a profile is bound to, as written in it.
-pub fn bound(app: &AppHandle, title_id: &str) -> Option<Controller> {
-    let text = read_profile(app, title_id)?;
-    let handler = read_value(&text, "Handler")?;
-    let device = read_value(&text, "Device").filter(|d| !d.is_empty())?;
-    Some(Controller {
-        name: device.clone(),
-        device,
-        handler,
-    })
-}
-
-/// The bindings in a profile, or RPCS3's own defaults when there is none.
-pub fn bindings(app: &AppHandle, title_id: &str) -> Vec<Binding> {
-    let mut bindings = default_bindings();
-    let Some(text) = read_profile(app, title_id) else {
-        return bindings;
-    };
-    let handler = read_value(&text, "Handler").unwrap_or_default();
-    for binding in &mut bindings {
-        if let Some(found) = read_value(&text, &binding.key) {
-            binding.button = from_handler(&found, &handler);
+/// The players in a profile, by number. A player the file leaves out, or
+/// gives a handler Omoio does not write, comes back as `None`.
+fn parse_players(text: &str) -> Vec<Option<Player>> {
+    let mut sections = vec![String::new(); PLAYERS];
+    let mut current: Option<usize> = None;
+    for line in text.lines() {
+        if let Some(number) = line
+            .strip_prefix("Player ")
+            .and_then(|rest| rest.trim_end().strip_suffix(" Input:"))
+        {
+            current = number
+                .trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|n| (1..=PLAYERS).contains(n))
+                .map(|n| n - 1);
+            continue;
+        }
+        // Any other line at the left edge starts something that is not a
+        // player.
+        if !line.starts_with(' ') {
+            current = None;
+        }
+        if let Some(at) = current {
+            sections[at].push_str(line);
+            sections[at].push('\n');
         }
     }
-    bindings
+
+    sections
+        .iter()
+        .map(|section| {
+            let handler = read_value(section, "Handler")?;
+            let device = read_value(section, "Device").filter(|d| !d.is_empty())?;
+            if handler != "XInput" && handler != "SDL" {
+                return None;
+            }
+            let mut bindings = default_bindings();
+            for binding in &mut bindings {
+                if let Some(found) = read_value(section, &binding.key) {
+                    binding.button = from_handler(&found, &handler);
+                }
+            }
+            Some(Player {
+                controller: Controller {
+                    name: display_name(&handler, &device),
+                    device,
+                    handler,
+                },
+                bindings,
+            })
+        })
+        .collect()
 }
 
-/// Writes the profile RPCS3 reads on its next launch.
-///
-/// Every button is written, not just the ones that differ, because a fresh
-/// profile has them all empty. Leaving one out means leaving it unbound.
-pub fn write_profile(
-    app: &AppHandle,
-    title_id: &str,
-    controller: &Controller,
-    bindings: &[Binding],
-) -> Result<(), String> {
-    if controller.device.is_empty() {
-        return Err("Plug in a controller first.".to_string());
+/// The file RPCS3 reads. Every button is written, not just the ones that
+/// differ, because a fresh profile has them all empty. Leaving one out means
+/// leaving it unbound.
+fn profile_text(players: &[Player]) -> String {
+    let mut out = String::new();
+    for (at, player) in players.iter().enumerate().take(PLAYERS) {
+        let controller = &player.controller;
+        out.push_str(&format!("Player {} Input:\n", at + 1));
+        out.push_str(&format!("  Handler: {}\n", controller.handler));
+        out.push_str(&format!("  Device: {}\n", quoted(&controller.device)));
+        out.push_str("  Buddy Device: \"\"\n");
+        out.push_str("  Config:\n");
+        for binding in &player.bindings {
+            out.push_str(&format!(
+                "    {}: {}\n",
+                binding.key,
+                quoted(&to_handler(&binding.button, &controller.handler))
+            ));
+        }
+        // A profile's deadzone defaults to zero rather than to the handler's,
+        // and at zero a worn stick drifts. These are the handlers' own
+        // numbers: SDL's from its init_config, XInput's the constants in
+        // Microsoft's XInput.h.
+        let (left, right) = if controller.handler == "XInput" {
+            (7849, 8689)
+        } else {
+            (8000, 8000)
+        };
+        out.push_str(&format!("    Left Stick Deadzone: {left}\n"));
+        out.push_str(&format!("    Right Stick Deadzone: {right}\n"));
     }
-    if controller.handler != "XInput" && controller.handler != "SDL" {
-        return Err("Couldn't save the controller settings.".to_string());
-    }
-    std::fs::create_dir_all(profile_dir(app, title_id)?).map_err(|e| e.to_string())?;
-    std::fs::write(profile_path(app, title_id)?, profile_text(controller, bindings))
-        .map_err(|_| "Couldn't save the controller settings.".to_string())
-}
-
-fn profile_text(controller: &Controller, bindings: &[Binding]) -> String {
-    let mut out = String::from("Player 1 Input:\n");
-    out.push_str(&format!("  Handler: {}\n", controller.handler));
-    out.push_str(&format!("  Device: {}\n", quoted(&controller.device)));
-    out.push_str("  Buddy Device: \"\"\n");
-    out.push_str("  Config:\n");
-    for binding in bindings {
-        out.push_str(&format!(
-            "    {}: {}\n",
-            binding.key,
-            quoted(&to_handler(&binding.button, &controller.handler))
-        ));
-    }
-    // A profile's deadzone defaults to zero rather than to the handler's, and
-    // at zero a worn stick drifts. These are the handlers' own numbers: SDL's
-    // from its init_config, XInput's the constants in Microsoft's XInput.h.
-    let (left, right) = if controller.handler == "XInput" {
-        (7849, 8689)
-    } else {
-        (8000, 8000)
-    };
-    out.push_str(&format!("    Left Stick Deadzone: {left}\n"));
-    out.push_str(&format!("    Right Stick Deadzone: {right}\n"));
     out
 }
 
@@ -296,22 +341,146 @@ fn quoted(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Binds the first pad it finds with RPCS3's own layout. Returns the pad used.
-pub fn set_up(app: &AppHandle, title_id: &str) -> Result<Controller, String> {
-    let controller = connected()
-        .into_iter()
-        .next()
-        .ok_or("No controller found. Plug one in and try again.")?;
-    write_profile(app, title_id, &controller, &default_bindings())?;
-    Ok(controller)
+fn write_players(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), String> {
+    let usable = |p: &Player| {
+        !p.controller.device.is_empty() && matches!(p.controller.handler.as_str(), "XInput" | "SDL")
+    };
+    if !players.iter().all(usable) {
+        return Err("Couldn't save the controller settings.".to_string());
+    }
+    std::fs::create_dir_all(profile_dir(app, title_id)?).map_err(|e| e.to_string())?;
+    std::fs::write(profile_path(app, title_id)?, profile_text(players))
+        .map_err(|_| "Couldn't save the controller settings.".to_string())
 }
 
-/// Called before a game starts. If nothing has been set up and a pad is
-/// plugged in, it is set up now, so plugging in and pressing Play is enough.
-/// A profile the user has already made is never touched.
+/// Who gets which pad when nothing has been chosen. Pads plugged in now take
+/// the first players, in the order they are listed, and the XInput slots not
+/// taken fill the rest and wait for a pad.
+fn default_players(connected: &[Controller]) -> Vec<Player> {
+    let mut pads: Vec<Controller> = connected.to_vec();
+    for slot in 0..4 {
+        let pad = xinput_slot(slot);
+        if !pads.iter().any(|known| known.device == pad.device) {
+            pads.push(pad);
+        }
+    }
+    pads.truncate(PLAYERS);
+    pads.into_iter()
+        .map(|controller| Player {
+            controller,
+            bindings: default_bindings(),
+        })
+        .collect()
+}
+
+/// The players a profile has, with any it leaves out given a pad no other
+/// player has.
+fn fill(found: Vec<Option<Player>>, connected: &[Controller]) -> Vec<Player> {
+    let taken: Vec<String> = found
+        .iter()
+        .flatten()
+        .map(|player| player.controller.device.clone())
+        .collect();
+    let mut spare = default_players(connected)
+        .into_iter()
+        .filter(|player| !taken.contains(&player.controller.device));
+    found
+        .into_iter()
+        .enumerate()
+        .map(|(at, player)| {
+            player.or_else(|| spare.next()).unwrap_or_else(|| Player {
+                controller: xinput_slot(at),
+                bindings: default_bindings(),
+            })
+        })
+        .collect()
+}
+
+/// Gives each pad that is plugged in but belongs to no player the place of
+/// the first player whose own pad is not plugged in. Their buttons stay as
+/// they were. Returns whether anyone moved.
+fn seat(players: &mut [Player], connected: &[Controller]) -> bool {
+    let mut moved = false;
+    for pad in connected {
+        if players.iter().any(|p| p.controller.device == pad.device) {
+            continue;
+        }
+        let waiting = players
+            .iter()
+            .position(|p| !connected.iter().any(|c| c.device == p.controller.device));
+        if let Some(at) = waiting {
+            players[at].controller = pad.clone();
+            moved = true;
+        }
+    }
+    moved
+}
+
+/// The four players as they stand for a profile, whether or not it has been
+/// written yet.
+pub fn current_players(app: &AppHandle, title_id: &str, connected: &[Controller]) -> Vec<Player> {
+    let found = read_profile(app, title_id)
+        .map(|text| parse_players(&text))
+        .unwrap_or_else(|| vec![None; PLAYERS]);
+    fill(found, connected)
+}
+
+/// Every pad a player can be given: the four XInput slots, which can be chosen
+/// before anything is in them, whatever else is plugged in, and any pad a
+/// player already has that is not plugged in right now.
+pub fn pads(players: &[Player], connected: &[Controller]) -> Vec<Controller> {
+    let mut pads: Vec<Controller> = (0..4).map(xinput_slot).collect();
+    for pad in connected.iter().chain(players.iter().map(|p| &p.controller)) {
+        if !pads.iter().any(|known| known.device == pad.device) {
+            pads.push(pad.clone());
+        }
+    }
+    pads
+}
+
+/// Gives player `number`, counted from 1, this pad and layout. A pad another
+/// player had is swapped over, so no pad ever drives two players.
+///
+/// A game's first change starts from the layout for every game, which is what
+/// it was playing with until then.
+pub fn save_player(app: &AppHandle, title_id: &str, number: usize, player: Player) -> Result<(), String> {
+    let at = number
+        .checked_sub(1)
+        .filter(|at| *at < PLAYERS)
+        .ok_or("Couldn't save the controller settings.")?;
+    let source = if have_profile(app, title_id) { title_id } else { "" };
+    let mut players = current_players(app, source, &connected());
+    if let Some(other) = players
+        .iter()
+        .position(|p| p.controller.device == player.controller.device)
+    {
+        if other != at {
+            players[other].controller = players[at].controller.clone();
+        }
+    }
+    players[at] = player;
+    write_players(app, title_id, &players)
+}
+
+/// Gives all four players RPCS3's own layout, pads plugged in first.
+pub fn set_up(app: &AppHandle, title_id: &str) -> Result<(), String> {
+    write_players(app, title_id, &default_players(&connected()))
+}
+
+/// Called before a game starts, so plugging in and pressing Play is enough.
+/// Players missing from the profile are added, and a pad plugged in that no
+/// player has takes the place of one whose pad is not there. Buttons someone
+/// chose are never changed.
 pub fn set_up_if_needed(app: &AppHandle) {
-    if !have_profile(app, "") {
-        let _ = set_up(app, "");
+    let connected = connected();
+    let found = read_profile(app, "")
+        .map(|text| parse_players(&text))
+        .unwrap_or_else(|| vec![None; PLAYERS]);
+    let missing = found.iter().any(Option::is_none);
+    let mut players = fill(found, &connected);
+    let moved = seat(&mut players, &connected);
+    if missing || moved {
+        let _ = write_players(app, "", &players);
     }
 }
 
@@ -334,9 +503,20 @@ mod tests {
     fn pad(handler: &str, device: &str) -> Controller {
         Controller {
             device: device.to_string(),
-            name: device.to_string(),
+            name: display_name(handler, device),
             handler: handler.to_string(),
         }
+    }
+
+    fn player(handler: &str, device: &str) -> Player {
+        Player {
+            controller: pad(handler, device),
+            bindings: default_bindings(),
+        }
+    }
+
+    fn devices(players: &[Player]) -> Vec<&str> {
+        players.iter().map(|p| p.controller.device.as_str()).collect()
     }
 
     #[test]
@@ -355,7 +535,8 @@ mod tests {
 
     #[test]
     fn xinput_profiles_use_its_names_for_the_face_buttons() {
-        let text = profile_text(&pad("XInput", "XInput Pad #1"), &default_bindings());
+        let text = profile_text(&[player("XInput", "XInput Pad #1")]);
+        assert!(text.starts_with("Player 1 Input:\n"));
         assert!(text.contains("  Handler: XInput\n"));
         assert!(text.contains("  Device: \"XInput Pad #1\"\n"));
         assert!(text.contains("    Cross: \"A\"\n"));
@@ -366,18 +547,83 @@ mod tests {
 
     #[test]
     fn sdl_profiles_keep_sdl_names() {
-        let text = profile_text(&pad("SDL", "DualSense Wireless Controller 0"), &default_bindings());
+        let text = profile_text(&[player("SDL", "DualSense Wireless Controller 0")]);
         assert!(text.contains("  Handler: SDL\n"));
         assert!(text.contains("    Cross: \"South\"\n"));
         assert!(text.contains("    Left Stick Deadzone: 8000\n"));
     }
 
     #[test]
-    fn a_written_xinput_profile_reads_back_in_sdl_names() {
-        let text = profile_text(&pad("XInput", "XInput Pad #1"), &default_bindings());
-        let handler = read_value(&text, "Handler").unwrap();
-        let cross = read_value(&text, "Cross").unwrap();
-        assert_eq!(from_handler(&cross, &handler), "South");
+    fn four_players_written_read_back_the_same() {
+        let players = default_players(&[pad("SDL", "DualSense Wireless Controller 0")]);
+        let text = profile_text(&players);
+        for number in 1..=4 {
+            assert!(text.contains(&format!("Player {number} Input:\n")));
+        }
+        let back: Vec<Player> = parse_players(&text).into_iter().map(Option::unwrap).collect();
+        assert_eq!(back, players);
+    }
+
+    #[test]
+    fn with_nothing_plugged_in_four_players_wait_on_the_xinput_slots() {
+        assert_eq!(
+            devices(&default_players(&[])),
+            ["XInput Pad #1", "XInput Pad #2", "XInput Pad #3", "XInput Pad #4"]
+        );
+    }
+
+    #[test]
+    fn pads_plugged_in_take_the_first_players() {
+        let players = default_players(&[
+            pad("XInput", "XInput Pad #2"),
+            pad("SDL", "DualSense Wireless Controller 0"),
+        ]);
+        assert_eq!(
+            devices(&players),
+            ["XInput Pad #2", "DualSense Wireless Controller 0", "XInput Pad #1", "XInput Pad #3"]
+        );
+    }
+
+    #[test]
+    fn a_one_player_profile_gains_three_more() {
+        let text = profile_text(&[player("SDL", "DualSense Wireless Controller 0")]);
+        let players = fill(parse_players(&text), &[]);
+        assert_eq!(
+            devices(&players),
+            ["DualSense Wireless Controller 0", "XInput Pad #1", "XInput Pad #2", "XInput Pad #3"]
+        );
+    }
+
+    #[test]
+    fn a_pad_nobody_has_takes_the_place_of_one_not_plugged_in() {
+        let mut players = default_players(&[]);
+        let connected = [
+            pad("XInput", "XInput Pad #1"),
+            pad("SDL", "DualSense Wireless Controller 0"),
+        ];
+        assert!(seat(&mut players, &connected));
+        assert_eq!(
+            devices(&players),
+            ["XInput Pad #1", "DualSense Wireless Controller 0", "XInput Pad #3", "XInput Pad #4"]
+        );
+        assert!(!seat(&mut players, &connected), "nothing moves the second time");
+    }
+
+    #[test]
+    fn a_buddy_device_is_not_read_as_the_device() {
+        let text = "Player 2 Input:\n  Handler: XInput\n  Buddy Device: \"\"\n  Device: \"XInput Pad #2\"\n  Config:\n    Cross: \"B\"\n";
+        let players = parse_players(text);
+        assert!(players[0].is_none());
+        let second = players[1].as_ref().unwrap();
+        assert_eq!(second.controller.device, "XInput Pad #2");
+        assert_eq!(second.bindings[0].button, "East", "B is read back in SDL's name");
+    }
+
+    #[test]
+    fn pads_have_names_worth_reading() {
+        assert_eq!(display_name("XInput", "XInput Pad #3"), "Xbox controller 3");
+        assert_eq!(display_name("SDL", "DualSense Wireless Controller 0"), "DualSense Wireless Controller");
+        assert_eq!(display_name("SDL", "8BitDo Pro 2 1"), "8BitDo Pro 2");
     }
 
     #[test]

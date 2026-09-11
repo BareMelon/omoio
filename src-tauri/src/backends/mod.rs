@@ -46,6 +46,22 @@ pub trait EmulatorBackend: Sync {
 
     /// Where the emulator writes the log of the session that just ran.
     fn log_file(&self, app: &AppHandle) -> Option<PathBuf>;
+
+    /// Every title this console's compatibility list knows, or `None` until
+    /// the list has been downloaded.
+    fn catalogue(&self, app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>>;
+
+    /// Downloads the list again and returns how many titles it holds. Boxed
+    /// because a trait used through `dyn` cannot declare an `async fn`; the
+    /// box is where the download's state lives while it runs.
+    fn refresh_catalogue<'a>(
+        &'a self,
+        app: &'a AppHandle,
+        cancel: &'a std::sync::atomic::AtomicBool,
+    ) -> futures_util::future::BoxFuture<'a, Result<usize, String>>;
+
+    /// Who publishes the list and where, for the credit under the catalogue.
+    fn catalogue_source(&self) -> (&'static str, &'static str);
 }
 
 /// Every emulator Omoio can run, one per console.

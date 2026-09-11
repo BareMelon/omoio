@@ -4,11 +4,10 @@ import {
   saveController,
   setUpController,
   type Binding,
-  type ControllerInfo,
   type ControllerView,
 } from "../api";
 import { store } from "../state";
-import { emptyState, type View } from "./view";
+import type { View } from "./view";
 
 /// What each physical input is called on screen. The keys are SDL's names,
 /// which is what the backend deals in whatever the pad is.
@@ -112,131 +111,120 @@ const PAD_ART = `
     <circle data-part="R3" cx="202" cy="130" r="19"/>
   </svg>`;
 
-/// Nothing in RPCS3's own name for a pad is worth reading. An XInput slot is
-/// an Xbox pad; an SDL name ends in the index RPCS3 adds.
-function padName(controller: ControllerInfo): string {
-  if (controller.handler === "XInput") {
-    const slot = controller.device.match(/#(\d+)$/)?.[1];
-    return slot && slot !== "1" ? `Xbox controller ${slot}` : "Xbox controller";
-  }
-  return controller.device.replace(/ \d+$/, "");
-}
-
-function connectedList(view: ControllerView): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "pads";
-  for (const pad of view.connected) {
-    const chip = document.createElement("span");
-    chip.className = "pad-chip";
-    chip.innerHTML = `<span class="dot"></span><span class="pad-chip-name"></span>`;
-    chip.querySelector<HTMLElement>(".pad-chip-name")!.textContent = pad.name;
-    box.appendChild(chip);
-  }
-  return box;
-}
+/// The player whose buttons are on screen. Kept across redraws, so giving a
+/// player a pad does not jump back to player 1.
+let shownPlayer = 0;
 
 function scopePicker(scope: string): HTMLElement {
   const games = (store.get().games ?? []).filter((game) => game.set_up);
   const select = document.createElement("select");
   select.className = "select";
-  const every = new Option("Every game", "");
-  select.add(every);
+  select.add(new Option("Every game", ""));
   for (const game of games) select.add(new Option(game.title, game.title_id));
   select.value = scope;
   select.onchange = () => store.setControllerScope(select.value);
   return select;
 }
 
+/// One player: who they are, which pad is theirs, and whether it is plugged
+/// in. The pad can be chosen before it is.
+function playerCard(view: ControllerView, index: number, scope: string, note: HTMLElement): HTMLElement {
+  const player = view.players[index];
+  const card = document.createElement("div");
+  card.className = index === shownPlayer ? "player-card on" : "player-card";
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-pressed", String(index === shownPlayer));
+  const show = () => {
+    shownPlayer = index;
+    store.redraw();
+  };
+  card.onclick = show;
+  card.onkeydown = (event) => {
+    if (event.target === card && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      show();
+    }
+  };
+
+  card.innerHTML = `
+    <div class="player-top">
+      <span class="player-num">${index + 1}</span>
+      <span class="player-label">Player ${index + 1}</span>
+    </div>
+    <div class="player-pad"><span class="dot"></span><span class="player-pad-name"></span></div>
+    <div class="player-state"></div>
+  `;
+  card.querySelector<HTMLElement>(".player-pad-name")!.textContent = player.controller.name;
+  card.querySelector(".dot")!.classList.toggle("on", player.connected);
+  card.querySelector<HTMLElement>(".player-state")!.textContent = player.connected
+    ? "Plugged in"
+    : "Waiting for this pad";
+
+  const select = document.createElement("select");
+  select.className = "select player-select";
+  select.setAttribute("aria-label", `Pad for player ${index + 1}`);
+  for (const pad of view.pads) {
+    const plugged = view.connected.some((c) => c.device === pad.device);
+    select.add(new Option(plugged ? `${pad.name} (plugged in)` : pad.name, pad.device));
+  }
+  select.value = player.controller.device;
+  select.onclick = (event) => event.stopPropagation();
+  select.onchange = async () => {
+    const pad = view.pads.find((p) => p.device === select.value);
+    if (!pad) return;
+    shownPlayer = index;
+    try {
+      await saveController(scope, index + 1, pad, player.bindings);
+      note.textContent = "";
+    } catch (err) {
+      note.textContent = typeof err === "string" ? err : "Couldn't save the controller settings.";
+    }
+    store.redraw();
+  };
+  card.appendChild(select);
+  return card;
+}
+
 export async function renderController(): Promise<View> {
   const scope = store.get().controllerScope ?? "";
   const view = await controllerView(scope);
+  if (shownPlayer >= view.players.length) shownPlayer = 0;
   const content = document.createElement("div");
   content.className = "controller";
 
   const note = document.createElement("div");
   note.className = "note plain";
 
-  if (view.connected.length === 0 && !view.bound) {
-    const empty = emptyState(
-      "No controller plugged in",
-      "Plug one in and it sets itself up. Xbox, PlayStation, Switch Pro and 8BitDo pads all work."
-    );
-    const again = document.createElement("button");
-    again.className = "small-btn";
-    again.style.marginTop = "14px";
-    again.textContent = "Check again";
-    again.onclick = () => store.redraw();
-    empty.appendChild(again);
-    content.appendChild(empty);
-    return { title: "Controller", subtitle: "Nothing plugged in", content };
-  }
-
-  // The pad this layout drives: whatever it was set up with, or else the
-  // first one plugged in, which is what a change will bind to.
-  const target = view.bound ?? view.connected[0];
-  let bindings: Binding[] = view.bindings;
-
-  const save = async () => {
-    if (!target) {
-      note.textContent = "Plug in a controller first.";
-      return;
-    }
-    try {
-      await saveController(scope, target, bindings);
-      note.textContent = "";
-      if (!view.own) store.redraw();
-    } catch (err) {
-      note.textContent = typeof err === "string" ? err : "Couldn't save the controller settings.";
-    }
-  };
-
-  // Status and the pads that are in.
   const head = document.createElement("div");
   head.className = "pad-head";
   const status = document.createElement("div");
   status.className = "pad-status";
-  if (view.bound) {
-    status.textContent =
-      scope && !view.own
-        ? `Using the layout for every game, on ${padName(view.bound)}.`
-        : `Set up on ${padName(view.bound)}.`;
-  } else {
-    status.textContent = "Not set up yet. It sets itself up the first time you press Play.";
-  }
-  head.append(status, connectedList(view));
+  const plugged = view.players.filter((p) => p.connected).length;
+  status.textContent = !view.saved
+    ? "Nothing saved yet. Pressing Play sets up these four players."
+    : scope && !view.own
+      ? "This game uses the layout for every game."
+      : plugged === 0
+        ? "No pads plugged in. Each player waits for theirs."
+        : `${plugged} of ${view.players.length} players have their pad plugged in.`;
+  head.appendChild(status);
 
   const actions = document.createElement("div");
   actions.className = "row-actions";
   actions.appendChild(scopePicker(scope));
-  if (!view.bound) {
-    const now = document.createElement("button");
-    now.className = "small-btn";
-    now.textContent = "Set up now";
-    now.onclick = async () => {
-      now.disabled = true;
-      try {
-        await setUpController(scope);
-        store.redraw();
-      } catch (err) {
-        note.textContent = typeof err === "string" ? err : "Couldn't set up the controller.";
-        now.disabled = false;
-      }
-    };
-    actions.appendChild(now);
-  } else {
-    const reset = document.createElement("button");
-    reset.className = "small-btn";
-    reset.textContent = "Restore defaults";
-    reset.onclick = async () => {
-      try {
-        await setUpController(scope);
-        store.redraw();
-      } catch (err) {
-        note.textContent = typeof err === "string" ? err : "Couldn't set up the controller.";
-      }
-    };
-    actions.appendChild(reset);
-  }
+  const reset = document.createElement("button");
+  reset.className = "small-btn";
+  reset.textContent = view.saved ? "Restore defaults" : "Save these players";
+  reset.onclick = async () => {
+    try {
+      await setUpController(scope);
+      store.redraw();
+    } catch (err) {
+      note.textContent = typeof err === "string" ? err : "Couldn't set up the controllers.";
+    }
+  };
+  actions.appendChild(reset);
   if (scope && view.own) {
     const back = document.createElement("button");
     back.className = "link-btn";
@@ -250,6 +238,17 @@ export async function renderController(): Promise<View> {
   head.appendChild(actions);
   content.append(head, note);
 
+  const players = document.createElement("div");
+  players.className = "players";
+  view.players.forEach((_, index) => players.appendChild(playerCard(view, index, scope, note)));
+  content.appendChild(players);
+
+  const how = document.createElement("div");
+  how.className = "note plain";
+  how.textContent =
+    "A pad plugged in that no player has takes the place of the first player whose pad is missing when you press Play.";
+  content.appendChild(how);
+
   if (scope && !view.own) {
     const hint = document.createElement("div");
     hint.className = "note plain";
@@ -257,7 +256,24 @@ export async function renderController(): Promise<View> {
     content.appendChild(hint);
   }
 
-  // The map itself: the pad in the middle, its inputs either side.
+  // The chosen player's buttons: the pad in the middle, its inputs either side.
+  const player = view.players[shownPlayer];
+  let bindings: Binding[] = player.bindings;
+  const save = async () => {
+    try {
+      await saveController(scope, shownPlayer + 1, player.controller, bindings);
+      note.textContent = "";
+      if (!view.own || !view.saved) store.redraw();
+    } catch (err) {
+      note.textContent = typeof err === "string" ? err : "Couldn't save the controller settings.";
+    }
+  };
+
+  const title = document.createElement("div");
+  title.className = "map-title";
+  title.textContent = `Buttons for player ${shownPlayer + 1}`;
+  content.appendChild(title);
+
   const map = document.createElement("div");
   map.className = "pad-map";
 
@@ -318,10 +334,11 @@ export async function renderController(): Promise<View> {
   map.append(column(LEFT), art, column(RIGHT));
   content.appendChild(map);
 
-  const subtitle = view.connected.length
-    ? view.connected.length === 1
-      ? "1 controller plugged in"
-      : `${view.connected.length} controllers plugged in`
-    : "Nothing plugged in right now";
+  const subtitle =
+    view.connected.length === 0
+      ? "Nothing plugged in right now"
+      : view.connected.length === 1
+        ? "1 controller plugged in"
+        : `${view.connected.length} controllers plugged in`;
   return { title: "Controller", subtitle, content };
 }

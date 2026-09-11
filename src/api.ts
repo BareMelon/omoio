@@ -288,8 +288,9 @@ export function gameCompatibility(titleId: string): Promise<Compatibility> {
   return invoke("game_compatibility", { titleId });
 }
 
-export function refreshCompatibility(): Promise<number> {
-  return invoke("refresh_compatibility");
+/// Every console's list, or only `console`'s.
+export function refreshCompatibility(console?: Console): Promise<number> {
+  return invoke("refresh_compatibility", { console: console ?? null });
 }
 
 export function cancelCompatibility(): Promise<void> {
@@ -457,30 +458,59 @@ export function pendingUpdates(): Promise<[boolean, PendingUpdate[]]> {
   return invoke("pending_updates");
 }
 
-export interface Listing {
+export type Console = "ps3" | "wiiu";
+
+export interface Release {
   title_id: string;
-  /// The game's name, or its title id when Sony published none.
-  name: string;
-  status: string;
-  named: boolean;
-  /// Where the disc was sold, when the title id says. The same game is listed
-  /// once per region, so this is what tells two identical rows apart.
   region: string;
+}
+
+/// One game in the catalogue, however many times it was released.
+export interface Listing {
+  console: Console;
+  console_name: string;
+  /// Unique across the catalogue. Covers are cached under it.
+  key: string;
+  /// The game's name, or its title id when the list has none.
+  name: string;
+  named: boolean;
+  /// The best any release of it is reported to do. Empty when nobody has.
+  status: { label: string; tone: string; explanation: string };
+  /// "Virtual Console" for an older console's game sold again, else empty.
+  kind: string;
+  regions: string[];
+  /// Every release with a title id, the chosen region's first.
+  releases: Release[];
+  demo: boolean;
+  owned: boolean;
+  features: Game["features"];
+}
+
+export interface CatalogueFilter {
+  query: string;
+  console: Console | null;
+  region: string;
+  runs: string;
+  hide_demos: boolean;
+  sort: string;
+  limit: number;
 }
 
 export interface CatalogueView {
   have_list: boolean;
+  consoles: { console: Console; name: string }[];
+  missing: Console[];
   total: number;
   shown: Listing[];
-  in_library: string[];
+  sources: { label: string; url: string }[];
 }
 
-export function catalogue(query: string, region: string): Promise<CatalogueView> {
-  return invoke("catalogue", { query, region });
+export function catalogue(filter: CatalogueFilter): Promise<CatalogueView> {
+  return invoke("catalogue", { filter });
 }
 
-export function addToLibrary(titleId: string, title: string): Promise<void> {
-  return invoke("add_to_library", { titleId, title });
+export function addToLibrary(console: Console, titleId: string, title: string): Promise<void> {
+  return invoke("add_to_library", { console, titleId, title });
 }
 
 export interface InstalledPackage {
@@ -522,11 +552,23 @@ export interface Binding {
   button: string;
 }
 
+export interface PlayerSetup {
+  controller: ControllerInfo;
+  /// Whether that pad is plugged in right now.
+  connected: boolean;
+  bindings: Binding[];
+}
+
 export interface ControllerView {
   connected: ControllerInfo[];
-  bound: ControllerInfo | null;
+  /// Players one to four, in order.
+  players: PlayerSetup[];
+  /// Every pad a player can be given, plugged in or not.
+  pads: ControllerInfo[];
+  /// False until the layout is written. The players shown are then the ones
+  /// pressing Play will set up.
+  saved: boolean;
   own: boolean;
-  bindings: Binding[];
   choices: string[];
 }
 
@@ -534,16 +576,18 @@ export function controllerView(titleId: string): Promise<ControllerView> {
   return invoke("controller_view", { titleId });
 }
 
-export function setUpController(titleId: string): Promise<ControllerInfo> {
+export function setUpController(titleId: string): Promise<void> {
   return invoke("set_up_controller", { titleId });
 }
 
+/// `number` is the player, counted from 1.
 export function saveController(
   titleId: string,
+  number: number,
   controller: ControllerInfo,
   bindings: Binding[]
 ): Promise<void> {
-  return invoke("save_controller", { titleId, controller, bindings });
+  return invoke("save_controller", { titleId, number, controller, bindings });
 }
 
 export function forgetController(titleId: string): Promise<void> {
@@ -563,10 +607,10 @@ export function fetchCovers(): Promise<number> {
   return invoke("fetch_covers");
 }
 
-/// The RAWG cover for a catalogue title, or null when there is none or covers
+/// The RAWG cover for a catalogue game, or null when there is none or covers
 /// are off.
-export function catalogueCover(titleId: string, name: string): Promise<string | null> {
-  return invoke("catalogue_cover", { titleId, name });
+export function catalogueCover(key: string, name: string, console: Console): Promise<string | null> {
+  return invoke("catalogue_cover", { key, name, console });
 }
 
 export interface EmulatorVersion {

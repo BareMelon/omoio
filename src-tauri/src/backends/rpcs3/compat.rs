@@ -239,18 +239,6 @@ pub fn have_list(app: &AppHandle) -> bool {
     read_cache(app).is_some()
 }
 
-/// One title as the catalogue lists it.
-#[derive(Debug, Clone, Serialize)]
-pub struct Listing {
-    pub title_id: String,
-    /// The game's name, or its id when Sony published none.
-    pub name: String,
-    pub status: String,
-    pub named: bool,
-    /// Where the disc was sold. Empty when the id says nothing about it.
-    pub region: &'static str,
-}
-
 /// The third character of a title id is the region it was sold in, on both disc
 /// ids (BLES, BLUS) and store ids (NPEB, NPUB). Checked against the export: of
 /// its 2863 E titles not one carries a Japanese name, while 222 of the 916 J
@@ -271,64 +259,42 @@ fn region_of(title_id: &str) -> &'static str {
     }
 }
 
-/// Titles matching what was typed, best matches first.
+/// Every title in the list, as the catalogue takes them. `None` until the list
+/// has been downloaded.
 ///
-/// Searched over the copy we already hold, so it answers instantly and with the
-/// network off. Capped because six thousand rows help nobody: narrowing the
-/// search is the way to find something, not scrolling.
-/// `region` is one of the labels `region_of` returns, or empty for all of them.
-pub fn search(
-    app: &AppHandle,
-    query: &str,
-    region: &str,
-    limit: usize,
-) -> (usize, Vec<Listing>) {
-    let Some(cache) = read_cache(app) else {
-        return (0, Vec::new());
-    };
-    let needle = query.trim().to_lowercase();
-
-    let mut found: Vec<Listing> = cache
-        .titles
-        .into_iter()
-        .filter(|(id, _)| region.is_empty() || region_of(id) == region)
-        .filter(|(id, entry)| {
-            needle.is_empty()
-                || id.to_lowercase().contains(&needle)
-                || entry.name.to_lowercase().contains(&needle)
-        })
-        .map(|(title_id, entry)| Listing {
-            named: !entry.name.is_empty(),
-            region: region_of(&title_id),
-            name: if entry.name.is_empty() {
-                title_id.clone()
-            } else {
-                entry.name
-            },
-            status: entry.status,
-            title_id,
-        })
-        .collect();
-
-    // A name beginning with what was typed is what someone meant; a title with
-    // no name at all is the weakest match and goes last.
-    found.sort_by_key(|listing| {
-        let name = listing.name.to_lowercase();
-        let rank = if !listing.named {
-            3
-        } else if name.starts_with(&needle) {
-            0
-        } else if name.split_whitespace().any(|word| word.starts_with(&needle)) {
-            1
-        } else {
-            2
-        };
-        (rank, listing.name.clone())
-    });
-
-    let total = found.len();
-    found.truncate(limit);
-    (total, found)
+/// Read from the copy we already hold, so the catalogue answers instantly and
+/// with the network off.
+pub fn entries(app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>> {
+    let cache = read_cache(app)?;
+    Some(
+        cache
+            .titles
+            .into_iter()
+            .map(|(title_id, entry)| {
+                let region = region_of(&title_id);
+                crate::core::catalogue::Entry {
+                    console: crate::core::console::Console::Ps3,
+                    key: title_id.clone(),
+                    named: !entry.name.is_empty(),
+                    name: if entry.name.is_empty() {
+                        title_id.clone()
+                    } else {
+                        entry.name
+                    },
+                    regions: if region.is_empty() { Vec::new() } else { vec![region] },
+                    status: describe(&entry.status)
+                        .map(|(label, tone, explanation)| crate::core::catalogue::Status {
+                            label,
+                            tone,
+                            explanation,
+                        })
+                        .unwrap_or_default(),
+                    kind: "",
+                    title_id,
+                }
+            })
+            .collect(),
+    )
 }
 
 /// Every title we know the newest version of, so the library can be checked

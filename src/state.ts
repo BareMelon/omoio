@@ -1,10 +1,22 @@
-import type { Game, Listing, Playing } from "./api";
+import type { Console, Game, Listing, Playing } from "./api";
 
-/// A catalogue title opened in the side panel, with the other regions' releases
-/// of the same game that were on screen when it was picked.
+/// A catalogue title opened in the side panel.
 export interface CatalogueSelection {
   listing: Listing;
-  siblings: Listing[];
+}
+
+/// How many catalogue games a page shows, and how many more each "Show more"
+/// adds.
+export const CATALOGUE_PAGE = 60;
+
+/// What the catalogue is narrowed to and sorted by, apart from the search.
+export interface CatalogueChoice {
+  console: Console | null;
+  region: string;
+  runs: string;
+  hideDemos: boolean;
+  sort: string;
+  limit: number;
 }
 
 export type ViewId =
@@ -31,8 +43,8 @@ interface AppState {
   search: string;
   /// The catalogue has its own, over every PS3 game rather than yours.
   catalogueQuery: string;
-  /// Which region the catalogue is showing, or empty for all of them.
-  catalogueRegion: string;
+  /// What the catalogue is narrowed to and sorted by.
+  catalogueFilter: CatalogueChoice;
   /// Whose controller layout is on screen: empty for every game, or a title id.
   controllerScope: string;
   /// The catalogue title open in the side panel, if any.
@@ -57,7 +69,14 @@ class Store {
     games: undefined,
     search: "",
     catalogueQuery: "",
-    catalogueRegion: "",
+    catalogueFilter: {
+      console: null,
+      region: "",
+      runs: "",
+      hideDemos: false,
+      sort: "",
+      limit: CATALOGUE_PAGE,
+    },
     controllerScope: "",
     catalogueSelected: null,
     notice: null,
@@ -115,15 +134,21 @@ class Store {
     this.notify();
   }
 
-  setCatalogueRegion(catalogueRegion: string): void {
-    if (catalogueRegion === this.state.catalogueRegion) return;
-    this.state = { ...this.state, catalogueRegion };
+  /// A change to anything but the page length starts again from one page, so
+  /// a new filter never opens sixty rows down.
+  setCatalogueFilter(patch: Partial<CatalogueChoice>): void {
+    const catalogueFilter = { ...this.state.catalogueFilter, limit: CATALOGUE_PAGE, ...patch };
+    this.state = { ...this.state, catalogueFilter };
     this.notify();
   }
 
   setCatalogueQuery(catalogueQuery: string): void {
     if (catalogueQuery === this.state.catalogueQuery) return;
-    this.state = { ...this.state, catalogueQuery };
+    this.state = {
+      ...this.state,
+      catalogueQuery,
+      catalogueFilter: { ...this.state.catalogueFilter, limit: CATALOGUE_PAGE },
+    };
     this.notify();
   }
 

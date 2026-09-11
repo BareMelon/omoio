@@ -264,45 +264,98 @@ fn entry(app: &AppHandle, game: crate::core::library::Game) -> GameEntry {
 /// Nothing is downloaded and nothing is looked for. It is a placeholder that
 /// says what to do next, which is to import the game's own files.
 #[tauri::command]
-pub fn add_to_library(app: AppHandle, title_id: String, title: String) -> Result<(), String> {
+pub fn add_to_library(
+    app: AppHandle,
+    console: crate::core::console::Console,
+    title_id: String,
+    title: String,
+) -> Result<(), String> {
     let file = library_path(&app)?;
     let mut library = Library::load(&file);
     if library.games().iter().any(|g| g.title_id == title_id) {
         return Err("That game is already in your library.".into());
     }
-    library.upsert(crate::core::library::Game::not_set_up(
-        // The catalogue is RPCS3's list, so everything in it is a PS3 game.
-        crate::core::console::Console::Ps3,
-        title_id,
-        title,
-    ));
+    library.upsert(crate::core::library::Game::not_set_up(console, title_id, title));
     library.save(&file)
 }
 
 #[derive(serde::Serialize)]
-pub struct CatalogueView {
-    pub have_list: bool,
-    pub total: usize,
-    pub shown: Vec<rpcs3::compat::Listing>,
-    /// Title ids already in the library, so the catalogue can say so rather
-    /// than offering to add one twice.
-    pub in_library: Vec<String>,
+pub struct CatalogueConsole {
+    pub console: crate::core::console::Console,
+    pub name: &'static str,
 }
 
+#[derive(serde::Serialize)]
+pub struct CatalogueSource {
+    pub label: &'static str,
+    pub url: &'static str,
+}
+
+#[derive(serde::Serialize)]
+pub struct CatalogueView {
+    /// False until at least one console's list has been downloaded.
+    pub have_list: bool,
+    /// Every console Omoio runs, to choose between.
+    pub consoles: Vec<CatalogueConsole>,
+    /// Consoles whose list has not been downloaded yet.
+    pub missing: Vec<crate::core::console::Console>,
+    pub total: usize,
+    pub shown: Vec<crate::core::catalogue::Listing>,
+    /// Who published the lists on screen, for the credit under them.
+    pub sources: Vec<CatalogueSource>,
+}
+
+/// Every console's list, put together and narrowed by the filter.
 #[tauri::command]
-pub fn catalogue(app: AppHandle, query: String, region: String) -> Result<CatalogueView, String> {
-    let (total, shown) = rpcs3::compat::search(&app, &query, &region, 60);
-    let in_library = Library::load(&library_path(&app)?)
-        .games()
-        .iter()
-        .map(|g| g.title_id.clone())
-        .collect();
+pub fn catalogue(
+    app: AppHandle,
+    filter: crate::core::catalogue::Filter,
+) -> Result<CatalogueView, String> {
+    use crate::core::catalogue::{fold, group, pick};
+
+    let mut entries = Vec::new();
+    let mut consoles = Vec::new();
+    let mut missing = Vec::new();
+    let mut sources = Vec::new();
+    for backend in crate::backends::all() {
+        consoles.push(CatalogueConsole {
+            console: backend.console(),
+            name: backend.console().short(),
+        });
+        match backend.catalogue(&app) {
+            Some(found) => {
+                entries.extend(found);
+                let (label, url) = backend.catalogue_source();
+                sources.push(CatalogueSource { label, url });
+            }
+            None => missing.push(backend.console()),
+        }
+    }
+
+    let (total, mut shown) = pick(group(entries), &filter);
+
+    // A game counts as owned through any of its releases, or by its name
+    // where the list carries no ids.
+    let library = Library::load(&library_path(&app)?);
+    for listing in &mut shown {
+        listing.features = crate::backends::for_console(listing.console)
+            .map(|backend| backend.features())
+            .unwrap_or_default();
+        let name = fold(&listing.name);
+        listing.owned = library.games().iter().any(|game| {
+            game.console == listing.console
+                && (listing.releases.iter().any(|r| r.title_id == game.title_id)
+                    || fold(&game.title) == name)
+        });
+    }
 
     Ok(CatalogueView {
-        have_list: rpcs3::compat::have_list(&app),
+        have_list: !sources.is_empty(),
+        consoles,
+        missing,
         total,
         shown,
-        in_library,
+        sources,
     })
 }
 
@@ -573,16 +626,36 @@ pub fn game_compatibility(app: AppHandle, title_id: String) -> CompatView {
     }
 }
 
-/// Getting the list means one export plus a page-at-a-time pass for the names,
-/// which is around 22 seconds, so it reports progress and can be stopped.
+/// Getting RPCS3's list means an export plus a page-at-a-time pass for the
+/// names, around 22 seconds, and the Cemu wiki's takes a few more, so it
+/// reports progress and can be stopped. `console` narrows it to one list.
 #[tauri::command]
 pub async fn refresh_compatibility(
     app: AppHandle,
     state: State<'_, InstallState>,
+    console: Option<crate::core::console::Console>,
 ) -> Result<usize, String> {
     state.cancel_compat.store(false, Ordering::Relaxed);
     let cancel = state.cancel_compat.clone();
-    rpcs3::compat::refresh(&app, &cancel).await
+    let mut count = 0;
+    let mut failed = None;
+    for backend in crate::backends::all() {
+        if console.is_some_and(|wanted| wanted != backend.console()) {
+            continue;
+        }
+        match backend.refresh_catalogue(&app, &cancel).await {
+            Ok(found) => count += found,
+            Err(err) if err == "cancelled" => return Err(err),
+            // One list failing is no reason to throw away the others.
+            Err(err) => {
+                failed.get_or_insert(err);
+            }
+        }
+    }
+    match failed {
+        Some(err) if count == 0 => Err(err),
+        _ => Ok(count),
+    }
 }
 
 #[tauri::command]
@@ -958,15 +1031,27 @@ fn tune_picture(app: &AppHandle, backend: &dyn crate::backends::EmulatorBackend)
 }
 
 #[derive(serde::Serialize)]
+pub struct PlayerView {
+    pub controller: rpcs3::controllers::Controller,
+    /// Whether that pad is plugged in right now.
+    pub connected: bool,
+    pub bindings: Vec<rpcs3::controllers::Binding>,
+}
+
+#[derive(serde::Serialize)]
 pub struct ControllerView {
     /// Pads plugged in right now.
     pub connected: Vec<rpcs3::controllers::Controller>,
-    /// The pad this layout is bound to, if it has been set up.
-    pub bound: Option<rpcs3::controllers::Controller>,
+    /// Players one to four, in order.
+    pub players: Vec<PlayerView>,
+    /// Every pad a player can be given.
+    pub pads: Vec<rpcs3::controllers::Controller>,
+    /// Whether the layout has been written. Until then the players shown are
+    /// the ones pressing Play will set up.
+    pub saved: bool,
     /// Whether this exact layout exists. For a game, false means it is using
     /// the layout for every game.
     pub own: bool,
-    pub bindings: Vec<rpcs3::controllers::Binding>,
     pub choices: Vec<&'static str>,
 }
 
@@ -978,31 +1063,45 @@ pub fn controller_view(app: AppHandle, title_id: String) -> ControllerView {
     // A game without its own layout plays with the one for every game, so
     // that is what it shows until it is changed.
     let source = if own { title_id.as_str() } else { "" };
+    let connected = pads::connected();
+    let players = pads::current_players(&app, source, &connected);
     ControllerView {
-        connected: pads::connected(),
-        bound: pads::bound(&app, source),
+        pads: pads::pads(&players, &connected),
+        players: players
+            .into_iter()
+            .map(|player| PlayerView {
+                connected: connected.iter().any(|pad| pad.device == player.controller.device),
+                controller: player.controller,
+                bindings: player.bindings,
+            })
+            .collect(),
+        saved: pads::have_profile(&app, source),
         own,
-        bindings: pads::bindings(&app, source),
+        connected,
         choices: pads::choices(),
     }
 }
 
 #[tauri::command]
-pub fn set_up_controller(
-    app: AppHandle,
-    title_id: String,
-) -> Result<rpcs3::controllers::Controller, String> {
+pub fn set_up_controller(app: AppHandle, title_id: String) -> Result<(), String> {
     rpcs3::controllers::set_up(&app, &title_id)
 }
 
+/// `number` is the player, counted from 1.
 #[tauri::command]
 pub fn save_controller(
     app: AppHandle,
     title_id: String,
+    number: usize,
     controller: rpcs3::controllers::Controller,
     bindings: Vec<rpcs3::controllers::Binding>,
 ) -> Result<(), String> {
-    rpcs3::controllers::write_profile(&app, &title_id, &controller, &bindings)
+    rpcs3::controllers::save_player(
+        &app,
+        &title_id,
+        number,
+        rpcs3::controllers::Player { controller, bindings },
+    )
 }
 
 #[tauri::command]
@@ -1053,22 +1152,25 @@ pub async fn fetch_covers(app: AppHandle) -> Result<usize, String> {
     Ok(found)
 }
 
-/// A cover for one catalogue title, fetched if it has not been asked about
+/// A cover for one catalogue game, fetched if it has not been asked about
 /// before. Nothing when covers are off, there is no key, or RAWG had none.
 #[tauri::command]
-pub async fn catalogue_cover(app: AppHandle, title_id: String, name: String) -> Option<String> {
+pub async fn catalogue_cover(
+    app: AppHandle,
+    key: String,
+    name: String,
+    console: crate::core::console::Console,
+) -> Option<String> {
     let settings = Settings::load(&settings_path(&app).ok()?);
     if !settings.covers {
         return None;
     }
-    let key = settings.rawg_key.filter(|key| !key.is_empty())?;
+    let rawg_key = settings.rawg_key.filter(|k| !k.is_empty())?;
     let covers = omoio_data_dir(&app).ok()?.join("covers");
     let client = reqwest::Client::new();
-    // The catalogue is RPCS3's list, so every title in it is a PS3 game.
-    let console = crate::core::console::Console::Ps3;
-    match crate::covers::fetch(&client, &key, &covers, &title_id, &name, console).await {
+    match crate::covers::fetch(&client, &rawg_key, &covers, &key, &name, console).await {
         Ok(true) => Some(
-            crate::covers::cached_path(&covers, &title_id)
+            crate::covers::cached_path(&covers, &key)
                 .to_string_lossy()
                 .into_owned(),
         ),

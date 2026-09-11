@@ -3,6 +3,8 @@
 //! Every name here was read out of Cemu's own source at tag v2.6 or measured
 //! on its release. What was found, and how, is in docs/what-we-verified.md.
 
+pub mod compat;
+
 use crate::core::console::{Console, Features};
 use crate::core::library::Game;
 use crate::core::types::Progress;
@@ -354,6 +356,22 @@ impl super::EmulatorBackend for Cemu {
 
     fn log_file(&self, app: &AppHandle) -> Option<PathBuf> {
         install_dir(app).ok().map(|dir| dir.join("portable").join("log.txt"))
+    }
+
+    fn catalogue(&self, app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>> {
+        compat::entries(app)
+    }
+
+    fn refresh_catalogue<'a>(
+        &'a self,
+        app: &'a AppHandle,
+        cancel: &'a AtomicBool,
+    ) -> futures_util::future::BoxFuture<'a, Result<usize, String>> {
+        Box::pin(compat::refresh(app, cancel))
+    }
+
+    fn catalogue_source(&self) -> (&'static str, &'static str) {
+        ("Wii U results from the Cemu wiki", "https://wiki.cemu.info/")
     }
 }
 

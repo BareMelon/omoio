@@ -230,7 +230,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     getList.disabled = true;
     getList.textContent = "Getting…";
     try {
-      await refreshCompatibility();
+      await refreshCompatibility(game.console);
       await showCompat();
     } catch (err) {
       compatNote.textContent =
@@ -278,17 +278,17 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   };
 }
 
-/// A title from the catalogue: not owned, maybe never seen, so everything here
-/// is about whether it is worth getting and what is known about it.
-function fillListing(body: HTMLElement, hero: HTMLElement, { listing, siblings }: CatalogueSelection): void {
+/// A game from the catalogue: maybe owned, maybe never seen, so everything
+/// here is about whether it is worth getting and what is known about it.
+function fillListing(body: HTMLElement, hero: HTMLElement, { listing }: CatalogueSelection): void {
   // The tile is drawn to fill a portrait card by cropping. The hero is wide and
   // short, where cropping leaves a sliver of the ring, so here it is shown whole.
-  const cover = knownCover(listing.title_id);
+  const cover = knownCover(listing.key);
   if (cover) {
     hero.innerHTML = `<img src="${convertFileSrc(cover)}" alt="">`;
     hero.appendChild(rawgCredit());
   } else {
-    hero.innerHTML = placeholderArt(listing.title_id, listing.name).replace(
+    hero.innerHTML = placeholderArt(listing.key, listing.name).replace(
       "xMidYMid slice",
       "xMidYMid meet"
     );
@@ -303,92 +303,116 @@ function fillListing(body: HTMLElement, hero: HTMLElement, { listing, siblings }
       <div class="compat"><span class="status" id="listing-compat"></span></div>
       <div class="note plain" id="listing-compat-note"></div>
     </div>
-    <div class="sec">
+    <div class="sec gone" id="listing-updates-sec">
       <div class="sec-h">Official updates</div>
       <button class="small-btn wide" id="listing-updates">Check for updates</button>
       <div class="note plain" id="listing-updates-note"></div>
     </div>
-    <div class="sec">
+    <div class="sec gone" id="listing-patches-sec">
       <div class="sec-h">Community patches</div>
       <div class="note plain" id="listing-patches"></div>
     </div>
-    <div class="sec gone" id="listing-others">
-      <div class="sec-h">Also released as</div>
-      <div id="listing-others-rows"></div>
+    <div class="sec gone" id="listing-releases">
+      <div class="sec-h">Releases</div>
+      <div id="listing-releases-rows"></div>
     </div>
   `;
   // A game's own name, so never through innerHTML.
   body.querySelector<HTMLElement>(".d-title")!.textContent = listing.name;
-  body.querySelector<HTMLElement>(".d-sub")!.textContent = [listing.title_id, listing.region]
+  body.querySelector<HTMLElement>(".d-sub")!.textContent = [
+    listing.console_name,
+    listing.regions.join(" "),
+    listing.kind,
+  ]
     .filter(Boolean)
     .join(" · ");
 
   const note = body.querySelector<HTMLElement>("#listing-note")!;
   const add = body.querySelector<HTMLButtonElement>("#listing-add")!;
-  const owned = (store.get().games ?? []).some((game) => game.title_id === listing.title_id);
-  add.textContent = owned ? "In your library" : "Add to library";
-  add.disabled = owned;
-  add.onclick = async () => {
+  // The release a region filter picked, or else the first one listed.
+  const release = listing.releases[0];
+  if (listing.owned) {
+    add.textContent = "In your library";
     add.disabled = true;
-    try {
-      await addToLibrary(listing.title_id, listing.name);
-      add.textContent = "In your library";
-      note.textContent = "Import its files from the library to play it.";
-      store.setGames(await listGames());
-    } catch (err) {
-      note.textContent = typeof err === "string" ? err : "Couldn't add that game.";
-      add.disabled = false;
-    }
-  };
+  } else if (release) {
+    add.textContent = "Add to library";
+    add.onclick = async () => {
+      add.disabled = true;
+      try {
+        await addToLibrary(listing.console, release.title_id, listing.name);
+        add.textContent = "In your library";
+        note.textContent = "Import its files from the library to play it.";
+        store.setGames(await listGames());
+      } catch (err) {
+        note.textContent = typeof err === "string" ? err : "Couldn't add that game.";
+        add.disabled = false;
+      }
+    };
+  } else {
+    // Without a title id there is nothing to note it down by, so the way in is
+    // its own files.
+    add.textContent = "Import game";
+    add.onclick = () => openImportSheet();
+  }
 
   const badge = body.querySelector<HTMLElement>("#listing-compat")!;
   const compatNote = body.querySelector<HTMLElement>("#listing-compat-note")!;
-  void gameCompatibility(listing.title_id).then((compat) => {
-    badge.textContent = compat.label;
-    badge.className = `status ${compat.tone}`;
-    compatNote.textContent = compat.checked
-      ? `${compat.explanation} Last reported ${compat.checked}.`
-      : compat.explanation;
-  });
+  badge.textContent = listing.status.label || "No result";
+  badge.className = `status ${listing.status.tone || "mute"}`;
+  compatNote.textContent = listing.status.explanation || "Nobody has reported on this game yet.";
+  // Some lists also say when a release's result was last reported.
+  if (release && listing.features.compatibility) {
+    void gameCompatibility(release.title_id).then((compat) => {
+      if (compat.checked && compat.label === listing.status.label) {
+        compatNote.textContent = `${listing.status.explanation} Last reported ${compat.checked}.`;
+      }
+    });
+  }
 
-  // Asked only when pressed, the same as for a game in the library: it is a
-  // request to Sony, and opening a title should not quietly make one.
-  const updates = body.querySelector<HTMLButtonElement>("#listing-updates")!;
-  const updatesNote = body.querySelector<HTMLElement>("#listing-updates-note")!;
-  updates.onclick = async () => {
-    updates.disabled = true;
-    updates.textContent = "Checking…";
-    try {
-      const found = await gameUpdates(listing.title_id);
-      updatesNote.textContent =
-        found.length === 0
-          ? "Sony never published an update for this game."
-          : found.length === 1
-            ? `Sony published one update, version ${found[0].version}.`
-            : `Sony published ${found.length} updates, up to version ${found[0].version}.`;
-    } catch (err) {
-      updatesNote.textContent = typeof err === "string" ? err : "Couldn't reach Sony's update service.";
-    } finally {
-      updates.disabled = false;
-      updates.textContent = "Check for updates";
-    }
-  };
+  if (release && listing.features.updates) {
+    body.querySelector("#listing-updates-sec")!.classList.remove("gone");
+    // Asked only when pressed, the same as for a game in the library: it is a
+    // request to Sony, and opening a title should not quietly make one.
+    const updates = body.querySelector<HTMLButtonElement>("#listing-updates")!;
+    const updatesNote = body.querySelector<HTMLElement>("#listing-updates-note")!;
+    updates.onclick = async () => {
+      updates.disabled = true;
+      updates.textContent = "Checking…";
+      try {
+        const found = await gameUpdates(release.title_id);
+        updatesNote.textContent =
+          found.length === 0
+            ? "Sony never published an update for this game."
+            : found.length === 1
+              ? `Sony published one update, version ${found[0].version}.`
+              : `Sony published ${found.length} updates, up to version ${found[0].version}.`;
+      } catch (err) {
+        updatesNote.textContent = typeof err === "string" ? err : "Couldn't reach Sony's update service.";
+      } finally {
+        updates.disabled = false;
+        updates.textContent = "Check for updates";
+      }
+    };
+  }
 
-  const patchesNote = body.querySelector<HTMLElement>("#listing-patches")!;
-  void gamePatches(listing.title_id).then(({ have_list, patches }) => {
-    patchesNote.textContent = !have_list
-      ? "No patch list yet."
-      : patches.length === 0
-        ? "None published for this game."
-        : patches.length === 1
-          ? "One published for this game."
-          : `${patches.length} published for this game.`;
-  });
+  if (release && listing.features.patches) {
+    body.querySelector("#listing-patches-sec")!.classList.remove("gone");
+    const patchesNote = body.querySelector<HTMLElement>("#listing-patches")!;
+    void gamePatches(release.title_id).then(({ have_list, patches }) => {
+      patchesNote.textContent = !have_list
+        ? "No patch list yet."
+        : patches.length === 0
+          ? "None published for this game."
+          : patches.length === 1
+            ? "One published for this game."
+            : `${patches.length} published for this game.`;
+    });
+  }
 
-  if (siblings.length > 0) {
-    body.querySelector("#listing-others")!.classList.remove("gone");
-    const rows = body.querySelector<HTMLElement>("#listing-others-rows")!;
-    rows.innerHTML = siblings.map((other) => row(other.region || "Other", other.title_id)).join("");
+  if (listing.releases.length > 0) {
+    body.querySelector("#listing-releases")!.classList.remove("gone");
+    const rows = body.querySelector<HTMLElement>("#listing-releases-rows")!;
+    rows.innerHTML = listing.releases.map((r) => row(r.region || "Other", r.title_id)).join("");
   }
 }
 
@@ -419,7 +443,7 @@ export function renderDetail(): HTMLElement {
       detail.classList.remove("hidden");
       // Filled once per pick. Typing in the search box notifies too, and
       // refilling would ask for the same answers again on every letter.
-      const picked = state.catalogueSelected.listing.title_id;
+      const picked = state.catalogueSelected.listing.key;
       if (picked !== shownListing) {
         shownListing = picked;
         fillListing(body, hero, state.catalogueSelected);

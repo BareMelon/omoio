@@ -284,4 +284,20 @@ impl super::EmulatorBackend for Rpcs3 {
     fn log_file(&self, app: &AppHandle) -> Option<PathBuf> {
         install_dir(app).ok().map(|dir| dir.join("log").join("RPCS3.log"))
     }
+
+    fn catalogue(&self, app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>> {
+        compat::entries(app)
+    }
+
+    fn refresh_catalogue<'a>(
+        &'a self,
+        app: &'a AppHandle,
+        cancel: &'a AtomicBool,
+    ) -> futures_util::future::BoxFuture<'a, Result<usize, String>> {
+        Box::pin(compat::refresh(app, cancel))
+    }
+
+    fn catalogue_source(&self) -> (&'static str, &'static str) {
+        ("PS3 results from RPCS3", "https://rpcs3.net/compatibility")
+    }
 }

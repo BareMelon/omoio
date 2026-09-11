@@ -114,7 +114,7 @@ store.subscribe((state) => {
   if (state.view !== searchingIn) {
     searchingIn = state.view;
     const catalogue = state.view === "catalogue";
-    searchBox.placeholder = catalogue ? "Search every PS3 game…" : "Search your games…";
+    searchBox.placeholder = catalogue ? "Search every game…" : "Search your games…";
     searchBox.value = catalogue ? state.catalogueQuery : state.search;
     // Nothing else has a search, so the box goes away rather than sitting
     // there doing nothing.

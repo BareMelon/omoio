@@ -1,4 +1,4 @@
-import { catalogueCover } from "../api";
+import { catalogueCover, type Console } from "../api";
 
 /// Covers for catalogue tiles, asked for a few at a time.
 ///
@@ -23,24 +23,29 @@ async function turn<T>(job: () => Promise<T>): Promise<T> {
   }
 }
 
-export function coverFor(titleId: string, name: string, wanted: () => boolean): Promise<string | null> {
-  const known = found.get(titleId);
+export function coverFor(
+  key: string,
+  name: string,
+  console: Console,
+  wanted: () => boolean
+): Promise<string | null> {
+  const known = found.get(key);
   if (known) return Promise.resolve(known);
-  let pending = asking.get(titleId);
+  let pending = asking.get(key);
   if (!pending) {
-    pending = turn(() => (wanted() ? catalogueCover(titleId, name) : Promise.resolve(null)))
+    pending = turn(() => (wanted() ? catalogueCover(key, name, console) : Promise.resolve(null)))
       .catch(() => null)
       .then((path) => {
-        asking.delete(titleId);
-        if (path) found.set(titleId, path);
+        asking.delete(key);
+        if (path) found.set(key, path);
         return path;
       });
-    asking.set(titleId, pending);
+    asking.set(key, pending);
   }
   return pending;
 }
 
 /// A cover already fetched this session, to draw straight away.
-export function knownCover(titleId: string): string | undefined {
-  return found.get(titleId);
+export function knownCover(key: string): string | undefined {
+  return found.get(key);
 }
