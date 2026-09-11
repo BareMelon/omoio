@@ -5,13 +5,38 @@ import {
   listGames,
   onUpdateProgress,
   type GameUpdate,
-  type ImportProgress,
+  type UpdateProgress,
 } from "../api";
 import { store } from "../state";
 
 function formatSize(bytes: number): string {
   const gb = bytes / 1024 ** 3;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+/// Whether version `a` comes after `b`, piece by piece as numbers, the same
+/// way the backend compares them: 01.10 comes after 01.09.
+function isNewer(a: string, b: string): boolean {
+  const pa = a.split(".").map((piece) => parseInt(piece, 10) || 0);
+  const pb = b.split(".").map((piece) => parseInt(piece, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+/// Time left from the pace so far. Nothing in the first few seconds, when
+/// the pace is still mostly noise.
+function timeLeft(startedAt: number, done: number, total: number): string {
+  const seconds = (Date.now() - startedAt) / 1000;
+  if (!startedAt || seconds < 5 || done <= 0) return "";
+  const left = ((total - done) / done) * seconds;
+  if (left < 60) return "Less than a minute left";
+  const minutes = Math.round(left / 60);
+  if (minutes < 60) return `About ${minutes} min left`;
+  return `About ${Math.floor(minutes / 60)} h ${minutes % 60} min left`;
 }
 
 export async function openUpdates(
@@ -23,6 +48,9 @@ export async function openUpdates(
   // Moves as updates are installed, so the heading and the "Installed" mark
   // do not go on describing the version the game was on when this opened.
   let installed = installedWhenOpened;
+  // The version the game's own files are, which is where a first update
+  // starts from.
+  const shipped = store.get().games?.find((g) => g.title_id === titleId)?.version ?? "";
   const scrim = document.createElement("div");
   scrim.className = "scrim";
   const sheet = document.createElement("div");
@@ -32,6 +60,7 @@ export async function openUpdates(
   requestAnimationFrame(() => scrim.classList.add("on"));
 
   let busy = false;
+  let startedAt = 0;
   function close() {
     if (busy) return;
     scrim.classList.remove("on");
@@ -41,22 +70,39 @@ export async function openUpdates(
     if (e.target === scrim) close();
   };
 
-  function showProgress(update: GameUpdate, progress: ImportProgress) {
+  function showProgress(target: GameUpdate, progress: UpdateProgress | null) {
     const pct =
-      progress.total > 0 ? Math.min(100, Math.round((progress.bytes / progress.total) * 100)) : 0;
+      progress && progress.total > 0
+        ? Math.min(100, Math.round((progress.bytes / progress.total) * 100))
+        : 0;
     sheet.innerHTML = `
-      <div class="sheet-h">Installing ${update.version}</div>
+      <div class="sheet-h">Installing version ${target.version}</div>
+      <div class="sheet-p" id="update-step"></div>
       <div class="progress-row" style="margin-top:14px">
         <div class="progress-label">
-          <span>Downloading ${formatSize(progress.bytes)} of ${formatSize(progress.total)}</span>
+          <span id="update-doing"></span>
           <span class="pct">${pct}%</span>
         </div>
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
       </div>
+      <div class="note plain" id="update-left"></div>
       <div class="sheet-actions">
         <button class="btn ghost" id="cancel-update">Cancel</button>
       </div>
     `;
+    sheet.querySelector<HTMLElement>("#update-step")!.textContent = !progress
+      ? "Working out which updates are needed…"
+      : progress.steps > 1
+        ? `Update ${progress.step} of ${progress.steps}, version ${progress.version}. Each one needs the one before it.`
+        : `Version ${progress.version}.`;
+    sheet.querySelector<HTMLElement>("#update-doing")!.textContent = !progress
+      ? ""
+      : progress.installing
+        ? `Installing version ${progress.version}…`
+        : `Downloading ${formatSize(progress.bytes)} of ${formatSize(progress.total)}`;
+    sheet.querySelector<HTMLElement>("#update-left")!.textContent = progress
+      ? timeLeft(startedAt, progress.bytes, progress.total)
+      : "";
     sheet.querySelector<HTMLButtonElement>("#cancel-update")!.onclick = () => {
       cancelUpdate();
     };
@@ -64,8 +110,12 @@ export async function openUpdates(
 
   async function run(update: GameUpdate) {
     busy = true;
-    showProgress(update, { stage: "unpacking", bytes: 0, total: update.size });
-    const unlisten = await onUpdateProgress((progress) => showProgress(update, progress));
+    startedAt = 0;
+    showProgress(update, null);
+    const unlisten = await onUpdateProgress((progress) => {
+      if (!startedAt) startedAt = Date.now();
+      showProgress(update, progress);
+    });
     try {
       await installUpdate(titleId, update);
       installed = update.version;
@@ -75,9 +125,15 @@ export async function openUpdates(
       await show(`Version ${update.version} installed.`);
     } catch (err) {
       busy = false;
+      // Every update that finished before this one stays installed, and the
+      // library already says so.
+      const games = await listGames();
+      store.setGames(games);
+      installed = games.find((g) => g.title_id === titleId)?.update_version ?? installed;
+      onChanged();
       const message =
         err === "cancelled"
-          ? "Stopped. Nothing was installed."
+          ? "Stopped. The updates that had finished stay installed."
           : typeof err === "string"
             ? err
             : "Couldn't install that update.";
@@ -140,9 +196,10 @@ export async function openUpdates(
     warning.className = "notice";
     warning.style.marginBottom = "14px";
     warning.textContent =
-      "You can install an older version later, but a saved game made on a newer one may not load on it. Back up your saves before going back.";
+      "Each update needs the one before it, so installing one also installs any older ones still missing. You can go back to an older version later, but a saved game made on a newer one may not load on it.";
     list.appendChild(warning);
 
+    const from = installed ?? shipped;
     for (const update of updates) {
       const row = document.createElement("div");
       row.className = update.version === installed ? "setting changed" : "setting";
@@ -153,7 +210,13 @@ export async function openUpdates(
       name.textContent = `Version ${update.version}`;
       const detail = document.createElement("div");
       detail.className = "setting-path";
-      detail.textContent = `${formatSize(update.size)} · needs firmware ${update.firmware}`;
+      const needed = updates.filter(
+        (u) => isNewer(u.version, from) && !isNewer(u.version, update.version)
+      );
+      detail.textContent =
+        needed.length > 1
+          ? `${needed.length} updates to install, ${formatSize(needed.reduce((sum, u) => sum + u.size, 0))} in all · needs firmware ${update.firmware}`
+          : `${formatSize(update.size)} · needs firmware ${update.firmware}`;
       left.append(name, detail);
 
       const right = document.createElement("div");

@@ -820,12 +820,29 @@ pub fn cancel_update(state: State<'_, InstallState>) {
     state.cancel_update.store(true, Ordering::Relaxed);
 }
 
-/// Downloads one official update and installs it.
+/// How far an update run has got, across every package in it.
+#[derive(Clone, serde::Serialize)]
+pub struct UpdateProgress {
+    /// The version being downloaded or installed right now.
+    pub version: String,
+    /// Which package this is, counted from 1, and how many there are.
+    pub step: usize,
+    pub steps: usize,
+    /// Bytes downloaded across the whole run, and the size of the whole run.
+    pub bytes: u64,
+    pub total: u64,
+    /// True once this package is downloaded and RPCS3 is installing it.
+    pub installing: bool,
+}
+
+/// Takes a game up to `update`, installing every update before it that is not
+/// installed yet, oldest first. RPCS3 refuses a package whose previous one is
+/// missing, so asking for the newest means installing them all.
 ///
-/// The version installed is recorded against the game, because the update
-/// lives in the emulator's storage and the dump keeps reporting the version it
-/// shipped with. Without this the library would still say 01.00 after
-/// updating, and patches written for the new version would look inapplicable.
+/// The version reached is recorded against the game after each one, because
+/// the update lives in the emulator's storage and the dump keeps reporting the
+/// version it shipped with. That also means a run that stops part way carries
+/// on from where it got to next time.
 #[tauri::command]
 pub async fn install_update(
     app: AppHandle,
@@ -836,6 +853,20 @@ pub async fn install_update(
     state.cancel_update.store(false, Ordering::Relaxed);
     let cancel = state.cancel_update.clone();
 
+    let file = library_path(&app)?;
+    let installed = Library::load(&file)
+        .games()
+        .iter()
+        .find(|g| g.title_id == title_id)
+        .and_then(|g| g.update_version.clone().or_else(|| g.version.clone()))
+        .unwrap_or_default();
+    let published = rpcs3::updates::available(&title_id).await?;
+    let mut steps = rpcs3::updates::chain(&published, &installed, &update.version);
+    // Going back to an older version is one package on its own.
+    if steps.is_empty() {
+        steps.push(update.clone());
+    }
+
     // Updating is the moment saves are worth keeping: going back to an older
     // version afterwards is possible, but a save written by the newer one may
     // not load on it. Told to back up and given no way to, people would not.
@@ -845,26 +876,39 @@ pub async fn install_update(
         let _ = app.emit("saves-backup-failed", e);
     }
 
-    let emitter = app.clone();
-    let mut last = 0u64;
-    rpcs3::updates::install(&app, &update, &cancel, move |done, total| {
-        // One event per percent, not per chunk.
-        let step = (total / 100).max(1);
-        if done - last >= step || done >= total {
-            last = done;
-            let _ = emitter.emit(
-                "update-progress",
-                Progress { stage: "downloading".into(), bytes: done, total },
-            );
-        }
-    })
-    .await?;
+    let whole: u64 = steps.iter().map(|s| s.size).sum();
+    let count = steps.len();
+    let mut before = 0u64;
+    for (at, step) in steps.iter().enumerate() {
+        let emitter = app.clone();
+        let version = step.version.clone();
+        let mut last = 0u64;
+        rpcs3::updates::install(&app, step, &cancel, move |done, total| {
+            // One event per percent of this package, not per chunk.
+            let every = (total / 100).max(1);
+            if done - last >= every || done >= total {
+                last = done;
+                let _ = emitter.emit(
+                    "update-progress",
+                    UpdateProgress {
+                        version: version.clone(),
+                        step: at + 1,
+                        steps: count,
+                        bytes: before + done,
+                        total: whole,
+                        installing: done >= total,
+                    },
+                );
+            }
+        })
+        .await?;
+        before += step.size;
 
-    let file = library_path(&app)?;
-    let mut library = Library::load(&file);
-    if let Some(game) = library.get_mut(&title_id) {
-        game.update_version = Some(update.version.clone());
-        library.save(&file)?;
+        let mut library = Library::load(&file);
+        if let Some(game) = library.get_mut(&title_id) {
+            game.update_version = Some(step.version.clone());
+            library.save(&file)?;
+        }
     }
     Ok(())
 }

@@ -297,6 +297,32 @@ pub async fn available(title_id: &str) -> Result<Vec<Update>, String> {
     Ok(parse(&xml))
 }
 
+/// The updates to install, oldest first, to take a game from `installed` up
+/// to `target`.
+///
+/// None can be skipped. A package names the version it expects to find
+/// installed (TARGET_APP_VER in its PARAM.SFO) and RPCS3 refuses it otherwise,
+/// in `package_reader::check_target_app_version`. LittleBigPlanet 3 has 26
+/// updates and each one expects the one before it.
+pub fn chain(updates: &[Update], installed: &str, target: &str) -> Vec<Update> {
+    use super::compat::is_newer;
+    let mut steps: Vec<Update> = updates
+        .iter()
+        .filter(|u| is_newer(&u.version, installed) && !is_newer(&u.version, target))
+        .cloned()
+        .collect();
+    steps.sort_by(|a, b| {
+        if is_newer(&a.version, &b.version) {
+            std::cmp::Ordering::Greater
+        } else if is_newer(&b.version, &a.version) {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
+    steps
+}
+
 fn downloads_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(super::install_dir(app)?.join("omoio-updates"))
 }
@@ -401,6 +427,43 @@ mod tests {
         assert!(updates[0].url.ends_with("b.pkg"));
         assert_eq!(updates[0].firmware, "04.2000");
         assert_eq!(updates[1].version, "01.01");
+    }
+
+    fn published(versions: &[&str]) -> Vec<Update> {
+        // Newest first, the way `parse` hands them over.
+        versions
+            .iter()
+            .rev()
+            .map(|version| Update {
+                version: version.to_string(),
+                size: 1,
+                sha1: String::new(),
+                url: String::new(),
+                firmware: String::new(),
+            })
+            .collect()
+    }
+
+    fn versions(steps: &[Update]) -> Vec<&str> {
+        steps.iter().map(|u| u.version.as_str()).collect()
+    }
+
+    #[test]
+    fn every_update_up_to_the_one_chosen_is_installed_oldest_first() {
+        let all = published(&["01.01", "01.02", "01.09", "01.10", "01.26"]);
+        assert_eq!(
+            versions(&chain(&all, "01.00", "01.26")),
+            ["01.01", "01.02", "01.09", "01.10", "01.26"]
+        );
+        assert_eq!(versions(&chain(&all, "01.00", "01.09")), ["01.01", "01.02", "01.09"]);
+    }
+
+    #[test]
+    fn updates_already_installed_are_not_installed_again() {
+        let all = published(&["01.01", "01.02", "01.09", "01.10"]);
+        assert_eq!(versions(&chain(&all, "01.02", "01.10")), ["01.09", "01.10"]);
+        assert!(chain(&all, "01.10", "01.10").is_empty());
+        assert!(chain(&all, "01.10", "01.02").is_empty(), "going back is not a chain");
     }
 
     #[test]

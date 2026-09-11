@@ -384,8 +384,22 @@ export function cancelUpdate(): Promise<void> {
   return invoke("cancel_update");
 }
 
-export function onUpdateProgress(handler: (progress: ImportProgress) => void): Promise<UnlistenFn> {
-  return listen<ImportProgress>("update-progress", (event) => handler(event.payload));
+/// How far an update run has got, across every package in it.
+export interface UpdateProgress {
+  /// The version being downloaded or installed right now.
+  version: string;
+  /// Which package this is, counted from 1, and how many there are.
+  step: number;
+  steps: number;
+  /// Bytes downloaded across the whole run, and the size of the whole run.
+  bytes: number;
+  total: number;
+  /// True once this package is downloaded and is being installed.
+  installing: boolean;
+}
+
+export function onUpdateProgress(handler: (progress: UpdateProgress) => void): Promise<UnlistenFn> {
+  return listen<UpdateProgress>("update-progress", (event) => handler(event.payload));
 }
 
 export interface SaveBackup {
