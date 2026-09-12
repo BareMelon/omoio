@@ -1,5 +1,6 @@
 use crate::archive;
 use crate::backends::rpcs3;
+use crate::core::console::Console;
 use crate::core::library::Library;
 use crate::core::playlog::{self, Session as PlaySession};
 use crate::core::settings::Settings;
@@ -24,6 +25,45 @@ pub struct InstallState {
     cancel_update: Arc<AtomicBool>,
     cancel_compat: Arc<AtomicBool>,
     cancel_cemu: Arc<AtomicBool>,
+    /// Emulators whose files are being replaced right now.
+    installing: std::sync::Mutex<Vec<Console>>,
+}
+
+/// Marks an emulator as being installed until it is dropped, so a game cannot
+/// start on files that are half replaced. Dropping it also covers an install
+/// that fails or is stopped part way.
+struct Installing<'a> {
+    state: &'a InstallState,
+    console: Console,
+}
+
+impl Drop for Installing<'_> {
+    fn drop(&mut self) {
+        self.state.installing.lock().unwrap().retain(|c| *c != self.console);
+    }
+}
+
+impl InstallState {
+    fn begin_install(&self, console: Console) -> Result<Installing<'_>, String> {
+        let mut busy = self.installing.lock().unwrap();
+        if busy.contains(&console) {
+            return Err("It's already being installed.".to_string());
+        }
+        busy.push(console);
+        Ok(Installing { state: self, console })
+    }
+
+    fn is_installing(&self, console: Console) -> bool {
+        self.installing.lock().unwrap().contains(&console)
+    }
+}
+
+/// An emulator's files cannot be replaced under a game it is running.
+fn refuse_while_playing(app: &AppHandle, console: Console) -> Result<(), String> {
+    if app.state::<Session>().playing().is_some_and(|p| p.console == console) {
+        return Err("Close the game first. The emulator can't be replaced while it runs one.".to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -33,6 +73,8 @@ pub fn get_rpcs3_version(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 pub async fn install_rpcs3(app: AppHandle, state: State<'_, InstallState>) -> Result<String, String> {
+    refuse_while_playing(&app, Console::Ps3)?;
+    let _installing = state.begin_install(Console::Ps3)?;
     state.cancel.store(false, Ordering::Relaxed);
     let cancel = state.cancel.clone();
     rpcs3::install(app, cancel).await
@@ -389,6 +431,11 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
         .iter()
         .find(|g| g.title_id == title_id)
         .ok_or("That game isn't in your library any more.")?;
+
+    if app.state::<InstallState>().is_installing(game.console) {
+        let name = crate::backends::for_console(game.console).map_or("The emulator", |b| b.name());
+        return Err(format!("{name} is being updated. Try again in a minute."));
+    }
 
     // One game at a time: starting another stops the one already running.
     app.state::<Session>().stop();
@@ -1283,8 +1330,43 @@ pub fn emulator_versions(app: AppHandle) -> Vec<EmulatorVersion> {
         .collect()
 }
 
+#[derive(serde::Serialize)]
+pub struct EmulatorUpdate {
+    pub console: Console,
+    pub name: &'static str,
+    pub installed: String,
+    pub newest: String,
+}
+
+/// Every installed emulator that has a newer official release. Asked once at
+/// start. One whose release page could not be read is left out rather than
+/// holding up the rest.
+#[tauri::command]
+pub async fn emulator_updates(app: AppHandle) -> Vec<EmulatorUpdate> {
+    let mut behind = Vec::new();
+    for backend in crate::backends::all() {
+        let Some(installed) = backend.detect_version(&app) else {
+            continue;
+        };
+        let Ok(newest) = backend.newest_version().await else {
+            continue;
+        };
+        if crate::core::versions::is_newer_release(&newest, &installed) {
+            behind.push(EmulatorUpdate {
+                console: backend.console(),
+                name: backend.name(),
+                installed,
+                newest,
+            });
+        }
+    }
+    behind
+}
+
 #[tauri::command]
 pub async fn install_cemu(app: AppHandle, state: State<'_, InstallState>) -> Result<String, String> {
+    refuse_while_playing(&app, Console::WiiU)?;
+    let _installing = state.begin_install(Console::WiiU)?;
     state.cancel_cemu.store(false, Ordering::Relaxed);
     let cancel = state.cancel_cemu.clone();
     crate::backends::cemu::install(app, cancel).await

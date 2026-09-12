@@ -12,6 +12,7 @@ import {
 } from "./api";
 import { renderPlayingBar } from "./components/playingBar";
 import { openSetupIfNeeded } from "./components/setupSheet";
+import { updateEmulatorsInBackground } from "./components/emulatorUpdates";
 import { watchForDroppedGames } from "./components/dropZone";
 import { store, type ViewId } from "./state";
 import { renderTitlebar } from "./components/titlebar";
@@ -138,8 +139,9 @@ getFirmwareVersion().then((version) => store.setFirmwareVersion(version));
 listGames().then((games) => store.setGames(games));
 playingGame().then((playing) => store.setPlaying(playing));
 
-// Asked once, before anything else is worth doing.
-openSetupIfNeeded();
+// Asked once, before anything else is worth doing. Emulator updates wait for
+// it, so a first run never downloads the same emulator twice.
+void openSetupIfNeeded().then(() => updateEmulatorsInBackground());
 
 // Dragging a game onto the window imports it, the same as the Import button.
 void watchForDroppedGames();

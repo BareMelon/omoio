@@ -4,6 +4,7 @@
 //! on its release. What was found, and how, is in docs/what-we-verified.md.
 
 pub mod compat;
+pub mod controllers;
 
 use crate::core::console::{Console, Features};
 use crate::core::library::Game;
@@ -65,12 +66,7 @@ fn emit(app: &AppHandle, stage: &str, bytes: u64, total: u64) {
     );
 }
 
-/// Downloads the newest release from Cemu's own GitHub page and unpacks it
-/// into Omoio's folder. Returns the version installed.
-pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
-    let client = reqwest::Client::new();
-
-    emit(&app, "checking", 0, 0);
+async fn latest_release(client: &reqwest::Client) -> Result<Release, String> {
     let response = client
         .get(RELEASES_API)
         .header("User-Agent", USER_AGENT)
@@ -80,10 +76,26 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
     if !response.status().is_success() {
         return Err("GitHub isn't answering right now. Try again in a while.".to_string());
     }
-    let release: Release = response
+    response
         .json()
         .await
-        .map_err(|_| "GitHub answered in a form Omoio doesn't understand.".to_string())?;
+        .map_err(|_| "GitHub answered in a form Omoio doesn't understand.".to_string())
+}
+
+/// The newest release's version, as `detect_version` reports it.
+pub async fn newest_version() -> Result<String, String> {
+    let release = latest_release(&reqwest::Client::new()).await?;
+    let tag = release.tag_name.as_str();
+    Ok(tag.strip_prefix('v').unwrap_or(tag).to_string())
+}
+
+/// Downloads the newest release from Cemu's own GitHub page and unpacks it
+/// into Omoio's folder. Returns the version installed.
+pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
+    let client = reqwest::Client::new();
+
+    emit(&app, "checking", 0, 0);
+    let release = latest_release(&client).await?;
     let asset = release
         .assets
         .iter()
@@ -280,6 +292,30 @@ fn identify(picked: &Path) -> Result<Game, String> {
     })
 }
 
+/// Cemu shows its Getting started window whenever `settings.xml` is missing
+/// (`CemuApp.cpp`), and it would stand in front of the first game. This is
+/// the file Omoio writes instead. The graphics API is in it because a file
+/// that leaves it out is read as OpenGL (`CemuConfig.cpp`), while a Cemu that
+/// went through its own first start uses Vulkan. Cemu's own update check is
+/// off because Omoio keeps it up to date, and a prompt from Cemu would land
+/// on top of the game. Everything else is Cemu's default.
+const FIRST_SETTINGS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<content>\n\
+\x20   <check_update>false</check_update>\n\
+\x20   <Graphic>\n\
+\x20       <api>1</api>\n\
+\x20   </Graphic>\n\
+</content>\n";
+
+fn write_first_settings(portable: &Path) -> std::io::Result<()> {
+    let path = portable.join("settings.xml");
+    if path.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(portable)?;
+    std::fs::write(path, FIRST_SETTINGS)
+}
+
 /// Cemu is a GUI program; without this every start of it from Omoio would
 /// flash a console window over whatever the user is looking at.
 fn command(exe: &Path) -> std::process::Command {
@@ -298,6 +334,14 @@ pub struct Cemu;
 impl super::EmulatorBackend for Cemu {
     fn console(&self) -> Console {
         Console::WiiU
+    }
+
+    fn name(&self) -> &'static str {
+        "Cemu"
+    }
+
+    fn newest_version(&self) -> futures_util::future::BoxFuture<'static, Result<String, String>> {
+        Box::pin(newest_version())
     }
 
     fn features(&self) -> Features {
@@ -320,8 +364,15 @@ impl super::EmulatorBackend for Cemu {
         None
     }
 
-    fn prepare(&self, _app: &AppHandle) {
-        // Cemu keeps its own controller settings. Omoio writes none for it.
+    fn prepare(&self, app: &AppHandle) {
+        let Ok(dir) = install_dir(app) else {
+            return;
+        };
+        if !dir.join("Cemu.exe").is_file() {
+            return;
+        }
+        let _ = write_first_settings(&dir.join("portable"));
+        controllers::set_up_if_needed(app);
     }
 
     fn tune_picture(&self, _app: &AppHandle, _display_height: u32, _graphics_memory: u64) -> Result<Option<u32>, String> {
@@ -341,7 +392,8 @@ impl super::EmulatorBackend for Cemu {
         }
         // The game's own folder, so Cemu reads its meta and starts it as a
         // proper title rather than in the standalone mode it keeps for loose
-        // programs.
+        // programs. Not `-f`: Omoio places the picture itself, in its window
+        // or across the screen, the same as it does for RPCS3.
         let child = command(&exe)
             .arg("-g")
             .arg(&game.path)
@@ -464,6 +516,20 @@ Deluxe");
         std::fs::create_dir_all(dir.join("code")).unwrap();
         std::fs::create_dir_all(dir.join("meta")).unwrap();
         assert!(find_root(&dir).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn first_settings_ask_for_vulkan_and_are_written_once() {
+        let dir = scratch("settings");
+        write_first_settings(&dir).unwrap();
+        let text = std::fs::read_to_string(dir.join("settings.xml")).unwrap();
+        assert!(text.contains("<Graphic>") && text.contains("<api>1</api>"), "{text}");
+        assert!(text.contains("<check_update>false</check_update>"), "Omoio does the updating");
+
+        std::fs::write(dir.join("settings.xml"), "mine").unwrap();
+        write_first_settings(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("settings.xml")).unwrap(), "mine");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

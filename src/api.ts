@@ -656,3 +656,15 @@ export function cancelCemuInstall(): Promise<void> {
 export function onCemuInstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
   return listen<InstallProgress>("cemu-install-progress", (event) => handler(event.payload));
 }
+
+/// An installed emulator with a newer official release.
+export interface EmulatorUpdate {
+  console: Console;
+  name: string;
+  installed: string;
+  newest: string;
+}
+
+export function emulatorUpdates(): Promise<EmulatorUpdate[]> {
+  return invoke("emulator_updates");
+}

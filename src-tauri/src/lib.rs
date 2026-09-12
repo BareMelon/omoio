@@ -94,6 +94,7 @@ pub fn run() {
             commands::emulator_versions,
             commands::install_cemu,
             commands::cancel_cemu_install,
+            commands::emulator_updates,
             commands::get_settings,
             commands::set_start_fullscreen,
             commands::set_keep_sessions,

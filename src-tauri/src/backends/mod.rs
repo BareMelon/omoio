@@ -15,6 +15,15 @@ use tauri::AppHandle;
 pub trait EmulatorBackend: Sync {
     fn console(&self) -> Console;
 
+    /// The emulator's own name, for the Emulators screen and for messages
+    /// about updating it.
+    fn name(&self) -> &'static str;
+
+    /// The newest official release, in the form `detect_version` reports, so
+    /// the two can be compared. Boxed for the same reason as
+    /// `refresh_catalogue`; `'static` because it borrows nothing.
+    fn newest_version(&self) -> futures_util::future::BoxFuture<'static, Result<String, String>>;
+
     fn features(&self) -> Features;
 
     /// Whether this looks like one of this console's dumps. It must not read

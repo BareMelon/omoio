@@ -1,17 +1,21 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  emulatorVersions,
   finishSetup,
   getAccount,
   getFirmwareVersion,
   getRpcs3Version,
+  installCemu,
   installFirmware,
   installRpcs3,
   listRegions,
   needsSetup,
+  onCemuInstallProgress,
   onRpcs3InstallProgress,
   setRegion,
   setUsername,
+  type Console,
   type InstallProgress,
   type RegionChoice,
 } from "../api";
@@ -29,6 +33,20 @@ const STAGE: Record<InstallProgress["stage"], string> = {
   extracting: "Unpacking",
   done: "Done",
 };
+
+type Emulator = {
+  console: Console;
+  games: string;
+  name: string;
+  install: () => Promise<string>;
+  progress: (handler: (progress: InstallProgress) => void) => Promise<() => void>;
+};
+
+/// The consoles Omoio plays, each with the emulator it downloads for them.
+const EMULATORS: Emulator[] = [
+  { console: "ps3", games: "PS3 games", name: "RPCS3", install: installRpcs3, progress: onRpcs3InstallProgress },
+  { console: "wiiu", games: "Wii U games", name: "Cemu", install: installCemu, progress: onCemuInstallProgress },
+];
 
 /// Asked once, on the first run.
 ///
@@ -52,7 +70,9 @@ export async function openSetupIfNeeded(): Promise<void> {
   }
 
   await askWhoAndWhere(sheet);
-  await getEmulator(sheet);
+  for (const emulator of await askWhatToPlay(sheet)) {
+    await getEmulator(sheet, emulator);
+  }
   await getFirmware(sheet);
 
   await finishSetup();
@@ -127,20 +147,88 @@ async function askWhoAndWhere(sheet: HTMLElement): Promise<void> {
 
 let pendingRegion = "";
 
-/// Downloads RPCS3 without being asked.
+/// Which consoles to play, and so which emulators to download. Nothing is
+/// chosen for the user except what is already installed, and Omoio with no
+/// emulator could start nothing, so at least one it has to be.
+async function askWhatToPlay(sheet: HTMLElement): Promise<Emulator[]> {
+  const versions = await emulatorVersions();
+  const chosen = new Set<Console>(
+    versions.filter((v) => v.version).map((v) => v.console)
+  );
+
+  sheet.innerHTML = `
+    <div class="sheet-h">What do you want to play?</div>
+    <div class="sheet-p">Choose at least one. Omoio downloads the emulator for each and keeps it up to date. You can add more later under Emulators.</div>
+    <div id="setup-emulators"></div>
+    <div class="sheet-actions">
+      <button class="btn solid" id="setup-next">Continue</button>
+    </div>
+  `;
+  const list = sheet.querySelector<HTMLElement>("#setup-emulators")!;
+  const next = sheet.querySelector<HTMLButtonElement>("#setup-next")!;
+  const refresh = () => {
+    next.disabled = chosen.size === 0;
+  };
+
+  for (const emulator of EMULATORS) {
+    const row = document.createElement("div");
+    row.className = "setting";
+    const left = document.createElement("div");
+    const games = document.createElement("div");
+    games.className = "setting-k";
+    games.textContent = emulator.games;
+    const with_ = document.createElement("div");
+    with_.className = "setting-hint";
+    with_.textContent = `With ${emulator.name}`;
+    left.append(games, with_);
+
+    const right = document.createElement("div");
+    right.className = "row-actions";
+    const toggle = document.createElement("button");
+    toggle.setAttribute("role", "switch");
+    toggle.setAttribute("aria-label", emulator.games);
+    toggle.innerHTML = `<span class="switch-dot"></span>`;
+    const paint = () => {
+      const on = chosen.has(emulator.console);
+      toggle.className = on ? "switch on" : "switch";
+      toggle.setAttribute("aria-checked", String(on));
+    };
+    toggle.onclick = () => {
+      if (chosen.has(emulator.console)) chosen.delete(emulator.console);
+      else chosen.add(emulator.console);
+      paint();
+      refresh();
+    };
+    paint();
+    right.appendChild(toggle);
+    row.append(left, right);
+    list.appendChild(row);
+  }
+  refresh();
+
+  await new Promise<void>((done) => {
+    next.onclick = () => {
+      if (chosen.size > 0) done();
+    };
+  });
+  return EMULATORS.filter((emulator) => chosen.has(emulator.console));
+}
+
+/// Downloads a chosen emulator without being asked again.
 ///
-/// This is Omoio's own download of an official build, so there is nothing for
-/// the user to decide. It shows what it is doing and can be skipped, but it
-/// starts on its own.
-async function getEmulator(sheet: HTMLElement): Promise<void> {
-  if (await getRpcs3Version()) {
-    await applyRegion();
+/// This is Omoio's own download of an official build, so there is nothing more
+/// for the user to decide. It shows what it is doing and can be skipped, but
+/// it starts on its own.
+async function getEmulator(sheet: HTMLElement, emulator: Emulator): Promise<void> {
+  const versions = await emulatorVersions();
+  if (versions.some((v) => v.console === emulator.console && v.version)) {
+    if (emulator.console === "ps3") await applyRegion();
     return;
   }
 
   sheet.innerHTML = `
-    <div class="sheet-h">Getting the emulator</div>
-    <div class="sheet-p">Omoio downloads RPCS3 and manages it for you. Nothing to install by hand.</div>
+    <div class="sheet-h"></div>
+    <div class="sheet-p">Omoio downloads it and manages it for you. Nothing to install by hand.</div>
     <div class="progress-row" style="margin-top:14px">
       <div class="progress-label">
         <span id="setup-stage">Starting</span>
@@ -153,6 +241,7 @@ async function getEmulator(sheet: HTMLElement): Promise<void> {
       <button class="btn ghost" id="setup-skip">Skip for now</button>
     </div>
   `;
+  sheet.querySelector<HTMLElement>(".sheet-h")!.textContent = `Getting ${emulator.name}`;
 
   const stage = sheet.querySelector<HTMLElement>("#setup-stage")!;
   const pct = sheet.querySelector<HTMLElement>("#setup-pct")!;
@@ -160,7 +249,7 @@ async function getEmulator(sheet: HTMLElement): Promise<void> {
   const note = sheet.querySelector<HTMLElement>("#setup-note")!;
   const skip = sheet.querySelector<HTMLButtonElement>("#setup-skip")!;
 
-  const unlisten = await onRpcs3InstallProgress((p) => {
+  const unlisten = await emulator.progress((p) => {
     stage.textContent = STAGE[p.stage];
     if (p.stage === "downloading" && p.total > 0) {
       const done = Math.round((p.bytes / p.total) * 100);
@@ -176,14 +265,17 @@ async function getEmulator(sheet: HTMLElement): Promise<void> {
 
   await new Promise<void>((done) => {
     skip.onclick = () => done();
-    installRpcs3()
+    emulator
+      .install()
       .then(async (version) => {
-        store.setRpcs3Version(version);
-        await applyRegion();
+        if (emulator.console === "ps3") {
+          store.setRpcs3Version(version);
+          await applyRegion();
+        }
         done();
       })
       .catch(() => {
-        note.textContent = "Couldn't get RPCS3. You can install it later from System.";
+        note.textContent = `Couldn't get ${emulator.name}. You can install it later from Emulators.`;
         skip.textContent = "Continue";
       });
   });

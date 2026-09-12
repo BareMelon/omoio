@@ -5,3 +5,4 @@ pub mod playlog;
 pub mod settings;
 pub mod sfo;
 pub mod types;
+pub mod versions;

@@ -107,6 +107,23 @@ async fn latest_release(client: &reqwest::Client) -> Result<Release, String> {
     response.json::<Release>().await.map_err(|e| e.to_string())
 }
 
+/// The version a build's archive carries in its name, in the form
+/// `--version` prints: `rpcs3-v0.0.42-19985-6ba56a52_win64_msvc.7z` is
+/// `0.0.42-19985-6ba56a52`.
+fn version_from_archive(name: &str) -> Option<&str> {
+    name.strip_prefix("rpcs3-v")?.strip_suffix("_win64_msvc.7z")
+}
+
+pub async fn newest_version() -> Result<String, String> {
+    let release = latest_release(&reqwest::Client::new()).await?;
+    release
+        .assets
+        .iter()
+        .find_map(|asset| version_from_archive(&asset.name))
+        .map(str::to_string)
+        .ok_or_else(|| "No Windows build found in the latest RPCS3 release".to_string())
+}
+
 pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
     let client = reqwest::Client::new();
 
@@ -237,6 +254,14 @@ impl super::EmulatorBackend for Rpcs3 {
         crate::core::console::Console::Ps3
     }
 
+    fn name(&self) -> &'static str {
+        "RPCS3"
+    }
+
+    fn newest_version(&self) -> futures_util::future::BoxFuture<'static, Result<String, String>> {
+        Box::pin(newest_version())
+    }
+
     fn features(&self) -> crate::core::console::Features {
         crate::core::console::Features {
             updates: true,
@@ -310,5 +335,19 @@ impl super::EmulatorBackend for Rpcs3 {
     ) -> Vec<&'static str> {
         let version = game.running_version().unwrap_or_default();
         fixes::apply(app, &game.title_id, version, applied)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_builds_version_is_read_from_its_archive_name() {
+        assert_eq!(
+            version_from_archive("rpcs3-v0.0.42-19985-6ba56a52_win64_msvc.7z"),
+            Some("0.0.42-19985-6ba56a52")
+        );
+        assert_eq!(version_from_archive("rpcs3-v0.0.42-19985-6ba56a52_win64_msvc.7z.sha256"), None);
     }
 }
