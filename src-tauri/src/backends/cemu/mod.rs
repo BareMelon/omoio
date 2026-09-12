@@ -372,7 +372,19 @@ impl super::EmulatorBackend for Cemu {
             return;
         }
         let _ = write_first_settings(&dir.join("portable"));
-        controllers::set_up_if_needed(app);
+    }
+
+    fn button_names(&self) -> &'static [(&'static str, &'static str)] {
+        &controllers::WII_U
+    }
+
+    fn write_layout(
+        &self,
+        app: &AppHandle,
+        title_id: &str,
+        players: &[crate::core::pad_layout::Player],
+    ) -> Result<(), String> {
+        controllers::write(app, title_id, players)
     }
 
     fn tune_picture(&self, _app: &AppHandle, _display_height: u32, _graphics_memory: u64) -> Result<Option<u32>, String> {

@@ -1,119 +1,251 @@
 import {
   controllerView,
   forgetController,
+  padInput,
   saveController,
   setUpController,
-  type Binding,
   type ControllerView,
+  type PadFamily,
 } from "../api";
 import { store } from "../state";
 import type { View } from "./view";
 
-/// What each physical input is called on screen. The keys are SDL's names,
-/// which is what the backend deals in whatever the pad is.
-const PHYSICAL: Record<string, string> = {
-  South: "A",
-  East: "B",
-  West: "X",
-  North: "Y",
-  LB: "LB",
-  LT: "LT",
+/// What each place is called on each kind of pad. A place a kind does not
+/// name differently falls through to COMMON.
+const FAMILY_NAMES: Record<PadFamily, Record<string, string>> = {
+  xbox: {
+    South: "A",
+    East: "B",
+    West: "X",
+    North: "Y",
+    LB: "LB",
+    RB: "RB",
+    LT: "LT",
+    RT: "RT",
+    Back: "View",
+    Start: "Menu",
+    Guide: "Guide",
+  },
+  playstation: {
+    South: "Cross",
+    East: "Circle",
+    West: "Square",
+    North: "Triangle",
+    LB: "L1",
+    RB: "R1",
+    LT: "L2",
+    RT: "R2",
+    LS: "L3",
+    RS: "R3",
+    Back: "Share",
+    Start: "Options",
+    Guide: "Home",
+  },
+  nintendo: {
+    South: "B",
+    East: "A",
+    West: "Y",
+    North: "X",
+    LB: "L",
+    RB: "R",
+    LT: "ZL",
+    RT: "ZR",
+    Back: "Minus",
+    Start: "Plus",
+    Guide: "Home",
+  },
+  generic: {
+    South: "Bottom button",
+    East: "Right button",
+    West: "Left button",
+    North: "Top button",
+    LB: "Left bumper",
+    RB: "Right bumper",
+    LT: "Left trigger",
+    RT: "Right trigger",
+    Back: "Back",
+    Start: "Start",
+    Guide: "Home",
+  },
+};
+
+const COMMON: Record<string, string> = {
   LS: "Left stick press",
-  RB: "RB",
-  RT: "RT",
   RS: "Right stick press",
-  Start: "Start",
-  Back: "Back",
-  Guide: "Guide",
   Up: "D-pad up",
   Down: "D-pad down",
   Left: "D-pad left",
   Right: "D-pad right",
-  "LS X-": "Left stick left",
-  "LS X+": "Left stick right",
   "LS Y+": "Left stick up",
   "LS Y-": "Left stick down",
-  "RS X-": "Right stick left",
-  "RS X+": "Right stick right",
+  "LS X-": "Left stick left",
+  "LS X+": "Left stick right",
   "RS Y+": "Right stick up",
   "RS Y-": "Right stick down",
+  "RS X-": "Right stick left",
+  "RS X+": "Right stick right",
 };
 
-/// The PS3 side, grouped the way the pad is laid out: left hand, middle,
-/// right hand. Labels drop the group name where the heading already says it.
-type Group = { title: string; rows: [key: string, label: string][] };
-
-const LEFT: Group[] = [
-  { title: "Left shoulder", rows: [["L1", "L1"], ["L2", "L2"], ["L3", "L3"]] },
-  { title: "D-pad", rows: [["Up", "Up"], ["Down", "Down"], ["Left", "Left"], ["Right", "Right"]] },
-  {
-    title: "Left stick",
-    rows: [
-      ["Left Stick Up", "Up"],
-      ["Left Stick Down", "Down"],
-      ["Left Stick Left", "Left"],
-      ["Left Stick Right", "Right"],
-    ],
-  },
-];
-
-const RIGHT: Group[] = [
-  { title: "Right shoulder", rows: [["R1", "R1"], ["R2", "R2"], ["R3", "R3"]] },
-  {
-    title: "Buttons",
-    rows: [["Triangle", "Triangle"], ["Circle", "Circle"], ["Cross", "Cross"], ["Square", "Square"]],
-  },
-  {
-    title: "Right stick",
-    rows: [
-      ["Right Stick Up", "Up"],
-      ["Right Stick Down", "Down"],
-      ["Right Stick Left", "Left"],
-      ["Right Stick Right", "Right"],
-    ],
-  },
-];
-
-const MIDDLE: Group = {
-  title: "Middle",
-  rows: [["Select", "Select"], ["PS Button", "PS button"], ["Start", "Start"]],
-};
-
-/// Which part of the drawing a row lights up. The four directions of a stick
-/// all belong to the stick.
-function partFor(key: string): string {
-  if (key.startsWith("Left Stick")) return "L3";
-  if (key.startsWith("Right Stick")) return "R3";
-  return key;
+function nameOf(family: PadFamily, input: string): string {
+  return FAMILY_NAMES[family][input] ?? COMMON[input] ?? input;
 }
 
-/// A PS3 pad, drawn from the tokens so it follows the rest of the app. Every
-/// input carries `data-part` so hovering a row can point at it.
-const PAD_ART = `
-  <svg class="pad-art" viewBox="0 0 320 200" aria-hidden="true">
-    <rect data-part="L2" x="60" y="6" width="48" height="14" rx="6"/>
-    <rect data-part="R2" x="212" y="6" width="48" height="14" rx="6"/>
-    <rect data-part="L1" x="54" y="20" width="60" height="14" rx="7"/>
-    <rect data-part="R1" x="206" y="20" width="60" height="14" rx="7"/>
-    <path class="pad-body" d="M70 32H250C288 32 310 70 312 118C314 164 296 190 272 188C251 186 239 162 223 144H97C81 162 69 186 48 188C24 190 6 164 8 118C10 70 32 32 70 32Z"/>
-    <rect data-part="Up" x="74" y="58" width="16" height="17" rx="3"/>
-    <rect data-part="Down" x="74" y="89" width="16" height="17" rx="3"/>
-    <rect data-part="Left" x="57" y="74" width="17" height="16" rx="3"/>
-    <rect data-part="Right" x="90" y="74" width="17" height="16" rx="3"/>
-    <circle data-part="Triangle" cx="238" cy="62" r="10"/>
-    <circle data-part="Circle" cx="258" cy="82" r="10"/>
-    <circle data-part="Cross" cx="238" cy="102" r="10"/>
-    <circle data-part="Square" cx="218" cy="82" r="10"/>
-    <rect data-part="Select" x="132" y="76" width="18" height="8" rx="4"/>
-    <rect data-part="Start" x="170" y="76" width="18" height="8" rx="4"/>
-    <circle data-part="PS Button" cx="160" cy="104" r="8"/>
-    <circle data-part="L3" cx="118" cy="130" r="19"/>
-    <circle data-part="R3" cx="202" cy="130" r="19"/>
-  </svg>`;
+/// Under a d-pad or stick heading, the direction alone says enough.
+const DIRECTION: Record<string, string> = {
+  Up: "Up",
+  Down: "Down",
+  Left: "Left",
+  Right: "Right",
+  "LS Y+": "Up",
+  "LS Y-": "Down",
+  "LS X-": "Left",
+  "LS X+": "Right",
+  "RS Y+": "Up",
+  "RS Y-": "Down",
+  "RS X-": "Left",
+  "RS X+": "Right",
+};
+
+/// The places in two columns, grouped the way hands find them. Directions
+/// mean the same on every console, so only the other groups say what each
+/// console calls a place.
+type Group = { title: string; places: string[]; directions?: boolean };
+
+const COLUMNS: Group[][] = [
+  [
+    { title: "Face buttons", places: ["South", "East", "West", "North"] },
+    { title: "D-pad", places: ["Up", "Down", "Left", "Right"], directions: true },
+    { title: "Middle", places: ["Back", "Start", "Guide"] },
+  ],
+  [
+    { title: "Shoulders", places: ["LB", "RB", "LT", "RT"] },
+    { title: "Stick presses", places: ["LS", "RS"] },
+    { title: "Left stick", places: ["LS Y+", "LS Y-", "LS X-", "LS X+"], directions: true },
+    { title: "Right stick", places: ["RS Y+", "RS Y-", "RS X-", "RS X+"], directions: true },
+  ],
+];
+
+/// The part of the drawing an input belongs to. A stick's four directions
+/// are all the stick.
+function partOf(input: string): string {
+  if (input.startsWith("LS")) return "LS";
+  if (input.startsWith("RS")) return "RS";
+  return input;
+}
+
+/// Where things sit. Xbox and Nintendo pads put the left stick above the
+/// d-pad; PlayStation pads put both sticks low and side by side, with a
+/// touchpad between the middle buttons. A pad of no known kind gets the
+/// first, the more common shape.
+type Spots = {
+  ls: [number, number];
+  rs: [number, number];
+  dpad: [number, number];
+  face: [number, number];
+  back: [number, number];
+  start: [number, number];
+  guide: [number, number];
+  guideSize: number;
+  touchpad: boolean;
+};
+
+const OFFSET: Spots = {
+  ls: [118, 100],
+  rs: [246, 150],
+  dpad: [156, 152],
+  face: [292, 98],
+  back: [173, 98],
+  start: [227, 98],
+  guide: [200, 66],
+  guideSize: 13,
+  touchpad: false,
+};
+
+const SIDE_BY_SIDE: Spots = {
+  ls: [150, 154],
+  rs: [250, 154],
+  dpad: [104, 102],
+  face: [296, 102],
+  back: [140, 62],
+  start: [260, 62],
+  guide: [200, 142],
+  guideSize: 9,
+  touchpad: true,
+};
+
+const TRIGGERS: Record<PadFamily, [string, string]> = {
+  xbox: ["LT", "RT"],
+  playstation: ["L2", "R2"],
+  nintendo: ["ZL", "ZR"],
+  generic: ["LT", "RT"],
+};
+
+/// What is printed on a face button: a letter, or on a PlayStation pad a
+/// shape. A pad of no known kind gets nothing rather than a guess.
+function faceMark(family: PadFamily, place: string, x: number, y: number): string {
+  if (family === "playstation") {
+    switch (place) {
+      case "North":
+        return `<path class="pad-glyph" d="M${x} ${y - 5.5}L${x + 5.5} ${y + 4}H${x - 5.5}Z"/>`;
+      case "East":
+        return `<circle class="pad-glyph" cx="${x}" cy="${y}" r="5"/>`;
+      case "South":
+        return `<path class="pad-glyph" d="M${x - 4.5} ${y - 4.5}L${x + 4.5} ${y + 4.5}M${x + 4.5} ${y - 4.5}L${x - 4.5} ${y + 4.5}"/>`;
+      default:
+        return `<rect class="pad-glyph" x="${x - 4.5}" y="${y - 4.5}" width="9" height="9"/>`;
+    }
+  }
+  if (family === "generic") return "";
+  return `<text class="pad-face" x="${x}" y="${y + 4}">${FAMILY_NAMES[family][place]}</text>`;
+}
+
+/// The kind of pad this player has, drawn from the tokens so it follows the
+/// rest of the app. Each input carries its place as `data-part`, so a row or
+/// a press can light it.
+function padArt(family: PadFamily): string {
+  const spots = family === "playstation" ? SIDE_BY_SIDE : OFFSET;
+  const [lt, rt] = TRIGGERS[family];
+  const [dx, dy] = spots.dpad;
+  const [fx, fy] = spots.face;
+  const face: [string, number, number][] = [
+    ["North", fx, fy - 22],
+    ["East", fx + 22, fy],
+    ["South", fx, fy + 22],
+    ["West", fx - 22, fy],
+  ];
+  const pill = (part: string, [x, y]: [number, number]) =>
+    `<rect data-part="${part}" x="${x - 9}" y="${y - 5}" width="18" height="10" rx="5"/>`;
+  return `
+    <svg class="pad-art" viewBox="0 0 400 260" aria-hidden="true">
+      <rect data-part="LT" x="86" y="6" width="54" height="24" rx="9"/>
+      <rect data-part="RT" x="260" y="6" width="54" height="24" rx="9"/>
+      <path data-part="LB" d="M60 52C68 36 96 28 150 30L152 43C106 43 86 47 74 58Z"/>
+      <path data-part="RB" d="M340 52C332 36 304 28 250 30L248 43C294 43 314 47 326 58Z"/>
+      <text class="pad-label" x="113" y="22">${lt}</text>
+      <text class="pad-label" x="287" y="22">${rt}</text>
+      <path class="pad-body" d="M88 44C120 32 280 32 312 44C350 58 372 100 384 150C396 200 392 238 360 246C334 252 314 232 296 206C284 190 272 184 256 184H144C128 184 116 190 104 206C86 232 66 252 40 246C8 238 4 200 16 150C28 100 50 58 88 44Z"/>
+      ${spots.touchpad ? `<rect class="pad-plain" x="160" y="46" width="80" height="44" rx="8"/>` : ""}
+      <circle data-part="Guide" cx="${spots.guide[0]}" cy="${spots.guide[1]}" r="${spots.guideSize}"/>
+      ${pill("Back", spots.back)}
+      ${pill("Start", spots.start)}
+      <circle data-part="LS" cx="${spots.ls[0]}" cy="${spots.ls[1]}" r="23"/>
+      <circle data-part="RS" cx="${spots.rs[0]}" cy="${spots.rs[1]}" r="23"/>
+      <rect class="pad-plain" x="${dx - 10}" y="${dy - 10}" width="20" height="20"/>
+      <rect data-part="Up" x="${dx - 10}" y="${dy - 28}" width="20" height="19" rx="3"/>
+      <rect data-part="Down" x="${dx - 10}" y="${dy + 9}" width="20" height="19" rx="3"/>
+      <rect data-part="Left" x="${dx - 28}" y="${dy - 10}" width="19" height="20" rx="3"/>
+      <rect data-part="Right" x="${dx + 9}" y="${dy - 10}" width="19" height="20" rx="3"/>
+      ${face.map(([place, x, y]) => `<circle data-part="${place}" cx="${x}" cy="${y}" r="11"/>`).join("")}
+      ${face.map(([place, x, y]) => faceMark(family, place, x, y)).join("")}
+    </svg>`;
+}
 
 /// The player whose buttons are on screen. Kept across redraws, so giving a
 /// player a pad does not jump back to player 1.
 let shownPlayer = 0;
+
+/// How long a row waits for a press before giving up.
+const LISTEN_MS = 6000;
 
 function scopePicker(scope: string): HTMLElement {
   const games = (store.get().games ?? []).filter((game) => game.set_up);
@@ -155,7 +287,7 @@ function playerCard(view: ControllerView, index: number, scope: string, note: HT
     <div class="player-pad"><span class="dot"></span><span class="player-pad-name"></span></div>
     <div class="player-state"></div>
   `;
-  card.querySelector<HTMLElement>(".player-pad-name")!.textContent = player.controller.name;
+  card.querySelector<HTMLElement>(".player-pad-name")!.textContent = player.pad.name;
   card.querySelector(".dot")!.classList.toggle("on", player.connected);
   card.querySelector<HTMLElement>(".player-state")!.textContent = player.connected
     ? "Plugged in"
@@ -168,14 +300,14 @@ function playerCard(view: ControllerView, index: number, scope: string, note: HT
     const plugged = view.connected.some((c) => c.device === pad.device);
     select.add(new Option(plugged ? `${pad.name} (plugged in)` : pad.name, pad.device));
   }
-  select.value = player.controller.device;
+  select.value = player.pad.device;
   select.onclick = (event) => event.stopPropagation();
   select.onchange = async () => {
     const pad = view.pads.find((p) => p.device === select.value);
     if (!pad) return;
     shownPlayer = index;
     try {
-      await saveController(scope, index + 1, pad, player.bindings);
+      await saveController(scope, index + 1, pad, player.buttons);
       note.textContent = "";
     } catch (err) {
       note.textContent = typeof err === "string" ? err : "Couldn't save the controller settings.";
@@ -246,7 +378,7 @@ export async function renderController(): Promise<View> {
   const how = document.createElement("div");
   how.className = "note plain";
   how.textContent =
-    "A pad plugged in that no player has takes the place of the first player whose pad is missing when you press Play.";
+    "One layout works in every emulator. A pad plugged in that no player has takes the place of the first player whose pad is missing when you press Play.";
   content.appendChild(how);
 
   if (scope && !view.own) {
@@ -256,17 +388,30 @@ export async function renderController(): Promise<View> {
     content.appendChild(hint);
   }
 
-  // The chosen player's buttons: the pad in the middle, its inputs either side.
+  // The chosen player's buttons: their pad on the left, each place on it to
+  // the right with what it does on every console.
   const player = view.players[shownPlayer];
-  let bindings: Binding[] = player.bindings;
+  const pad = player.pad;
+  const family = pad.family;
+  const buttons: Record<string, string> = { ...player.buttons };
   const save = async () => {
     try {
-      await saveController(scope, shownPlayer + 1, player.controller, bindings);
+      await saveController(scope, shownPlayer + 1, pad, buttons);
       note.textContent = "";
       if (!view.own || !view.saved) store.redraw();
     } catch (err) {
       note.textContent = typeof err === "string" ? err : "Couldn't save the controller settings.";
     }
+  };
+
+  /// Gives `place` this input. An input another place had is swapped over,
+  /// so no button ever does two things by accident.
+  const assign = (place: string, input: string) => {
+    const was = buttons[place];
+    for (const other of Object.keys(buttons)) {
+      if (other !== place && buttons[other] === input) buttons[other] = was;
+    }
+    buttons[place] = input;
   };
 
   const title = document.createElement("div");
@@ -277,62 +422,164 @@ export async function renderController(): Promise<View> {
   const map = document.createElement("div");
   map.className = "pad-map";
 
-  const art = document.createElement("div");
-  art.className = "pad-mid";
-  art.innerHTML = PAD_ART;
-  const svg = art.querySelector("svg")!;
+  const stage = document.createElement("div");
+  stage.className = "pad-stage";
+  stage.innerHTML = padArt(family);
+  const svg = stage.querySelector("svg")!;
+  const test = document.createElement("div");
+  test.className = "pad-test";
+  test.textContent = player.connected
+    ? `Press anything on ${pad.name} and it lights up here.`
+    : `Switch on ${pad.name} to test it and record buttons. Until then, choose from a list.`;
+  stage.appendChild(test);
 
-  const light = (key: string, on: boolean) => {
-    svg.querySelector(`[data-part="${partFor(key)}"]`)?.classList.toggle("hot", on);
+  const part = (input: string) => svg.querySelector(`[data-part="${partOf(input)}"]`);
+
+  const chips = new Map<string, HTMLButtonElement>();
+  const rows = new Map<string, HTMLElement>();
+  const paint = () => {
+    for (const [place, chip] of chips) {
+      if (!chip.classList.contains("listening")) chip.textContent = nameOf(family, buttons[place]);
+    }
   };
 
-  const row = ([key, label]: [string, string]): HTMLElement => {
-    const line = document.createElement("label");
-    line.className = "map-row";
-    const name = document.createElement("span");
-    name.className = "map-k";
-    name.textContent = label;
+  let listening: { place: string; chip: HTMLButtonElement; until: number } | null = null;
+  const stopListening = () => {
+    listening?.chip.classList.remove("listening");
+    listening = null;
+    paint();
+  };
 
+  /// Without the pad to press, a row opens a list of every input instead.
+  const choose = (place: string, chip: HTMLButtonElement) => {
     const select = document.createElement("select");
-    select.className = "map-v";
-    for (const choice of view.choices) select.add(new Option(PHYSICAL[choice] ?? choice, choice));
-    select.value = bindings.find((b) => b.key === key)?.button ?? "";
+    select.className = "bind-v";
+    for (const input of view.inputs) select.add(new Option(nameOf(family, input), input));
+    select.value = buttons[place];
     select.onchange = () => {
-      bindings = bindings.map((b) => (b.key === key ? { ...b, button: select.value } : b));
+      assign(place, select.value);
       void save();
+      select.replaceWith(chip);
+      paint();
     };
+    select.onblur = () => {
+      if (select.isConnected) select.replaceWith(chip);
+    };
+    chip.replaceWith(select);
+    select.focus();
+  };
 
-    line.onmouseenter = () => light(key, true);
-    line.onmouseleave = () => light(key, false);
-    select.onfocus = () => light(key, true);
-    select.onblur = () => light(key, false);
-    line.append(name, select);
+  const row = (group: Group, place: string): HTMLElement => {
+    const line = document.createElement("div");
+    line.className = "bind-row";
+    const label = group.directions ? DIRECTION[place] : nameOf(family, place);
+    const left = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "bind-k";
+    name.textContent = label;
+    left.appendChild(name);
+    if (!group.directions) {
+      const said = view.consoles
+        .filter((c) => c.buttons[place] && c.buttons[place] !== label)
+        .map((c) => `${c.name} ${c.buttons[place]}`)
+        .join(" · ");
+      if (said) {
+        const sub = document.createElement("div");
+        sub.className = "bind-sub";
+        sub.textContent = said;
+        left.appendChild(sub);
+      }
+    }
+
+    const chip = document.createElement("button");
+    chip.className = "bind-v";
+    chip.setAttribute("aria-label", `${label}: change button`);
+    chip.onclick = () => {
+      if (!player.connected) return choose(place, chip);
+      stopListening();
+      listening = { place, chip, until: Date.now() + LISTEN_MS };
+      chip.classList.add("listening");
+      chip.textContent = "Press a button…";
+    };
+    chip.onkeydown = (event) => {
+      if (event.key === "Escape" && listening?.chip === chip) stopListening();
+    };
+    chips.set(place, chip);
+    rows.set(place, line);
+
+    const hot = (on: boolean) => part(buttons[place])?.classList.toggle("hot", on);
+    line.onmouseenter = () => hot(true);
+    line.onmouseleave = () => hot(false);
+    chip.onfocus = () => hot(true);
+    chip.onblur = () => hot(false);
+
+    line.append(left, chip);
     return line;
   };
 
-  const column = (groups: Group[]): HTMLElement => {
+  const columns = document.createElement("div");
+  columns.className = "bind-cols";
+  for (const groups of COLUMNS) {
     const col = document.createElement("div");
-    col.className = "map-col";
     for (const group of groups) {
       const box = document.createElement("div");
-      box.className = "map-group";
+      box.className = "bind-group";
       const heading = document.createElement("div");
       heading.className = "sec-h";
       heading.textContent = group.title;
       box.appendChild(heading);
-      group.rows.forEach((entry) => box.appendChild(row(entry)));
+      group.places.forEach((place) => box.appendChild(row(group, place)));
       col.appendChild(box);
     }
-    return col;
-  };
+    columns.appendChild(col);
+  }
+  paint();
 
-  const middle = document.createElement("div");
-  middle.className = "map-group";
-  MIDDLE.rows.forEach((entry) => middle.appendChild(row(entry)));
-  art.appendChild(middle);
-
-  map.append(column(LEFT), art, column(RIGHT));
+  map.append(stage, columns);
   content.appendChild(map);
+
+  // While this screen is up, the pad is read several times a second: what is
+  // held lights on the drawing, and a row waiting for a press takes the first
+  // button that goes down. A pad switched on or off draws the screen again,
+  // so the card, the note and recording follow. It all stops once the screen
+  // is replaced. A pad that is not there is asked about less often.
+  let held = new Set<string>();
+  let busy = false;
+  const timer = window.setInterval(async () => {
+    if (!content.isConnected) {
+      window.clearInterval(timer);
+      return;
+    }
+    if (busy) return;
+    busy = true;
+    try {
+      const answer = await padInput(pad.device);
+      if ((answer !== null) !== player.connected) {
+        window.clearInterval(timer);
+        store.redraw();
+        return;
+      }
+      if (answer === null) return;
+      const now = new Set(answer);
+      for (const el of svg.querySelectorAll("[data-part]")) {
+        el.classList.toggle("down", [...now].some((input) => partOf(input) === el.getAttribute("data-part")));
+      }
+      for (const [place, line] of rows) line.classList.toggle("flash", now.has(buttons[place]));
+      if (listening) {
+        const pressed = [...now].find((input) => !held.has(input));
+        if (pressed) {
+          assign(listening.place, pressed);
+          stopListening();
+          void save();
+        } else if (Date.now() > listening.until) {
+          stopListening();
+        }
+      }
+      held = now;
+    } finally {
+      busy = false;
+    }
+  }, player.connected ? 60 : 500);
 
   const subtitle =
     view.connected.length === 0

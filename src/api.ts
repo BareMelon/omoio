@@ -560,38 +560,46 @@ export function droppedKind(path: string): Promise<DroppedKind> {
   return invoke("dropped_kind", { path });
 }
 
-export interface ControllerInfo {
-  /// What RPCS3 stores for the pad, e.g. "XInput Pad #1".
+/// Which kind of pad, for its drawing and the names on its buttons.
+export type PadFamily = "xbox" | "playstation" | "nintendo" | "generic";
+
+export interface Pad {
+  /// How the emulators address it, e.g. "XInput Pad #1".
   device: string;
   name: string;
   handler: string;
-}
-
-export interface Binding {
-  /// The PS3 input, e.g. "Cross" or "Left Stick Up".
-  key: string;
-  /// The physical button, by its SDL name, e.g. "South".
-  button: string;
+  family: PadFamily;
 }
 
 export interface PlayerSetup {
-  controller: ControllerInfo;
+  pad: Pad;
   /// Whether that pad is plugged in right now.
   connected: boolean;
-  bindings: Binding[];
+  /// Every place on a pad, by SDL name such as "South", and the input on this
+  /// player's pad standing for it.
+  buttons: Record<string, string>;
+}
+
+/// What one console calls each place on a pad.
+export interface ConsoleButtons {
+  console: Console;
+  name: string;
+  buttons: Record<string, string>;
 }
 
 export interface ControllerView {
-  connected: ControllerInfo[];
+  connected: Pad[];
   /// Players one to four, in order.
   players: PlayerSetup[];
   /// Every pad a player can be given, plugged in or not.
-  pads: ControllerInfo[];
-  /// False until the layout is written. The players shown are then the ones
+  pads: Pad[];
+  /// False until the layout is kept. The players shown are then the ones
   /// pressing Play will set up.
   saved: boolean;
   own: boolean;
-  choices: string[];
+  /// Every place a layout covers.
+  inputs: string[];
+  consoles: ConsoleButtons[];
 }
 
 export function controllerView(titleId: string): Promise<ControllerView> {
@@ -606,14 +614,21 @@ export function setUpController(titleId: string): Promise<void> {
 export function saveController(
   titleId: string,
   number: number,
-  controller: ControllerInfo,
-  bindings: Binding[]
+  pad: Pad,
+  buttons: Record<string, string>
 ): Promise<void> {
-  return invoke("save_controller", { titleId, number, controller, bindings });
+  return invoke("save_controller", { titleId, number, pad, buttons });
 }
 
 export function forgetController(titleId: string): Promise<void> {
   return invoke("forget_controller", { titleId });
+}
+
+/// What is held on a pad right now, by SDL name, or null when it does not
+/// answer: switched off, or not a pad Omoio reads directly, which today is
+/// anything but an Xbox pad.
+export function padInput(device: string): Promise<string[] | null> {
+  return invoke("pad_input", { device });
 }
 
 export function setCovers(on: boolean): Promise<void> {

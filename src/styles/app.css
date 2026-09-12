@@ -462,6 +462,10 @@ button {
 .btn.solid:hover {
   background: var(--brand-lit);
 }
+.btn[disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
 
 /* ---------- session logs ---------- */
 .session {
@@ -1290,53 +1294,37 @@ button {
 }
 .pad-map {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.3fr) minmax(200px, 1fr);
-  gap: 22px;
-  margin-top: 18px;
+  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+  gap: 28px;
+  margin-top: 12px;
   align-items: start;
 }
-.map-col {
+@media (max-width: 1100px) {
+  .pad-map {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pad-stage {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-.map-group .sec-h {
-  margin-bottom: 4px;
-}
-.map-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--line);
-  cursor: pointer;
-}
-.map-row:last-child {
-  border-bottom: none;
-}
-.map-k {
-  font-size: 12.5px;
-  color: var(--mute);
-}
-.map-v {
-  min-width: 128px;
-  padding: 4px 8px;
+  gap: 12px;
+  padding: 18px 18px 14px;
   background: var(--raise);
   border: 1px solid var(--line);
-  border-radius: 5px;
-  color: var(--ink);
-  font: inherit;
+  border-radius: var(--r);
+}
+@media (max-width: 1100px) {
+  .pad-stage {
+    position: static;
+    max-width: 460px;
+  }
+}
+.pad-test {
   font-size: 11.5px;
-}
-.map-v:focus {
-  outline: none;
-  border-color: var(--brand);
-}
-.pad-mid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  color: var(--mute);
+  text-align: center;
 }
 .pad-art {
   width: 100%;
@@ -1347,15 +1335,108 @@ button {
   stroke: var(--line2);
   stroke-width: 1.5;
 }
+.pad-art .pad-plain {
+  fill: var(--raise);
+}
+.pad-art .pad-glyph {
+  fill: none;
+  stroke: var(--mute);
+  stroke-width: 1.6;
+  pointer-events: none;
+}
 .pad-art [data-part] {
   fill: var(--raise);
   stroke: var(--line2);
   stroke-width: 1.2;
-  transition: fill 0.12s, stroke 0.12s;
+  transition: fill 0.08s, stroke 0.08s;
 }
 .pad-art [data-part].hot {
   fill: var(--brand-soft);
   stroke: var(--brand);
+}
+.pad-art [data-part].down {
+  fill: var(--brand);
+  stroke: var(--brand);
+}
+.pad-art text {
+  text-anchor: middle;
+  pointer-events: none;
+}
+.pad-art .pad-label {
+  fill: var(--dim);
+  font-size: 9px;
+  font-weight: 600;
+}
+.pad-art .pad-face {
+  fill: var(--mute);
+  font-size: 11px;
+  font-weight: 700;
+}
+.bind-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 28px;
+}
+.bind-group {
+  margin-bottom: 16px;
+}
+.bind-group .sec-h {
+  margin-bottom: 4px;
+}
+.bind-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+.bind-row:last-child {
+  border-bottom: none;
+}
+.bind-k {
+  font-size: 12.5px;
+  color: var(--mute);
+  transition: color 0.08s;
+}
+.bind-row.flash .bind-k {
+  color: var(--ink);
+}
+.bind-sub {
+  margin-top: 1px;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+.bind-v {
+  min-width: 132px;
+  padding: 4px 10px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: center;
+  cursor: pointer;
+}
+.bind-v:hover {
+  border-color: var(--line2);
+}
+.bind-v:active {
+  transform: scale(0.97);
+}
+.bind-v:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.bind-v.listening {
+  border-color: var(--brand);
+  color: var(--brand-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bind-v:active {
+    transform: none;
+  }
 }
 .players {
   display: grid;

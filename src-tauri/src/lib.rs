@@ -2,9 +2,11 @@ pub mod archive;
 pub mod covers;
 mod backends;
 mod commands;
+mod controllers;
 pub mod core;
 mod hardware;
 pub mod import;
+mod pads;
 pub mod session;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -95,6 +97,7 @@ pub fn run() {
             commands::install_cemu,
             commands::cancel_cemu_install,
             commands::emulator_updates,
+            commands::pad_input,
             commands::get_settings,
             commands::set_start_fullscreen,
             commands::set_keep_sessions,

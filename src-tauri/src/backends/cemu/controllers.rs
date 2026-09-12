@@ -1,85 +1,90 @@
-//! Making pads work in Cemu without anyone opening its input settings.
+//! Cemu's side of the controller layout: one profile file per player.
 //!
 //! A fresh Cemu has no controller for anyone, so a game starts and nothing
 //! answers. Cemu reads one file per player, `controllerProfiles/controller<N>.xml`
 //! in its config folder (`InputManager::load` in Cemu v2.6), and Omoio writes
-//! them before a game starts:
+//! them from the layout it keeps (core/pad_layout.rs):
 //!
 //! - Player 1 is the Wii U GamePad, which most games expect to be there.
 //! - Players 2 to 4 are Wii U Pro Controllers, which multiplayer games take.
 //!
 //! Each is an XInput pad, named by its slot. Cemu's XInput pad is known by the
-//! slot number alone, so a file can name a slot before a pad is in it, and a
-//! second pad plugged in is player 2 without anything being written again.
+//! slot number alone, so a file can name a slot before a pad is in it. A
+//! player on any other kind of pad gets none in Cemu for now: Cemu knows those
+//! by an SDL GUID that has not been checked against a real pad. Cemu reads
+//! XInput without the Guide button, so Home is not offered.
 //!
-//! A file that is already there is left alone, so a layout someone set up in
-//! Cemu's own window is never overwritten.
+//! Cemu keeps one layout for every game. A game's own layout is RPCS3's alone.
 
+use crate::core::pad_layout::{Player, PLAYERS};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-const PLAYERS: usize = 4;
-
-/// Cemu's `Buttons2` for an XInput pad. The buttons are the bits of
-/// `XINPUT_GAMEPAD.wButtons`; the sticks and triggers come after Cemu's 32
-/// buttons and its own trigger and d-pad entries, positive directions first.
-mod xinput {
-    pub const DPAD_UP: u64 = 0;
-    pub const DPAD_DOWN: u64 = 1;
-    pub const DPAD_LEFT: u64 = 2;
-    pub const DPAD_RIGHT: u64 = 3;
-    pub const START: u64 = 4;
-    pub const BACK: u64 = 5;
-    pub const LEFT_THUMB: u64 = 6;
-    pub const RIGHT_THUMB: u64 = 7;
-    pub const LEFT_SHOULDER: u64 = 8;
-    pub const RIGHT_SHOULDER: u64 = 9;
-    pub const A: u64 = 12;
-    pub const B: u64 = 13;
-    pub const X: u64 = 14;
-    pub const Y: u64 = 15;
-    pub const LS_RIGHT: u64 = 38;
-    pub const LS_UP: u64 = 39;
-    pub const RS_RIGHT: u64 = 40;
-    pub const RS_UP: u64 = 41;
-    pub const LT: u64 = 42;
-    pub const RT: u64 = 43;
-    pub const LS_LEFT: u64 = 44;
-    pub const LS_DOWN: u64 = 45;
-    pub const RS_LEFT: u64 = 46;
-    pub const RS_DOWN: u64 = 47;
-}
-
-/// Cemu's own layout for an XInput pad, the same for the GamePad and the Pro
-/// Controller (`VPADController.cpp`, `ProController.cpp`). Nintendo's A is the
-/// right-hand face button, where it sits on their pads, so it is Xbox B. In
-/// the order of the GamePad's `ButtonId`, which counts from 1.
-const LAYOUT: [(&str, u64); 24] = [
-    ("A", xinput::B),
-    ("B", xinput::A),
-    ("X", xinput::Y),
-    ("Y", xinput::X),
-    ("L", xinput::LEFT_SHOULDER),
-    ("R", xinput::RIGHT_SHOULDER),
-    ("ZL", xinput::LT),
-    ("ZR", xinput::RT),
-    ("Plus", xinput::START),
-    ("Minus", xinput::BACK),
-    ("Up", xinput::DPAD_UP),
-    ("Down", xinput::DPAD_DOWN),
-    ("Left", xinput::DPAD_LEFT),
-    ("Right", xinput::DPAD_RIGHT),
-    ("Left stick press", xinput::LEFT_THUMB),
-    ("Right stick press", xinput::RIGHT_THUMB),
-    ("Left stick up", xinput::LS_UP),
-    ("Left stick down", xinput::LS_DOWN),
-    ("Left stick left", xinput::LS_LEFT),
-    ("Left stick right", xinput::LS_RIGHT),
-    ("Right stick up", xinput::RS_UP),
-    ("Right stick down", xinput::RS_DOWN),
-    ("Right stick left", xinput::RS_LEFT),
-    ("Right stick right", xinput::RS_RIGHT),
+/// The Wii U's buttons with the place each sits, in the order of the
+/// GamePad's `ButtonId`, which counts from 1. Nintendo's A is the right-hand
+/// face button and B the bottom one, which is also where Cemu's own XInput
+/// layout puts them (`VPADController.cpp`, `ProController.cpp`).
+pub const WII_U: [(&str, &str); 24] = [
+    ("East", "A"),
+    ("South", "B"),
+    ("North", "X"),
+    ("West", "Y"),
+    ("LB", "L"),
+    ("RB", "R"),
+    ("LT", "ZL"),
+    ("RT", "ZR"),
+    ("Start", "Plus"),
+    ("Back", "Minus"),
+    ("Up", "D-pad up"),
+    ("Down", "D-pad down"),
+    ("Left", "D-pad left"),
+    ("Right", "D-pad right"),
+    ("LS", "Left stick press"),
+    ("RS", "Right stick press"),
+    ("LS Y+", "Left stick up"),
+    ("LS Y-", "Left stick down"),
+    ("LS X-", "Left stick left"),
+    ("LS X+", "Left stick right"),
+    ("RS Y+", "Right stick up"),
+    ("RS Y-", "Right stick down"),
+    ("RS X-", "Right stick left"),
+    ("RS X+", "Right stick right"),
 ];
+
+/// Cemu's number for an input on an XInput pad, its `Buttons2` in
+/// `Controller.h`. Buttons are the bits of `XINPUT_GAMEPAD.wButtons`; the
+/// sticks and triggers come after Cemu's 32 buttons and its own trigger and
+/// d-pad entries, positive directions first. Guide has none, since Cemu never
+/// reads it.
+fn xinput_number(input: &str) -> Option<u64> {
+    Some(match input {
+        "Up" => 0,
+        "Down" => 1,
+        "Left" => 2,
+        "Right" => 3,
+        "Start" => 4,
+        "Back" => 5,
+        "LS" => 6,
+        "RS" => 7,
+        "LB" => 8,
+        "RB" => 9,
+        "South" => 12,
+        "East" => 13,
+        "West" => 14,
+        "North" => 15,
+        "LS X+" => 38,
+        "LS Y+" => 39,
+        "RS X+" => 40,
+        "RS Y+" => 41,
+        "LT" => 42,
+        "RT" => 43,
+        "LS X-" => 44,
+        "LS Y-" => 45,
+        "RS X-" => 46,
+        "RS Y-" => 47,
+        _ => return None,
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Kind {
@@ -116,65 +121,102 @@ impl Kind {
     }
 }
 
-/// Player `player`'s file, counted from 0 as Cemu names them.
-fn profile(player: usize) -> String {
-    let kind = Kind::for_player(player);
-    let entries: String = LAYOUT
-        .iter()
-        .enumerate()
-        .map(|(at, (_, input))| {
+/// The XInput slot a player's pad is in, counted from zero, or `None` for a
+/// pad that is not read through XInput.
+fn xinput_slot(player: &Player) -> Option<u32> {
+    if player.pad.handler != "XInput" {
+        return None;
+    }
+    player
+        .pad
+        .device
+        .strip_prefix("XInput Pad #")?
+        .parse::<u32>()
+        .ok()
+        .filter(|number| (1..=4).contains(number))
+        .map(|number| number - 1)
+}
+
+/// Player `index`'s file, counted from 0 as Cemu names them. A player Cemu
+/// cannot read the pad of still gets the file, with no pad in it, so one left
+/// from before does not keep driving them.
+fn profile(index: usize, player: &Player) -> String {
+    let kind = Kind::for_player(index);
+    let controller = xinput_slot(player)
+        .map(|slot| {
+            let entries: String = WII_U
+                .iter()
+                .enumerate()
+                .filter_map(|(at, (place, _))| {
+                    let number = xinput_number(player.input(place))?;
+                    Some(format!(
+                        "\t\t\t<entry>\n\t\t\t\t<mapping>{}</mapping>\n\t\t\t\t<button>{number}</button>\n\t\t\t</entry>\n",
+                        kind.button_id(at)
+                    ))
+                })
+                .collect();
             format!(
-                "\t\t\t<entry>\n\t\t\t\t<mapping>{}</mapping>\n\t\t\t\t<button>{input}</button>\n\t\t\t</entry>\n",
-                kind.button_id(at)
+                "\t<controller>\n\
+                 \t\t<api>XInput</api>\n\
+                 \t\t<uuid>{slot}</uuid>\n\
+                 \t\t<display_name>Controller {}</display_name>\n\
+                 \t\t<mappings>\n\
+                 {entries}\
+                 \t\t</mappings>\n\
+                 \t</controller>\n",
+                slot + 1
             )
         })
-        .collect();
+        .unwrap_or_default();
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <emulated_controller>\n\
          \t<type>{}</type>\n\
-         \t<controller>\n\
-         \t\t<api>XInput</api>\n\
-         \t\t<uuid>{player}</uuid>\n\
-         \t\t<display_name>Controller {}</display_name>\n\
-         \t\t<mappings>\n\
-         {entries}\
-         \t\t</mappings>\n\
-         \t</controller>\n\
+         {controller}\
          </emulated_controller>\n",
-        kind.cemu_name(),
-        player + 1
+        kind.cemu_name()
     )
+}
+
+fn write_all(dir: &Path, players: &[Player]) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    for (index, player) in players.iter().enumerate().take(PLAYERS) {
+        std::fs::write(dir.join(format!("controller{index}.xml")), profile(index, player))?;
+    }
+    Ok(())
 }
 
 fn profile_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(super::install_dir(app)?.join("portable").join("controllerProfiles"))
 }
 
-fn write_missing(dir: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    for player in 0..PLAYERS {
-        let path = dir.join(format!("controller{player}.xml"));
-        if !path.exists() {
-            std::fs::write(&path, profile(player))?;
-        }
+/// Writes the layout for every game where Cemu reads it. Nothing is written
+/// before Cemu is installed, and a game's own layout is left to RPCS3.
+pub fn write(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), String> {
+    if !title_id.is_empty() || !super::install_dir(app)?.join("Cemu.exe").is_file() {
+        return Ok(());
     }
-    Ok(())
-}
-
-/// Called before a game starts, so plugging in and pressing Play is enough.
-pub fn set_up_if_needed(app: &AppHandle) {
-    if let Ok(dir) = profile_dir(app) {
-        let _ = write_missing(&dir);
-    }
+    write_all(&profile_dir(app)?, players)
+        .map_err(|_| "Couldn't save the controller settings for Cemu.".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::pad_layout::Pad;
+    use std::collections::BTreeMap;
+
+    fn xinput(slot: u32) -> Pad {
+        Pad {
+            device: format!("XInput Pad #{slot}"),
+            name: format!("Controller {slot}"),
+            handler: "XInput".to_string(),
+            family: "xbox".to_string(),
+        }
+    }
 
     fn id_of(kind: Kind, name: &str) -> u64 {
-        let at = LAYOUT.iter().position(|(n, _)| *n == name).unwrap();
+        let at = WII_U.iter().position(|(_, n)| *n == name).unwrap();
         kind.button_id(at)
     }
 
@@ -182,22 +224,22 @@ mod tests {
     fn button_numbers_follow_each_controllers_own_list() {
         assert_eq!(id_of(Kind::GamePad, "A"), 1);
         assert_eq!(id_of(Kind::GamePad, "Minus"), 10);
-        assert_eq!(id_of(Kind::GamePad, "Up"), 11);
+        assert_eq!(id_of(Kind::GamePad, "D-pad up"), 11);
         assert_eq!(id_of(Kind::GamePad, "Right stick right"), 24);
         assert_eq!(id_of(Kind::Pro, "Minus"), 10);
-        assert_eq!(id_of(Kind::Pro, "Up"), 12, "Home sits before it");
+        assert_eq!(id_of(Kind::Pro, "D-pad up"), 12, "Home sits before it");
         assert_eq!(id_of(Kind::Pro, "Right stick right"), 25);
     }
 
     #[test]
     fn player_one_is_the_gamepad_and_the_rest_are_pro_controllers() {
-        let one = profile(0);
+        let one = profile(0, &Player::on(xinput(1)));
         assert!(one.contains("<type>Wii U GamePad</type>"));
         assert!(one.contains("<api>XInput</api>"));
         assert!(one.contains("<uuid>0</uuid>"));
-        assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A is Xbox B");
+        assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A is the right button");
 
-        let two = profile(1);
+        let two = profile(1, &Player::on(xinput(2)));
         assert!(two.contains("<type>Wii U Pro Controller</type>"));
         assert!(two.contains("<uuid>1</uuid>"));
         assert!(two.contains("<display_name>Controller 2</display_name>"));
@@ -205,16 +247,43 @@ mod tests {
     }
 
     #[test]
-    fn a_layout_already_there_is_kept() {
+    fn a_changed_layout_moves_the_button() {
+        let buttons = BTreeMap::from([
+            ("East".to_string(), "South".to_string()),
+            ("South".to_string(), "East".to_string()),
+        ]);
+        let text = profile(0, &Player::with_buttons(xinput(1), buttons));
+        assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A now on the bottom button");
+    }
+
+    #[test]
+    fn guide_is_never_written_since_cemu_cannot_read_it() {
+        let buttons = BTreeMap::from([("Start".to_string(), "Guide".to_string())]);
+        let text = profile(1, &Player::with_buttons(xinput(2), buttons));
+        assert_eq!(text.matches("<entry>").count(), 23);
+    }
+
+    #[test]
+    fn a_pad_cemu_cannot_read_leaves_the_player_without_one() {
+        let pad = Pad {
+            device: "DualSense Wireless Controller 0".to_string(),
+            name: "DualSense Wireless Controller".to_string(),
+            handler: "SDL".to_string(),
+            family: "playstation".to_string(),
+        };
+        let text = profile(1, &Player::on(pad));
+        assert!(text.contains("<type>Wii U Pro Controller</type>"));
+        assert!(!text.contains("<controller>"));
+    }
+
+    #[test]
+    fn every_player_gets_a_file() {
         let dir = std::env::temp_dir().join(format!("omoio-cemu-pads-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("controller0.xml"), "mine").unwrap();
-
-        write_missing(&dir).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("controller0.xml")).unwrap(), "mine");
-        for player in 1..PLAYERS {
-            assert!(dir.join(format!("controller{player}.xml")).is_file());
+        let players: Vec<Player> = (1..=4).map(|slot| Player::on(xinput(slot))).collect();
+        write_all(&dir, &players).unwrap();
+        for index in 0..PLAYERS {
+            assert!(dir.join(format!("controller{index}.xml")).is_file());
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -284,10 +284,25 @@ impl super::EmulatorBackend for Rpcs3 {
         crate::import::icon_path(&game.path)
     }
 
-    fn prepare(&self, app: &AppHandle) {
-        // RPCS3 starts bound to the keyboard, so a pad plugged in for the
-        // first time would do nothing. Set it up unless someone already has.
-        controllers::set_up_if_needed(app);
+    fn button_names(&self) -> &'static [(&'static str, &'static str)] {
+        &controllers::BUTTON_NAMES
+    }
+
+    fn write_layout(
+        &self,
+        app: &AppHandle,
+        title_id: &str,
+        players: &[crate::core::pad_layout::Player],
+    ) -> Result<(), String> {
+        controllers::write(app, title_id, players)
+    }
+
+    fn forget_layout(&self, app: &AppHandle, title_id: &str) -> Result<(), String> {
+        controllers::forget(app, title_id)
+    }
+
+    fn existing_layouts(&self, app: &AppHandle) -> Vec<(String, Vec<crate::core::pad_layout::Player>)> {
+        controllers::existing(app)
     }
 
     fn tune_picture(

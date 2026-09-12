@@ -9,6 +9,7 @@ pub mod rpcs3;
 
 use crate::core::console::{Console, Features};
 use crate::core::library::Game;
+use crate::core::pad_layout::Player;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
@@ -35,8 +36,28 @@ pub trait EmulatorBackend: Sync {
     /// The picture the dump itself ships, if it has one.
     fn icon(&self, game: &Game) -> Option<PathBuf>;
 
-    /// Gets things ready before a game starts, the controller first of all.
-    fn prepare(&self, app: &AppHandle);
+    /// Gets anything the emulator needs ready before a game starts, apart
+    /// from the controller layout, which `write_layout` hands over.
+    fn prepare(&self, _app: &AppHandle) {}
+
+    /// What this console calls each place on a pad, for the Controller
+    /// screen. A place the emulator cannot use is left out.
+    fn button_names(&self) -> &'static [(&'static str, &'static str)];
+
+    /// Writes the players' layout into the emulator's own files. An empty
+    /// `title_id` is the layout for every game.
+    fn write_layout(&self, app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), String>;
+
+    /// Takes a game's own layout out of the emulator's files.
+    fn forget_layout(&self, _app: &AppHandle, _title_id: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Layouts the emulator had before Omoio kept its own, by title id, empty
+    /// for every game.
+    fn existing_layouts(&self, _app: &AppHandle) -> Vec<(String, Vec<Player>)> {
+        Vec::new()
+    }
 
     /// Sizes the picture for this machine if it has not been. Returns the
     /// scale that applies, or `None` when the user already chose their own.

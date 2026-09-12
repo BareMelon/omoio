@@ -459,9 +459,11 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
             .extend(applied.iter().map(|id| id.to_string()));
         let _ = settings.save(&settings_file);
     }
-    // Ready before the emulator starts: a pad plugged in for the first time
-    // works, and the picture fits this machine.
+    // Ready before the emulator starts: every player has their pad and
+    // buttons, a pad plugged in for the first time works, and the picture
+    // fits this machine.
     backend.prepare(&app);
+    crate::controllers::before_launch(&app, backend, &game.title_id);
     tune_picture(&app, backend);
     let pid = backend.launch(&app, game)?;
     let session = app.state::<Session>();
@@ -1165,59 +1167,83 @@ fn tune_picture(app: &AppHandle, backend: &dyn crate::backends::EmulatorBackend)
 
 #[derive(serde::Serialize)]
 pub struct PlayerView {
-    pub controller: rpcs3::controllers::Controller,
+    pub pad: crate::core::pad_layout::Pad,
     /// Whether that pad is plugged in right now.
     pub connected: bool,
-    pub bindings: Vec<rpcs3::controllers::Binding>,
+    /// Every place on a pad and the input standing for it.
+    pub buttons: std::collections::BTreeMap<String, String>,
+}
+
+/// What one console calls each place on a pad.
+#[derive(serde::Serialize)]
+pub struct ConsoleButtons {
+    pub console: Console,
+    pub name: &'static str,
+    pub buttons: std::collections::BTreeMap<&'static str, &'static str>,
 }
 
 #[derive(serde::Serialize)]
 pub struct ControllerView {
     /// Pads plugged in right now.
-    pub connected: Vec<rpcs3::controllers::Controller>,
+    pub connected: Vec<crate::core::pad_layout::Pad>,
     /// Players one to four, in order.
     pub players: Vec<PlayerView>,
     /// Every pad a player can be given.
-    pub pads: Vec<rpcs3::controllers::Controller>,
-    /// Whether the layout has been written. Until then the players shown are
-    /// the ones pressing Play will set up.
+    pub pads: Vec<crate::core::pad_layout::Pad>,
+    /// Whether the layout has been kept. Until then the players shown are the
+    /// ones pressing Play will set up.
     pub saved: bool,
-    /// Whether this exact layout exists. For a game, false means it is using
-    /// the layout for every game.
+    /// Whether this game has a layout of its own. For a game, false means it
+    /// is using the layout for every game.
     pub own: bool,
-    pub choices: Vec<&'static str>,
+    /// Every place a layout covers.
+    pub inputs: Vec<&'static str>,
+    pub consoles: Vec<ConsoleButtons>,
 }
 
 /// `title_id` empty is the layout for every game.
 #[tauri::command]
 pub fn controller_view(app: AppHandle, title_id: String) -> ControllerView {
-    use rpcs3::controllers as pads;
-    let own = pads::have_profile(&app, &title_id);
-    // A game without its own layout plays with the one for every game, so
-    // that is what it shows until it is changed.
-    let source = if own { title_id.as_str() } else { "" };
-    let connected = pads::connected();
-    let players = pads::current_players(&app, source, &connected);
+    let connected = crate::pads::connected();
+    let current = crate::controllers::current(&app, &title_id, &connected);
+    // Every pad a player can be given: the four XInput slots, which can be
+    // chosen before anything is in them, whatever else is plugged in, and any
+    // pad a player already has that is not plugged in right now.
+    let mut pads = crate::pads::xinput_slots();
+    for pad in connected.iter().chain(current.players.iter().map(|p| &p.pad)) {
+        if !pads.iter().any(|known| known.device == pad.device) {
+            pads.push(pad.clone());
+        }
+    }
     ControllerView {
-        pads: pads::pads(&players, &connected),
-        players: players
-            .into_iter()
+        players: current
+            .players
+            .iter()
             .map(|player| PlayerView {
-                connected: connected.iter().any(|pad| pad.device == player.controller.device),
-                controller: player.controller,
-                bindings: player.bindings,
+                connected: connected.iter().any(|pad| pad.device == player.pad.device),
+                pad: player.pad.clone(),
+                buttons: player.all_buttons(),
             })
             .collect(),
-        saved: pads::have_profile(&app, source),
-        own,
+        pads,
+        saved: current.saved,
+        own: current.own,
         connected,
-        choices: pads::choices(),
+        inputs: crate::core::pad_layout::INPUTS.to_vec(),
+        consoles: crate::backends::all()
+            .iter()
+            .map(|backend| ConsoleButtons {
+                console: backend.console(),
+                name: backend.console().short(),
+                buttons: backend.button_names().iter().copied().collect(),
+            })
+            .collect(),
     }
 }
 
 #[tauri::command]
 pub fn set_up_controller(app: AppHandle, title_id: String) -> Result<(), String> {
-    rpcs3::controllers::set_up(&app, &title_id)
+    crate::controllers::restore_defaults(&app, &title_id)
 }
 
 /// `number` is the player, counted from 1.
@@ -1226,20 +1252,20 @@ pub fn save_controller(
     app: AppHandle,
     title_id: String,
     number: usize,
-    controller: rpcs3::controllers::Controller,
-    bindings: Vec<rpcs3::controllers::Binding>,
+    pad: crate::core::pad_layout::Pad,
+    buttons: std::collections::BTreeMap<String, String>,
 ) -> Result<(), String> {
-    rpcs3::controllers::save_player(
+    crate::controllers::save_player(
         &app,
         &title_id,
         number,
-        rpcs3::controllers::Player { controller, bindings },
+        crate::core::pad_layout::Player::with_buttons(pad, buttons),
     )
 }
 
 #[tauri::command]
 pub fn forget_controller(app: AppHandle, title_id: String) -> Result<(), String> {
-    rpcs3::controllers::forget(&app, &title_id)
+    crate::controllers::forget(&app, &title_id)
 }
 
 #[tauri::command]
@@ -1375,4 +1401,12 @@ pub async fn install_cemu(app: AppHandle, state: State<'_, InstallState>) -> Res
 #[tauri::command]
 pub fn cancel_cemu_install(state: State<'_, InstallState>) {
     state.cancel_cemu.store(true, Ordering::Relaxed);
+}
+
+/// What is held on a pad right now, for lighting the drawing and recording a
+/// button. `None` when the pad does not answer, which is how it being
+/// switched on or off shows.
+#[tauri::command]
+pub fn pad_input(device: String) -> Option<Vec<&'static str>> {
+    crate::pads::held(&device)
 }
