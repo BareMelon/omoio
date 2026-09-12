@@ -199,9 +199,26 @@ function filterBar(view: CatalogueView, choice: CatalogueChoice): HTMLElement {
   return bar;
 }
 
+/// Lists being downloaded, by console, so a view rebuilt halfway through shows
+/// the same download instead of starting another.
+const fetching = new Map<string, Promise<void>>();
+
+/// Lists already fetched without being asked this run. One that fails or is
+/// stopped waits for the button rather than trying again on every redraw.
+const startedAlone = new Set<string>();
+
+function fetchList(key: string, console?: Console): Promise<void> {
+  const job = refreshCompatibility(console)
+    .finally(() => fetching.delete(key))
+    .then(() => store.redraw());
+  fetching.set(key, job);
+  return job;
+}
+
 /// Downloads compatibility lists, with progress and a way to stop, since the
-/// biggest takes around twenty seconds.
-function listGetter(label: string, console?: Console): HTMLElement {
+/// biggest takes around twenty seconds. With `start`, a list that is not here
+/// is fetched without waiting for the button.
+function listGetter(label: string, console?: Console, start = false): HTMLElement {
   const box = document.createElement("div");
   box.className = "list-getter";
 
@@ -223,28 +240,35 @@ function listGetter(label: string, console?: Console): HTMLElement {
   stop.textContent = "Stop";
   stop.onclick = () => void cancelCompatibility();
 
-  get.onclick = async () => {
+  function watch(job: Promise<void>) {
     get.classList.add("gone");
     bar.classList.remove("gone");
     stop.classList.remove("gone");
-    const unlisten = await onCompatProgress((progress) => {
+    const unlisten = onCompatProgress((progress) => {
       const done =
         progress.total > 0 ? Math.min(100, Math.round((progress.bytes / progress.total) * 100)) : 0;
       fill.style.width = `${done}%`;
       pct.textContent = `${done}%`;
     });
-    try {
-      await refreshCompatibility(console);
-      store.redraw();
-    } catch (err) {
-      bar.classList.add("gone");
-      stop.classList.add("gone");
-      get.classList.remove("gone");
-      get.textContent = err === "cancelled" ? label : "Couldn't get it. Try again";
-    } finally {
-      unlisten();
-    }
-  };
+    void job
+      .catch((err: unknown) => {
+        bar.classList.add("gone");
+        stop.classList.add("gone");
+        get.classList.remove("gone");
+        get.textContent = err === "cancelled" ? label : "Couldn't get it. Try again";
+      })
+      .finally(() => void unlisten.then((stopListening) => stopListening()));
+  }
+
+  const key = console ?? "every";
+  get.onclick = () => watch(fetchList(key, console));
+  const running = fetching.get(key);
+  if (running) {
+    watch(running);
+  } else if (start && !startedAlone.has(key)) {
+    startedAlone.add(key);
+    watch(fetchList(key, console));
+  }
 
   box.append(get, bar, stop);
   return box;
@@ -273,9 +297,9 @@ export async function renderCatalogue(): Promise<View> {
   if (!view.have_list) {
     const content = emptyState(
       "No list yet",
-      "The catalogue comes from each emulator's compatibility list. Get them once and it works offline."
+      "The catalogue comes from each emulator's compatibility list. Omoio fetches them by itself, and after that it works offline."
     );
-    content.appendChild(listGetter("Get the lists"));
+    content.appendChild(listGetter("Get the lists", undefined, true));
     return { title: "Catalogue", subtitle: "Nothing to browse yet", content };
   }
 
@@ -291,7 +315,7 @@ export async function renderCatalogue(): Promise<View> {
     row.className = "missing-row";
     row.append(
       tag("missing-text", `${name} games aren't in the catalogue yet.`),
-      listGetter(`Get the ${name} list`, console)
+      listGetter(`Get the ${name} list`, console, true)
     );
     content.appendChild(row);
   }
