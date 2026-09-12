@@ -394,6 +394,24 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     app.state::<Session>().stop();
     let backend = crate::backends::for_console(game.console)
         .ok_or("Omoio can't start games for this console yet.")?;
+    // The known fixes for this game go in before it starts, each only once,
+    // so one the user switched off afterwards stays off.
+    let settings_file = settings_path(&app)?;
+    let mut settings = Settings::load(&settings_file);
+    let already = settings
+        .applied_fixes
+        .get(&game.title_id)
+        .cloned()
+        .unwrap_or_default();
+    let applied = backend.apply_fixes(&app, game, &already);
+    if !applied.is_empty() {
+        settings
+            .applied_fixes
+            .entry(game.title_id.clone())
+            .or_default()
+            .extend(applied.iter().map(|id| id.to_string()));
+        let _ = settings.save(&settings_file);
+    }
     // Ready before the emulator starts: a pad plugged in for the first time
     // works, and the picture fits this machine.
     backend.prepare(&app);
@@ -413,15 +431,25 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// The settings Omoio offers per game, and what this game is currently set to.
+/// The settings Omoio offers per game, what this game is currently set to, and
+/// the reason for any Omoio sets itself.
 #[tauri::command]
 pub fn game_settings(
     app: AppHandle,
     title_id: String,
-) -> (Vec<rpcs3::game_config::Setting>, rpcs3::game_config::Chosen) {
+) -> (
+    Vec<rpcs3::game_config::Setting>,
+    rpcs3::game_config::Chosen,
+    std::collections::BTreeMap<String, String>,
+) {
+    let reasons = rpcs3::fixes::setting_reasons(&title_id)
+        .into_iter()
+        .map(|(key, reason)| (key.to_string(), reason.to_string()))
+        .collect();
     (
         rpcs3::game_config::catalogue(&app),
         rpcs3::game_config::read(&app, &title_id),
+        reasons,
     )
 }
 

@@ -196,7 +196,10 @@ export interface GameOption {
 /// path -> value. Anything absent is RPCS3's own default.
 export type ChosenSettings = Record<string, string>;
 
-export function gameSettings(titleId: string): Promise<[GameOption[], ChosenSettings]> {
+/// The options, what this game is set to, and why Omoio set any of them itself.
+export function gameSettings(
+  titleId: string
+): Promise<[GameOption[], ChosenSettings, Record<string, string>]> {
   return invoke("game_settings", { titleId });
 }
 
@@ -313,12 +316,17 @@ export interface Patch {
   hash: string;
   name: string;
   game: string;
+  /// The serial the patch list files it under: the game's own title id, or
+  /// "All" for a patch written for every game.
+  serial: string;
   author: string;
   notes: string;
   version: string;
   versions: string[];
   applies: boolean;
   enabled: boolean;
+  /// Why Omoio switches it on, when it is one of Omoio's own fixes.
+  fix: string | null;
 }
 
 export interface PatchList {

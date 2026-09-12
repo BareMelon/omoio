@@ -2,6 +2,7 @@ pub mod account;
 pub mod compat;
 pub mod controllers;
 pub mod firmware;
+pub mod fixes;
 pub mod game_config;
 pub mod graphics;
 pub mod launch;
@@ -299,5 +300,15 @@ impl super::EmulatorBackend for Rpcs3 {
 
     fn catalogue_source(&self) -> (&'static str, &'static str) {
         ("PS3 results from RPCS3", "https://rpcs3.net/compatibility")
+    }
+
+    fn apply_fixes(
+        &self,
+        app: &AppHandle,
+        game: &crate::core::library::Game,
+        applied: &[String],
+    ) -> Vec<&'static str> {
+        let version = game.running_version().unwrap_or_default();
+        fixes::apply(app, &game.title_id, version, applied)
     }
 }

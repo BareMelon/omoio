@@ -33,6 +33,10 @@ pub struct Settings {
     /// shipped with the app.
     #[serde(default)]
     pub rawg_key: Option<String>,
+    /// The known fixes already applied, by title id. Each is applied once, so
+    /// one the user switches off afterwards stays off.
+    #[serde(default)]
+    pub applied_fixes: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 fn default_keep_sessions() -> usize {
@@ -50,6 +54,7 @@ impl Default for Settings {
             tuned_scale: None,
             covers: false,
             rawg_key: None,
+            applied_fixes: Default::default(),
         }
     }
 }
@@ -95,6 +100,7 @@ mod tests {
             tuned_scale: Some(200),
             covers: true,
             rawg_key: Some("k".to_string()),
+            applied_fixes: Default::default(),
         };
         settings.save(&path).unwrap();
 

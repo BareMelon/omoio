@@ -62,6 +62,13 @@ pub trait EmulatorBackend: Sync {
 
     /// Who publishes the list and where, for the credit under the catalogue.
     fn catalogue_source(&self) -> (&'static str, &'static str);
+
+    /// Switches on the known fixes for this game that have not been applied
+    /// before, and returns their ids so none is ever applied twice. Most
+    /// emulators have none, so this does nothing unless one overrides it.
+    fn apply_fixes(&self, _app: &AppHandle, _game: &Game, _applied: &[String]) -> Vec<&'static str> {
+        Vec::new()
+    }
 }
 
 /// Every emulator Omoio can run, one per console.

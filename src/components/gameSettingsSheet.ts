@@ -73,7 +73,8 @@ function settingRow(
   option: GameOption,
   chosen: ChosenSettings,
   onChanged: () => void,
-  showKey: boolean
+  showKey: boolean,
+  reasons: Record<string, string>
 ): HTMLElement {
   const row = document.createElement("div");
   row.className = "setting";
@@ -99,6 +100,13 @@ function settingRow(
     hint.textContent = option.hint;
     left.appendChild(hint);
   }
+  const why = reasons[option.key];
+  if (why) {
+    const set = document.createElement("div");
+    set.className = "setting-hint";
+    set.textContent = `Omoio sets this for this game. ${why}`;
+    left.appendChild(set);
+  }
 
   const right = document.createElement("div");
   right.className = "row-actions";
@@ -121,7 +129,8 @@ function groupInto(
   options: GameOption[],
   chosen: ChosenSettings,
   onChanged: () => void,
-  showKeys: boolean
+  showKeys: boolean,
+  reasons: Record<string, string>
 ): { group: HTMLElement; rows: { row: HTMLElement; text: string }[] }[] {
   const built: { group: HTMLElement; rows: { row: HTMLElement; text: string }[] }[] = [];
   let current = "";
@@ -143,7 +152,7 @@ function groupInto(
       rows = [];
       built.push({ group: section, rows });
     }
-    const row = settingRow(option, chosen, onChanged, showKeys);
+    const row = settingRow(option, chosen, onChanged, showKeys, reasons);
     section.appendChild(row);
     rows.push({
       row,
@@ -158,7 +167,7 @@ export async function openGameSettings(
   title: string,
   onSaved: () => void
 ): Promise<void> {
-  const [options, saved] = await gameSettings(titleId);
+  const [options, saved, reasons] = await gameSettings(titleId);
   // Worked on as a copy, so Cancel really does leave things as they were.
   const chosen: ChosenSettings = { ...saved };
 
@@ -233,8 +242,8 @@ export async function openGameSettings(
   const common = ["Video", "Core", "Audio"].flatMap((group) =>
     options.filter((o) => o.common && o.group === group)
   );
-  groupInto(commonPane, common, chosen, refreshCount, false);
-  const advanced = groupInto(advancedPane, options, chosen, refreshCount, true);
+  groupInto(commonPane, common, chosen, refreshCount, false, reasons);
+  const advanced = groupInto(advancedPane, options, chosen, refreshCount, true, reasons);
 
   const noMatch = document.createElement("div");
   noMatch.className = "sheet-p gone";

@@ -30,6 +30,13 @@ function patchRow(
   name.textContent = patch.name;
   left.appendChild(name);
 
+  if (patch.fix) {
+    const why = document.createElement("div");
+    why.className = "setting-hint";
+    why.textContent = `Omoio turns this on for this game. ${patch.fix}`;
+    left.appendChild(why);
+  }
+
   const by = [patch.author && `by ${patch.author}`, patch.version && `v${patch.version}`]
     .filter(Boolean)
     .join(" · ");
@@ -107,7 +114,7 @@ export async function openPatches(
     <div class="sheet-p"></div>
   `;
   head.querySelector<HTMLElement>(".sheet-p")!.textContent =
-    `Written by the RPCS3 community for ${title}. Nothing is on unless you turn it on.`;
+    `Written by the RPCS3 community for ${title}. Omoio turns on a fix it knows this game needs and says why. The rest stay off until you turn them on.`;
   sheet.appendChild(head);
 
   const body = document.createElement("div");

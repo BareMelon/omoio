@@ -12,7 +12,9 @@
 //! Both shapes were read out of RPCS3's bin_patch.cpp rather than guessed, and
 //! a test loads the real published file to check this still reads it.
 //!
-//! Nothing is ever enabled on the user's behalf.
+//! Only patches on Omoio's own list of fixes (`fixes.rs`) are switched on
+//! without being asked, once, with the reason shown. Every other patch waits
+//! for the user.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -42,6 +44,11 @@ pub struct Patch {
     pub hash: String,
     pub name: String,
     pub game: String,
+    /// The serial the patch list files it under for this game: the game's own
+    /// title id, or "All" for a patch written for every game. RPCS3 reads the
+    /// switch from under the same key, so it has to be written there.
+    #[serde(default)]
+    pub serial: String,
     pub author: String,
     pub notes: String,
     pub version: String,
@@ -50,6 +57,9 @@ pub struct Patch {
     /// Whether it covers the copy of the game actually installed.
     pub applies: bool,
     pub enabled: bool,
+    /// Why Omoio switches it on, when it is one of Omoio's own fixes.
+    #[serde(default)]
+    pub fix: Option<String>,
 }
 
 pub fn catalogue_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -198,7 +208,21 @@ pub fn for_title(app: &AppHandle, title_id: &str, app_version: &str) -> Vec<Patc
     let Some(top) = root.as_hash() else {
         return Vec::new();
     };
-    let enabled = read_enabled(app);
+    match_title(top, title_id, app_version, &read_enabled(app))
+}
+
+/// The patches in the list for one game.
+///
+/// A patch names its games by serial, or with "All" for every game, and RPCS3
+/// looks for the game's own serial first and falls back to "All". An "All"
+/// patch is only listed when it is on Omoio's list of fixes for this game:
+/// the list holds hundreds of them, and most do nothing for a given game.
+fn match_title(
+    top: &Hash,
+    title_id: &str,
+    app_version: &str,
+    enabled: &[(String, String)],
+) -> Vec<Patch> {
     let mut found = Vec::new();
 
     for (hash, entries) in patch_entries(top) {
@@ -207,11 +231,16 @@ pub fn for_title(app: &AppHandle, title_id: &str, app_version: &str) -> Vec<Patc
             let Some(games) = last(info, K_GAMES).and_then(Yaml::as_hash) else {
                 continue;
             };
+            let fix = super::fixes::patch_reason(title_id, &hash, &name);
 
             for (game, serials) in entries_last_wins(games) {
                 let Some(serials) = serials.as_hash() else { continue };
-                let Some(versions) = last(serials, title_id).and_then(Yaml::as_vec) else {
-                    continue;
+                let (serial, versions) = match last(serials, title_id).and_then(Yaml::as_vec) {
+                    Some(versions) => (title_id, versions),
+                    None => match (fix, last(serials, K_ALL).and_then(Yaml::as_vec)) {
+                        (Some(_), Some(versions)) => (K_ALL, versions),
+                        _ => continue,
+                    },
                 };
                 let versions: Vec<String> = versions.iter().filter_map(scalar).collect();
                 let applies = versions.iter().any(|v| v == K_ALL || v == app_version);
@@ -222,10 +251,12 @@ pub fn for_title(app: &AppHandle, title_id: &str, app_version: &str) -> Vec<Patc
                     hash: hash.clone(),
                     name: name.clone(),
                     game: game.clone(),
+                    serial: serial.to_string(),
                     author: text(info, K_AUTHOR),
                     notes: text(info, K_NOTES),
                     version: text(info, K_PATCH_VERSION),
                     versions,
+                    fix: fix.map(str::to_string),
                 });
             }
         }
@@ -304,6 +335,31 @@ fn nested<'a>(map: &'a mut Hash, key: &str) -> &'a mut Hash {
     }
 }
 
+/// Where RPCS3 looks for a patch's switch: hash, name, game, serial, version.
+///
+/// RPCS3's `patch_engine::apply` walks the patch's own games, serials and
+/// versions, trying the game's serial and version first and "All" after, so
+/// the switch has to sit under the same keys the patch list uses.
+fn entry_keys(patch: &Patch, title_id: &str, app_version: &str) -> [String; 5] {
+    let serial = if patch.serial.is_empty() { title_id } else { patch.serial.as_str() };
+    // A patch written for "All" versions has no version of its own, so the
+    // game's is only used when the patch names it.
+    let version = if patch.versions.iter().any(|v| v == K_ALL)
+        && !patch.versions.iter().any(|v| v == app_version)
+    {
+        K_ALL
+    } else {
+        app_version
+    };
+    [
+        patch.hash.clone(),
+        patch.name.clone(),
+        patch.game.clone(),
+        serial.to_string(),
+        version.to_string(),
+    ]
+}
+
 /// Switches one patch on or off for one game, leaving every other entry in
 /// RPCS3's file alone.
 pub fn set_enabled(
@@ -319,24 +375,15 @@ pub fn set_enabled(
         _ => Hash::new(),
     };
 
-    // RPCS3 records the version the patch is being used against. "All"
-    // patches have no version of their own, so the game's own is what applies.
-    let version = if patch.versions.iter().any(|v| v == K_ALL) && !patch.versions.iter().any(|v| v == app_version)
-    {
-        K_ALL.to_string()
-    } else {
-        app_version.to_string()
-    };
-
+    let [hash, name, game, serial, version] = entry_keys(patch, title_id, app_version);
     if on {
-        let by_name = nested(&mut root, &patch.hash);
-        let by_game = nested(by_name, &patch.name);
-        let by_serial = nested(by_game, &patch.game);
-        let by_version = nested(by_serial, title_id);
-        let leaf = nested(by_version, &version);
+        let leaf = nested(
+            nested(nested(nested(nested(&mut root, &hash), &name), &game), &serial),
+            &version,
+        );
         leaf.insert(Yaml::String(K_ENABLED.into()), Yaml::Boolean(true));
     } else {
-        remove(&mut root, &[&patch.hash, &patch.name, &patch.game, title_id, &version]);
+        remove(&mut root, &[&hash, &name, &game, &serial, &version]);
     }
 
     if root.is_empty() {
@@ -585,5 +632,65 @@ PPU-abc:
         // The anchor from the first block still resolved, which is why the
         // blocks are renamed rather than dropped.
         assert!(root["Anchors"]["first"].as_hash().is_some());
+    }
+
+    /// One patch for one game by serial, the real MLAA fix written for every
+    /// game, and another "All" patch that is not one of Omoio's fixes.
+    const LIST: &str = "\
+PPU-abc:
+  \"Unlock FPS\":
+    Games:
+      \"LittleBigPlanet 3\":
+        BCES01663: [ 01.26 ]
+SPU-702d0205a89d445d15dc0f96548546c4e2e7a59f:
+  \"Disable SPU MLAA - LittleBigPlanet 2, LittleBigPlanet 3, LittleBigPlanet Hub\":
+    Games:
+      All:
+        All: [ All ]
+SPU-def:
+  \"Some other patch for every game\":
+    Games:
+      All:
+        All: [ All ]
+";
+
+    #[test]
+    fn an_all_patch_on_the_fix_list_is_offered_and_switched_on_under_all() {
+        let root = parse(LIST).unwrap();
+        let found = match_title(root.as_hash().unwrap(), "BCES01663", "01.26", &[]);
+        let mlaa = found
+            .iter()
+            .find(|p| p.name.starts_with("Disable SPU MLAA"))
+            .expect("the MLAA fix is offered for LittleBigPlanet 3");
+        assert_eq!(mlaa.serial, "All");
+        assert!(mlaa.applies);
+        assert!(mlaa.fix.is_some(), "the reason travels with it");
+        // Where RPCS3 looks for it. The game's own serial here is what made it
+        // look switched on while RPCS3 never applied it.
+        let keys = entry_keys(mlaa, "BCES01663", "01.26");
+        assert_eq!(keys[2..], ["All".to_string(), "All".to_string(), "All".to_string()]);
+    }
+
+    #[test]
+    fn an_all_patch_off_the_fix_list_is_not_offered() {
+        let root = parse(LIST).unwrap();
+        let found = match_title(root.as_hash().unwrap(), "BCES01663", "01.26", &[]);
+        assert!(!found.iter().any(|p| p.name.starts_with("Some other patch")));
+        let lbp1 = match_title(root.as_hash().unwrap(), "BCES00141", "01.30", &[]);
+        assert!(lbp1.is_empty(), "nothing in this list is for LittleBigPlanet 1");
+    }
+
+    #[test]
+    fn a_patch_for_one_game_keeps_that_games_serial_and_version() {
+        let root = parse(LIST).unwrap();
+        let found = match_title(root.as_hash().unwrap(), "BCES01663", "01.26", &[]);
+        let fps = found.iter().find(|p| p.name == "Unlock FPS").unwrap();
+        assert_eq!(fps.serial, "BCES01663");
+        assert!(fps.fix.is_none(), "not one of Omoio's fixes, so it waits for the user");
+        let keys = entry_keys(fps, "BCES01663", "01.26");
+        assert_eq!(
+            keys[2..],
+            ["LittleBigPlanet 3".to_string(), "BCES01663".to_string(), "01.26".to_string()]
+        );
     }
 }
