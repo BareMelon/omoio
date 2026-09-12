@@ -184,6 +184,15 @@ fn without_top_folder(path: &Path) -> Option<PathBuf> {
     (!rest.as_os_str().is_empty()).then_some(rest)
 }
 
+/// A Wii U dump that cannot be read without a key: a disc image, `.wud` or
+/// `.wux`, or a download in NUS form, which carries a `title.tmd` beside its
+/// encrypted content (what-we-verified.md, "Formats"). Only the file's own
+/// name is looked at, wherever it sits.
+fn needs_key(name: &str) -> bool {
+    let file = name.rsplit(['/', '\\']).next().unwrap_or(name).to_ascii_lowercase();
+    file.ends_with(".wud") || file.ends_with(".wux") || file == "title.tmd"
+}
+
 /// An unpacked Wii U title: the three folders Cemu itself looks for.
 fn is_game_folder(dir: &Path) -> bool {
     ["code", "content", "meta"].iter().all(|part| dir.join(part).is_dir())
@@ -358,6 +367,14 @@ impl super::EmulatorBackend for Cemu {
         identify(path)
     }
 
+    fn needs_a_key(&self, names: &[String]) -> Option<String> {
+        names.iter().any(|name| needs_key(name)).then(|| {
+            "This Wii U game is encrypted and needs a key to read, which Omoio never handles. \
+             Omoio takes Wii U games that are already unpacked into code, content and meta folders."
+                .to_string()
+        })
+    }
+
     fn icon(&self, _game: &Game) -> Option<PathBuf> {
         // The dump's own icon is a TGA, which the interface cannot show. A
         // RAWG cover or the drawn tile stands in for it.
@@ -529,6 +546,16 @@ Deluxe");
         std::fs::create_dir_all(dir.join("meta")).unwrap();
         assert!(find_root(&dir).is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn disc_images_and_downloads_that_need_a_key_are_told_apart() {
+        assert!(needs_key("Swap Force/game.wux"));
+        assert!(needs_key("C:\\Games\\GAME.WUD"));
+        assert!(needs_key("0005000010abcd00/title.tmd"));
+        assert!(!needs_key("Example Game/meta/meta.xml"));
+        assert!(!needs_key("Example Game/code/app.xml"));
+        assert!(!needs_key("notes about title.tmd.txt"));
     }
 
     #[test]

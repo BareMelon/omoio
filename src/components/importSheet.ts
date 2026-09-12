@@ -195,7 +195,7 @@ function sheet(dropped?: string[]): void {
       <div class="sheet-h">${result.added > 0 ? "Games added" : "Nothing new"}</div>
       <div class="sheet-p">${
         result.added === 0 && result.already_there === 0 && !result.cancelled
-          ? "No PS3 games were found in that folder."
+          ? "No games were found in that folder."
           : lines.join(" ")
       }</div>
       <div class="sheet-actions">
@@ -258,11 +258,9 @@ function sheet(dropped?: string[]): void {
     let problem = "";
 
     for (const [at, path] of paths.entries()) {
+      // Anything that is not an archive goes to the emulators to read, so a
+      // file they cannot take gets their reason rather than a general one.
       const kind = await droppedKind(path);
-      if (kind === "unknown") {
-        problem ||= "That isn't a game folder or a .7z or .zip archive.";
-        continue;
-      }
       if (kind === "archive" && !(await haveGamesFolder())) break;
 
       showProgress({ stage: "unpacking", bytes: 0, total: 0 }, counter(at));

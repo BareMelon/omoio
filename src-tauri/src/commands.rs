@@ -163,6 +163,12 @@ pub async fn import_archive(
         let kind = archive::detect_kind(&source)
             .ok_or("That file isn't a .7z or .zip archive.")?;
 
+        // Answered from the names inside, before anything is unpacked: a dump
+        // that needs a key is refused in seconds rather than after the wait.
+        if let Some(why) = crate::backends::needs_a_key(&archive::names(&source, kind)?) {
+            return Err(why);
+        }
+
         let needed = archive::unpacked_size(&source, kind)?;
         let free = free_space(&games_folder);
         if free.is_some_and(|free| free < needed) {

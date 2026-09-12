@@ -50,6 +50,22 @@ pub fn unpacked_size(path: &Path, kind: Kind) -> Result<u64, String> {
     }
 }
 
+/// The path of every file inside, read from the archive's index, so what an
+/// archive holds can be judged before a byte of it is unpacked.
+pub fn names(path: &Path, kind: Kind) -> Result<Vec<String>, String> {
+    match kind {
+        Kind::SevenZip => {
+            let reader = open_7z(path)?;
+            Ok(reader.archive().files.iter().map(|f| f.name.clone()).collect())
+        }
+        Kind::Zip => {
+            let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+            let archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+            Ok(archive.file_names().map(str::to_string).collect())
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Cancelled;
 

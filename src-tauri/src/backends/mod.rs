@@ -33,6 +33,13 @@ pub trait EmulatorBackend: Sync {
 
     fn identify(&self, path: &Path) -> Result<Game, String>;
 
+    /// Why a dump with these file names cannot be read, when it is one of
+    /// this console's that needs a key, which Omoio never handles. Asked with
+    /// only the names, so an archive is answered before anything is unpacked.
+    fn needs_a_key(&self, _names: &[String]) -> Option<String> {
+        None
+    }
+
     /// The picture the dump itself ships, if it has one.
     fn icon(&self, game: &Game) -> Option<PathBuf>;
 
@@ -114,8 +121,39 @@ pub fn for_console(console: Console) -> Option<&'static dyn EmulatorBackend> {
 pub fn identify(path: &Path) -> Result<Game, String> {
     match all().iter().find(|backend| backend.recognises(path)) {
         Some(backend) => backend.identify(path),
-        None => Err(unknown_dump(all().iter().map(|backend| backend.console().short()))),
+        None => Err(needs_a_key(&names_in(path))
+            .unwrap_or_else(|| unknown_dump(all().iter().map(|backend| backend.console().short())))),
     }
+}
+
+/// Why no emulator can read a dump with these file names, if one knows it
+/// for a form that needs a key.
+pub fn needs_a_key(names: &[String]) -> Option<String> {
+    all().iter().find_map(|backend| backend.needs_a_key(names))
+}
+
+/// The names of what was picked: the file itself, or what a folder holds
+/// and one level below, which is where a dump sits inside the folder an
+/// archive unpacked into.
+fn names_in(path: &Path) -> Vec<String> {
+    let list = |dir: &Path| -> Vec<std::path::PathBuf> {
+        std::fs::read_dir(dir)
+            .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
+            .unwrap_or_default()
+    };
+    let mut found = vec![path.to_path_buf()];
+    if path.is_dir() {
+        for inside in list(path) {
+            if inside.is_dir() {
+                found.extend(list(&inside));
+            }
+            found.push(inside);
+        }
+    }
+    found
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
 }
 
 /// Says which consoles Omoio takes, so an unknown folder gets an answer that
