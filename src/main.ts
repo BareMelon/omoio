@@ -2,6 +2,7 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 
 import {
+  fetchCovers,
   getFirmwareVersion,
   getRpcs3Version,
   listGames,
@@ -138,6 +139,21 @@ getRpcs3Version().then((version) => store.setRpcs3Version(version));
 getFirmwareVersion().then((version) => store.setFirmwareVersion(version));
 listGames().then((games) => store.setGames(games));
 playingGame().then((playing) => store.setPlaying(playing));
+
+// Covers for games that appeared since the last look, however they came in.
+// RAWG is asked about each game once, so looking again costs nothing for the
+// ones already asked about, and nothing is asked while covers are off.
+const coversAskedFor = new Set<string>();
+store.subscribe(({ games }) => {
+  if (!games || games.every((game) => coversAskedFor.has(game.title_id))) return;
+  games.forEach((game) => coversAskedFor.add(game.title_id));
+  const shown = games.filter((game) => game.cover_source === "rawg").length;
+  fetchCovers()
+    .then(async (found) => {
+      if (found > shown) store.setGames(await listGames());
+    })
+    .catch(() => {});
+});
 
 // Asked once, before anything else is worth doing. Emulator updates wait for
 // it, so a first run never downloads the same emulator twice.

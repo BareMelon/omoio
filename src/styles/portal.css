@@ -8,7 +8,7 @@ body {
   height: 100%;
   background: transparent;
   color: var(--ink);
-  font-family: system-ui, "Segoe UI", sans-serif;
+  font-family: var(--ui);
 }
 
 #portal {
@@ -16,49 +16,136 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--void) 74%, transparent);
+  background: var(--scrim);
 }
 
 .portal-panel {
-  width: min(1120px, 88vw);
-  max-height: 86vh;
-  overflow-y: auto;
-  padding: 28px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 90vw);
+  height: min(780px, 88vh);
+  overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--line2);
   border-radius: var(--r);
+  box-shadow: 0 24px 80px rgb(var(--shadow) / 0.55);
 }
+
+/* ---- title and the figures on the portal ---- */
 
 .portal-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
+  align-items: center;
+  gap: 28px;
+  padding: 22px 28px 18px;
 }
 
 .portal-title {
-  font-size: 24px;
+  flex: none;
+  font-size: 26px;
   font-weight: 700;
 }
 
-.portal-keys {
-  font-size: 14px;
-  color: var(--mute);
-}
-
-.portal-sec {
-  margin: 22px 0 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.portal-row {
+.portal-on {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.portal-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px 0 5px;
+  background: var(--raise);
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.portal-chip .portal-mark {
+  width: 28px;
+  height: 28px;
+}
+
+.portal-chip.sel {
+  background: var(--raise2);
+  border-color: var(--brand);
+}
+
+/* ---- tabs ---- */
+
+.portal-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.portal-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.portal-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 11px;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--mute);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.portal-tab:hover {
+  color: var(--ink);
+}
+
+.portal-tab.sel {
+  color: var(--ink);
+  border-bottom-color: var(--brand);
+}
+
+.portal-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--tint);
+}
+
+.portal-bumper {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  color: var(--mute);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---- the figures ---- */
+
+.portal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 28px 22px;
 }
 
 .portal-grid {
@@ -69,29 +156,25 @@ body {
 
 .portal-item {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 60px;
-  padding: 12px 16px;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 10px 12px;
   background: var(--raise);
-  border: 2px solid var(--line);
+  border: 2px solid transparent;
   border-radius: var(--r);
   color: var(--ink);
   font: inherit;
-  font-size: 16px;
   text-align: left;
   cursor: pointer;
-}
-
-.portal-row .portal-item {
-  min-width: 180px;
 }
 
 .portal-item:hover {
   border-color: var(--line2);
 }
 
-.portal-item:active {
+.portal-item:active,
+.portal-chip:active {
   transform: scale(0.98);
 }
 
@@ -100,31 +183,112 @@ body {
   border-color: var(--brand);
 }
 
-.portal-item:focus-visible {
+.portal-item:focus-visible,
+.portal-chip:focus-visible,
+.portal-tab:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-.portal-detail {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--dim);
+.portal-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  color: var(--tint);
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tint) 42%, transparent);
 }
 
-.portal-empty {
+.portal-mark svg {
+  width: 56%;
+  height: 56%;
+}
+
+.portal-words {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.portal-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.portal-note {
+  font-size: 12px;
   color: var(--mute);
+}
+
+.portal-item.on .portal-note {
+  color: var(--go);
+}
+
+.portal-quiet {
+  font-size: 16px;
+  color: var(--mute);
+}
+
+/* ---- status and buttons ---- */
+
+.portal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 28px;
+  border-top: 1px solid var(--line);
 }
 
 .portal-status {
-  min-height: 22px;
-  margin-top: 20px;
+  min-height: 20px;
   font-size: 15px;
   color: var(--mute);
 }
 
+.portal-hints {
+  display: flex;
+  flex: none;
+  gap: 22px;
+  font-size: 14px;
+  color: var(--mute);
+}
+
+.portal-hint kbd {
+  margin-right: 7px;
+  padding: 2px 8px;
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+
+/* Each element's colour, for its mark and its tab. */
+.tint-air { --tint: var(--el-air); }
+.tint-earth { --tint: var(--el-earth); }
+.tint-fire { --tint: var(--el-fire); }
+.tint-water { --tint: var(--el-water); }
+.tint-life { --tint: var(--el-life); }
+.tint-undead { --tint: var(--el-undead); }
+.tint-magic { --tint: var(--el-magic); }
+.tint-tech { --tint: var(--el-tech); }
+.tint-light { --tint: var(--el-light); }
+.tint-dark { --tint: var(--el-dark); }
+.tint-none { --tint: var(--mute); }
+
 @media (prefers-reduced-motion: reduce) {
-  .portal-item:active {
+  .portal-item:active,
+  .portal-chip:active {
     transform: none;
   }
 }

@@ -115,6 +115,12 @@ pub trait EmulatorBackend: Sync {
     /// Where the emulator writes the log of the session that just ran.
     fn log_file(&self, app: &AppHandle) -> Option<PathBuf>;
 
+    /// The game's version as the emulator's log of a session gives it, for a
+    /// game whose own files Omoio can't read.
+    fn version_from_log(&self, _log: &str) -> Option<String> {
+        None
+    }
+
     /// Every title this console's compatibility list knows, or `None` until
     /// the list has been downloaded.
     fn catalogue(&self, app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>>;

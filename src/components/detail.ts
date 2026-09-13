@@ -52,7 +52,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     <div class="note" id="detail-note"></div>
     <div class="sec" id="sec-details">
       <div class="sec-h">Details</div>
-      ${row("Version", game.version ? game.version : "unknown")}
+      ${row("Version", game.version ?? (game.console === "wiiu" ? "Known after first play" : "unknown"))}
       ${row("Size on disk", formatSize(game.size_bytes))}
       ${row(
         "Files",

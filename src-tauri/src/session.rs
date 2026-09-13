@@ -209,16 +209,36 @@ pub fn watch(app: AppHandle, pid: u32) {
     });
 }
 
+/// Fills in a game's version from the emulator's log when the game's own
+/// files couldn't give one, as with an encrypted Wii U disc image.
+fn learn_version(app: &AppHandle, title_id: &str, version: String) {
+    let Ok(data_dir) = app.path().data_dir() else {
+        return;
+    };
+    let file = data_dir.join("Omoio").join("library.json");
+    let mut library = crate::core::library::Library::load(&file);
+    if let Some(game) = library.get_mut(title_id).filter(|game| game.version.is_none()) {
+        game.version = Some(version);
+        let _ = library.save(&file);
+    }
+}
+
 /// Copies what the emulator said about this session somewhere it will survive,
 /// and records how it ended. Emulators overwrite their own log on the next
-/// launch, so this is the only chance to keep it.
+/// launch, so this is the only chance to keep it, and to learn from it what
+/// the game's own files couldn't say.
 fn keep_session_log(app: &AppHandle, playing: &Playing, seconds: u64, stopped_by_us: bool) {
     use crate::core::playlog::{self, Ending, Session as LoggedSession};
 
-    let log = crate::backends::for_console(playing.console)
+    let backend = crate::backends::for_console(playing.console);
+    let log = backend
+        .as_ref()
         .and_then(|backend| backend.log_file(app))
         .and_then(|path| std::fs::read_to_string(path).ok())
         .unwrap_or_default();
+    if let Some(version) = backend.as_ref().and_then(|backend| backend.version_from_log(&log)) {
+        learn_version(app, &playing.title_id, version);
+    }
 
     let ending = if stopped_by_us {
         Ending::Stopped

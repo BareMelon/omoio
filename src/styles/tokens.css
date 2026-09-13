@@ -38,6 +38,19 @@
      and each shadow keeps its own opacity: rgb(var(--shadow) / 0.7). */
   --shadow: 0 0 0;
 
+  /* The Skylanders elements, each in the colour the games give it, for the
+     portal menu. They mark a figure's element and mean nothing else. */
+  --el-air: #8fd3f4;
+  --el-earth: #c09060;
+  --el-fire: #f2643c;
+  --el-water: #3b9be0;
+  --el-life: #62c65a;
+  --el-undead: #a8aec6;
+  --el-magic: #c872f0;
+  --el-tech: #f0b43c;
+  --el-light: #f5e9a6;
+  --el-dark: #8f86c4;
+
   --ui: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 

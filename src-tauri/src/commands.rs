@@ -1299,10 +1299,15 @@ pub fn set_rawg_key(app: AppHandle, key: String) -> Result<(), String> {
 }
 
 /// Looks up a cover for every game in the library. Each is asked about once,
-/// found or not, so calling this again only asks about new games.
+/// found or not, so calling this again only asks about new games. The
+/// library calls it whenever a game appears, so nothing is asked while
+/// covers are off.
 #[tauri::command]
 pub async fn fetch_covers(app: AppHandle) -> Result<usize, String> {
     let settings = Settings::load(&settings_path(&app)?);
+    if !settings.covers {
+        return Ok(0);
+    }
     let key = settings
         .rawg_key
         .filter(|key| !key.is_empty())
@@ -1492,15 +1497,20 @@ pub fn pads_held() -> Vec<&'static str> {
     crate::pads::held_anywhere()
 }
 
-/// Every character the running game's emulator can make a figure of.
+/// Every character the running game's emulator can make a figure of that
+/// the game reads, each with its element and kind.
 #[tauri::command]
-pub async fn figure_characters(app: AppHandle) -> Result<Vec<crate::core::figures::Character>, String> {
+pub async fn figure_characters(app: AppHandle) -> Result<Vec<crate::core::figures::Offer>, String> {
     let (backend, pid) = running_emulator(&app)?;
-    let console = app.state::<Session>().playing().ok_or("Start a game first.")?.console;
+    let playing = app.state::<Session>().playing().ok_or("Start a game first.")?;
+    let game = crate::core::figures::game_from_title(&playing.title);
     let handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || crate::portal_menu::characters(&handle, backend, console, pid))
-        .await
-        .map_err(|e| e.to_string())?
+    let characters = tauri::async_runtime::spawn_blocking(move || {
+        crate::portal_menu::characters(&handle, backend, playing.console, pid)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(crate::core::figures::offers(characters, game))
 }
 
 /// Has the emulator make a new figure of a character, kept in the figures
@@ -1514,9 +1524,11 @@ pub async fn portal_create(
     let (backend, pid) = running_emulator(&app)?;
     let file = crate::portal_menu::new_figure(&app, &character.name)?;
     let path = file.clone();
+    let made = character.clone();
     let names = tauri::async_runtime::spawn_blocking(move || backend.portal_create(pid, slot, &character, &path))
         .await
         .map_err(|e| e.to_string())??;
+    crate::portal_menu::made(&app, &file, &made);
     crate::portal_menu::used(&app, &file.to_string_lossy());
     Ok(names)
 }

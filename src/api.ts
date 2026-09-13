@@ -640,9 +640,18 @@ export function padsHeld(): Promise<string[]> {
 }
 
 /// One of the user's figure files, kept in Omoio's figures folder.
+export type FigureElement = "air" | "earth" | "fire" | "water" | "life" | "undead" | "magic" | "tech" | "light" | "dark";
+
+export type FigureKind = "character" | "item" | "trap" | "adventure" | "vehicle" | "trophy";
+
 export interface Figure {
   name: string;
   path: string;
+  /// Known for figures Omoio had the emulator make, null for the user's own files.
+  id: number | null;
+  variant: number | null;
+  element: FigureElement | null;
+  kind: FigureKind | null;
 }
 
 export function figures(): Promise<Figure[]> {
@@ -684,7 +693,14 @@ export interface Character {
   variant: number;
 }
 
-export function figureCharacters(): Promise<Character[]> {
+/// A character as the portal menu lists it: what the game reads, with the
+/// element and kind that decide its tab.
+export interface Offer extends Character {
+  element: FigureElement | null;
+  kind: FigureKind;
+}
+
+export function figureCharacters(): Promise<Offer[]> {
   return invoke("figure_characters");
 }
 

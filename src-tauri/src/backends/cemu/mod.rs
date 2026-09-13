@@ -298,6 +298,16 @@ fn identify_disc(image: &Path) -> Game {
     }
 }
 
+/// The title version Cemu writes to its log as a game loads, "TitleVersion:
+/// v16", in the same numbers meta.xml uses. A disc image's meta.xml is
+/// encrypted, so this is where Omoio learns its version: after the first play.
+fn title_version(log: &str) -> Option<String> {
+    log.lines()
+        .find_map(|line| line.split_once("TitleVersion: v").map(|(_, version)| version.trim()))
+        .filter(|version| !version.is_empty() && version.chars().all(|c| c.is_ascii_digit()))
+        .map(str::to_string)
+}
+
 /// The meta.xml of an unpacked Wii U title, which Omoio can read.
 fn readable_meta(name: &str) -> bool {
     name.replace('\\', "/").to_ascii_lowercase().ends_with("meta/meta.xml")
@@ -616,6 +626,10 @@ impl super::EmulatorBackend for Cemu {
         install_dir(app).ok().map(|dir| dir.join("portable").join("log.txt"))
     }
 
+    fn version_from_log(&self, log: &str) -> Option<String> {
+        title_version(log)
+    }
+
     fn catalogue(&self, app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>> {
         compat::entries(app)
     }
@@ -639,6 +653,16 @@ mod tests {
 
     /// Made up, in the shape Cemu's parser reads: a menu element holding each
     /// value as text, with the escaping and line breaks real names carry.
+    #[test]
+    fn a_disc_images_version_comes_from_cemus_log() {
+        let log = "[10:41:02.118] ------- Loaded title -------\n\
+                   [10:41:02.118] TitleId: 00050000-10101e00\n\
+                   [10:41:02.118] TitleVersion: v16\n\
+                   [10:41:02.118] TitleRegion: EU\n";
+        assert_eq!(title_version(log).as_deref(), Some("16"));
+        assert_eq!(title_version("[10:41:02.118] Mounting title 0005000010101e00"), None);
+    }
+
     const META: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <menu type="complex" access="777">
   <version type="unsignedInt" length="4">33</version>

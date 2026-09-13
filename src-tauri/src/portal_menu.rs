@@ -1,7 +1,7 @@
 //! The Skylanders menu: an Omoio window over the running game, opened with
 //! the Guide button and used with the pad alone. It shows the figures on the
-//! portal and the user's own figure files, and puts one on or takes one off
-//! through the game's emulator.
+//! portal, the saved ones, and every character the game reads sorted by
+//! element, and puts one on or takes one off through the game's emulator.
 //!
 //! Figures are the user's own files, copied into Omoio's figures folder from
 //! Settings, or new ones of any character, which the emulator's own figure
@@ -9,9 +9,10 @@
 
 use crate::backends::EmulatorBackend;
 use crate::core::console::Console;
-use crate::core::figures::{self, Character};
+use crate::core::figures::{self, Character, Element, Kind};
 use crate::core::settings::Settings;
 use crate::session::Session;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -49,6 +50,38 @@ pub struct Figure {
     /// The file's name without its extension.
     pub name: String,
     pub path: String,
+    /// The character, for a figure Omoio had the emulator make. A file the
+    /// user brought has none, since Omoio doesn't read inside figure files.
+    pub id: Option<u16>,
+    pub variant: Option<u16>,
+    pub element: Option<Element>,
+    pub kind: Option<Kind>,
+}
+
+/// Which character each figure Omoio had made is, by file name.
+fn made_file(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("made-figures.json"))
+}
+
+fn made_list(app: &AppHandle) -> BTreeMap<String, [u16; 2]> {
+    made_file(app)
+        .ok()
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// Remembers which character a new figure is, so the menu files it under
+/// its element and uses it again rather than making another.
+pub fn made(app: &AppHandle, figure: &Path, character: &Character) {
+    let (Ok(file), Some(name)) = (made_file(app), figure.file_name()) else {
+        return;
+    };
+    let mut list = made_list(app);
+    list.insert(name.to_string_lossy().into_owned(), [character.id, character.variant]);
+    if let Ok(text) = serde_json::to_string(&list) {
+        let _ = std::fs::write(file, text);
+    }
 }
 
 /// The user's figure files, the ones used lately first, the rest by name.
@@ -59,15 +92,24 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
     let recent = data_dir(app)
         .map(|d| Settings::load(&d.join("settings.json")).recent_figures)
         .unwrap_or_default();
+    let made = made_list(app);
     let mut found: Vec<Figure> = std::fs::read_dir(&dir)
         .map(|entries| {
             entries
                 .flatten()
                 .map(|entry| entry.path())
                 .filter(|path| path.is_file() && is_figure(path))
-                .map(|path| Figure {
-                    name: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
-                    path: path.to_string_lossy().into_owned(),
+                .map(|path| {
+                    let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let character = made.get(&file).copied();
+                    Figure {
+                        name: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+                        path: path.to_string_lossy().into_owned(),
+                        id: character.map(|[id, _]| id),
+                        variant: character.map(|[_, variant]| variant),
+                        element: character.and_then(|[id, _]| figures::element(id)),
+                        kind: character.map(|[id, _]| figures::kind(id)),
+                    }
                 })
                 .collect()
         })
