@@ -7,6 +7,7 @@ pub mod core;
 mod hardware;
 pub mod import;
 mod pads;
+mod portal_menu;
 pub mod session;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -96,8 +97,18 @@ pub fn run() {
             commands::emulator_versions,
             commands::install_cemu,
             commands::cancel_cemu_install,
+            commands::cemu_keys,
+            commands::add_cemu_keys,
             commands::emulator_updates,
             commands::pad_input,
+            commands::portal_figures,
+            commands::portal_load,
+            commands::portal_clear,
+            commands::figures,
+            commands::add_figures,
+            commands::close_portal_menu,
+            commands::portal_menu_family,
+            commands::pads_held,
             commands::get_settings,
             commands::set_start_fullscreen,
             commands::set_keep_sessions,

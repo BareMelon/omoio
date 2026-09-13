@@ -304,6 +304,20 @@ pub fn held(device: &str) -> Option<Vec<&'static str>> {
         .map(|s| s.held.clone())
 }
 
+/// Everything held on any pad plugged in, for a menu any player may use.
+pub fn held_anywhere() -> Vec<&'static str> {
+    let mut all: Vec<&'static str> = (0..4).filter_map(xinput_held).flatten().collect();
+    watch();
+    if let Some(seen) = seen().lock().unwrap().as_ref() {
+        for pad in seen {
+            all.extend(pad.held.iter().copied());
+        }
+    }
+    all.sort_unstable();
+    all.dedup();
+    all
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

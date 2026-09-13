@@ -64,11 +64,11 @@ function sheet(dropped?: string[]): void {
     busy = false;
     sheet.innerHTML = `
       <div class="sheet-h">Import a game</div>
-      <div class="sheet-p">Point Omoio at a folder you've already unpacked, or at a .7z or .zip archive.</div>
+      <div class="sheet-p">Point Omoio at a folder you've already unpacked, a .7z or .zip archive, or a Wii U disc image.</div>
       ${note ? `<div class="notice" style="margin-top:16px">${note}</div>` : ""}
       <div class="sheet-actions">
         <button class="btn ghost" id="pick-folder">Choose a folder</button>
-        <button class="btn solid" id="pick-archive">Choose an archive</button>
+        <button class="btn solid" id="pick-archive">Choose a file</button>
       </div>
       <div class="sheet-alt">
         <button class="link-btn" id="pick-scan">Scan a folder for games</button>
@@ -136,10 +136,15 @@ function sheet(dropped?: string[]): void {
     const picked = await open({
       multiple: false,
       directory: false,
-      title: "Choose a game archive",
-      filters: [{ name: "Game archive", extensions: ["7z", "zip"] }],
+      title: "Choose a game archive or disc image",
+      filters: [{ name: "Game archive or disc image", extensions: ["7z", "zip", "wud", "wux"] }],
     });
     if (typeof picked !== "string") return;
+    // A disc image is played where it is, as an unpacked folder is.
+    if (/\.(wud|wux)$/i.test(picked)) {
+      await run(() => importGame(picked));
+      return;
+    }
     if (!(await haveGamesFolder())) return;
 
     await run(() => importArchive(picked));

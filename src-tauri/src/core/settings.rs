@@ -37,6 +37,10 @@ pub struct Settings {
     /// one the user switches off afterwards stays off.
     #[serde(default)]
     pub applied_fixes: std::collections::BTreeMap<String, Vec<String>>,
+    /// Figure files put on a portal lately, newest first, by file name, so
+    /// the Skylanders menu lists them first.
+    #[serde(default)]
+    pub recent_figures: Vec<String>,
 }
 
 fn default_keep_sessions() -> usize {
@@ -55,6 +59,7 @@ impl Default for Settings {
             covers: false,
             rawg_key: None,
             applied_fixes: Default::default(),
+            recent_figures: Vec::new(),
         }
     }
 }
@@ -101,6 +106,7 @@ mod tests {
             covers: true,
             rawg_key: Some("k".to_string()),
             applied_fixes: Default::default(),
+            recent_figures: vec!["Whirlwind.sky".to_string()],
         };
         settings.save(&path).unwrap();
 

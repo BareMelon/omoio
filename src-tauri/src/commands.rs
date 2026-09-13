@@ -165,7 +165,7 @@ pub async fn import_archive(
 
         // Answered from the names inside, before anything is unpacked: a dump
         // that needs a key is refused in seconds rather than after the wait.
-        if let Some(why) = crate::backends::needs_a_key(&archive::names(&source, kind)?) {
+        if let Some(why) = crate::backends::refuses(&app, &archive::names(&source, kind)?) {
             return Err(why);
         }
 
@@ -418,6 +418,9 @@ pub async fn import_game(app: AppHandle, path: String) -> Result<GameEntry, Stri
     // Measuring a dump means walking every file in it, so this stays off the
     // UI thread.
     tauri::async_runtime::spawn_blocking(move || {
+        if let Some(why) = crate::backends::refuses(&app, &crate::backends::names_in(Path::new(&path))) {
+            return Err(why);
+        }
         let game = crate::backends::identify(Path::new(&path))?;
         let library_file = library_path(&app)?;
         let mut library = Library::load(&library_file);
@@ -468,7 +471,7 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     // Ready before the emulator starts: every player has their pad and
     // buttons, a pad plugged in for the first time works, and the picture
     // fits this machine.
-    backend.prepare(&app);
+    backend.prepare(&app, game);
     crate::controllers::before_launch(&app, backend, &game.title_id);
     tune_picture(&app, backend);
     let pid = backend.launch(&app, game)?;
@@ -483,6 +486,7 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     );
     session.set_fullscreen(Settings::load(&settings_path(&app)?).start_fullscreen);
     crate::session::watch(app.clone(), pid);
+    crate::portal_menu::watch(app.clone(), pid);
     Ok(())
 }
 
@@ -534,6 +538,7 @@ pub struct Places {
     settings: String,
     logs: String,
     covers: String,
+    figures: String,
     rpcs3: String,
     games_folder: Option<String>,
 }
@@ -547,6 +552,7 @@ pub fn get_places(app: AppHandle) -> Result<Places, String> {
         settings: text(data.join("settings.json")),
         logs: text(data.join("logs")),
         covers: text(data.join("covers")),
+        figures: text(crate::portal_menu::folder(&app)?),
         rpcs3: text(rpcs3::install_dir(&app)?),
         games_folder: Settings::load(&settings_path(&app)?)
             .games_folder
@@ -1404,9 +1410,93 @@ pub async fn install_cemu(app: AppHandle, state: State<'_, InstallState>) -> Res
     crate::backends::cemu::install(app, cancel).await
 }
 
+/// How many of the user's own keys Cemu has for disc images.
+#[tauri::command]
+pub fn cemu_keys(app: AppHandle) -> usize {
+    crate::backends::cemu::keys::count(&app)
+}
+
+/// Adds the keys in a file the user picked to Cemu's. Resolves to how many
+/// were new.
+#[tauri::command]
+pub fn add_cemu_keys(app: AppHandle, path: String) -> Result<usize, String> {
+    crate::backends::cemu::keys::add(&app, Path::new(&path))
+}
+
 #[tauri::command]
 pub fn cancel_cemu_install(state: State<'_, InstallState>) {
     state.cancel_cemu.store(true, Ordering::Relaxed);
+}
+
+/// The emulator running the game right now, and its process.
+fn running_emulator(app: &AppHandle) -> Result<(&'static dyn crate::backends::EmulatorBackend, u32), String> {
+    let session = app.state::<Session>();
+    let (Some(playing), Some(pid)) = (session.playing(), session.pid()) else {
+        return Err("Start a game first.".to_string());
+    };
+    let backend = crate::backends::for_console(playing.console).ok_or("Start a game first.")?;
+    Ok((backend, pid))
+}
+
+/// The figures on the running game's toy portal, by slot, empty where there
+/// is none. Each of these takes a moment, since the emulator's own window does
+/// the work, so they run off the interface thread.
+#[tauri::command]
+pub async fn portal_figures(app: AppHandle) -> Result<Vec<String>, String> {
+    let (backend, pid) = running_emulator(&app)?;
+    tauri::async_runtime::spawn_blocking(move || backend.portal_figures(pid))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// `slot` counts from 0. A figure that went on is remembered as used, so the
+/// menu lists it first next time.
+#[tauri::command]
+pub async fn portal_load(app: AppHandle, slot: usize, figure: String) -> Result<Vec<String>, String> {
+    let (backend, pid) = running_emulator(&app)?;
+    let path = figure.clone();
+    let names = tauri::async_runtime::spawn_blocking(move || backend.portal_load(pid, slot, Path::new(&path)))
+        .await
+        .map_err(|e| e.to_string())??;
+    crate::portal_menu::used(&app, &figure);
+    Ok(names)
+}
+
+/// The user's figure files, the ones used lately first.
+#[tauri::command]
+pub fn figures(app: AppHandle) -> Vec<crate::portal_menu::Figure> {
+    crate::portal_menu::list(&app)
+}
+
+/// Copies figure files the user picked into Omoio's figures folder.
+#[tauri::command]
+pub fn add_figures(app: AppHandle, paths: Vec<String>) -> Result<usize, String> {
+    crate::portal_menu::add(&app, &paths)
+}
+
+#[tauri::command]
+pub fn close_portal_menu(app: AppHandle) {
+    crate::portal_menu::close(&app);
+}
+
+/// The kind of pad that opened the menu, to name its buttons as printed.
+#[tauri::command]
+pub fn portal_menu_family() -> String {
+    crate::portal_menu::family()
+}
+
+/// Everything held on any pad, for the menu, which any player may use.
+#[tauri::command]
+pub fn pads_held() -> Vec<&'static str> {
+    crate::pads::held_anywhere()
+}
+
+#[tauri::command]
+pub async fn portal_clear(app: AppHandle, slot: usize) -> Result<Vec<String>, String> {
+    let (backend, pid) = running_emulator(&app)?;
+    tauri::async_runtime::spawn_blocking(move || backend.portal_clear(pid, slot))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// What is held on a pad right now, for lighting the drawing and recording a

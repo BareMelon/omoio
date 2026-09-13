@@ -33,19 +33,37 @@ pub trait EmulatorBackend: Sync {
 
     fn identify(&self, path: &Path) -> Result<Game, String>;
 
-    /// Why a dump with these file names cannot be read, when it is one of
-    /// this console's that needs a key, which Omoio never handles. Asked with
-    /// only the names, so an archive is answered before anything is unpacked.
-    fn needs_a_key(&self, _names: &[String]) -> Option<String> {
+    /// Why a dump with these file names cannot be taken, when it is one of
+    /// this console's in a form that needs something the user has not given.
+    /// Asked with only the names, so an archive is answered before anything
+    /// is unpacked.
+    fn refuses(&self, _app: &AppHandle, _names: &[String]) -> Option<String> {
         None
     }
 
     /// The picture the dump itself ships, if it has one.
     fn icon(&self, game: &Game) -> Option<PathBuf>;
 
-    /// Gets anything the emulator needs ready before a game starts, apart
+    /// Gets anything the emulator needs ready before `game` starts, apart
     /// from the controller layout, which `write_layout` hands over.
-    fn prepare(&self, _app: &AppHandle) {}
+    fn prepare(&self, _app: &AppHandle, _game: &Game) {}
+
+    /// The figures on the running game's toy portal, by slot, empty where
+    /// there is none. `pid` is the emulator's process.
+    fn portal_figures(&self, _pid: u32) -> Result<Vec<String>, String> {
+        Err(NO_PORTAL.to_string())
+    }
+
+    /// Puts the figure in `figure` on the portal in `slot`, counted from 0,
+    /// and returns what the portal holds afterwards.
+    fn portal_load(&self, _pid: u32, _slot: usize, _figure: &Path) -> Result<Vec<String>, String> {
+        Err(NO_PORTAL.to_string())
+    }
+
+    /// Takes the figure in `slot` off the portal, and returns what is left.
+    fn portal_clear(&self, _pid: u32, _slot: usize) -> Result<Vec<String>, String> {
+        Err(NO_PORTAL.to_string())
+    }
 
     /// What this console calls each place on a pad, for the Controller
     /// screen. A place the emulator cannot use is left out.
@@ -108,6 +126,8 @@ pub trait EmulatorBackend: Sync {
     }
 }
 
+const NO_PORTAL: &str = "Omoio can't reach this emulator's portal yet.";
+
 /// Every emulator Omoio can run, one per console.
 pub fn all() -> &'static [&'static dyn EmulatorBackend] {
     &[&rpcs3::Rpcs3, &cemu::Cemu]
@@ -121,21 +141,19 @@ pub fn for_console(console: Console) -> Option<&'static dyn EmulatorBackend> {
 pub fn identify(path: &Path) -> Result<Game, String> {
     match all().iter().find(|backend| backend.recognises(path)) {
         Some(backend) => backend.identify(path),
-        None => Err(needs_a_key(&names_in(path))
-            .unwrap_or_else(|| unknown_dump(all().iter().map(|backend| backend.console().short())))),
+        None => Err(unknown_dump(all().iter().map(|backend| backend.console().short()))),
     }
 }
 
-/// Why no emulator can read a dump with these file names, if one knows it
-/// for a form that needs a key.
-pub fn needs_a_key(names: &[String]) -> Option<String> {
-    all().iter().find_map(|backend| backend.needs_a_key(names))
+/// Why no emulator can take a dump with these file names, if one knows why.
+pub fn refuses(app: &AppHandle, names: &[String]) -> Option<String> {
+    all().iter().find_map(|backend| backend.refuses(app, names))
 }
 
 /// The names of what was picked: the file itself, or what a folder holds
 /// and one level below, which is where a dump sits inside the folder an
 /// archive unpacked into.
-fn names_in(path: &Path) -> Vec<String> {
+pub fn names_in(path: &Path) -> Vec<String> {
     let list = |dir: &Path| -> Vec<std::path::PathBuf> {
         std::fs::read_dir(dir)
             .map(|entries| entries.flatten().map(|entry| entry.path()).collect())

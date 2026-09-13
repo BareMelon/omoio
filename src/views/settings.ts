@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  addFigures,
   cancelRpcs3Install,
   clearSessionLogs,
   forgetAllGames,
@@ -20,6 +21,7 @@ import {
   setCovers,
   setRawgKey,
   fetchCovers,
+  figures,
   setUsername,
   type InstallProgress,
   type Places,
@@ -306,6 +308,36 @@ export async function renderSettings(): Promise<View> {
   );
 
   content.appendChild(section("Emulator", rpcs3Row.row, firmwareRow.row));
+
+  // ---- toy figures, for the portal menu over a game ----
+  const counted = (n: number) => (n === 1 ? "1 figure" : `${n} figures`);
+  const figuresRow = row(
+    "Toy figures",
+    "Your own figure files, for the portal menu. Press the pad's home button (Guide, PS or Home) while playing a Skylanders game to open it."
+  );
+  const figuresSaid = value(counted((await figures()).length));
+  figuresRow.right.append(
+    figuresSaid,
+    button("Add figures", async () => {
+      const picked = await open({
+        multiple: true,
+        directory: false,
+        title: "Choose your figure files",
+        filters: [{ name: "Figure files", extensions: ["sky", "bin", "dump", "dmp"] }],
+      });
+      const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+      if (paths.length === 0) return;
+      try {
+        const added = await addFigures(paths);
+        const total = counted((await figures()).length);
+        figuresSaid.textContent = added < paths.length ? `${total} · some were already there` : total;
+      } catch (err) {
+        figuresSaid.textContent = typeof err === "string" ? err : "Couldn't add those files.";
+      }
+    }),
+    button("Open folder", () => revealFolder(places.figures))
+  );
+  content.appendChild(section("Toy figures", figuresRow.row));
 
   // ---- session logs ----
   const keep = row("Keep logs for", "Older sessions and their logs are deleted to save space.");

@@ -1,5 +1,8 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import {
+  addCemuKeys,
   cancelCemuInstall,
+  cemuKeys,
   emulatorVersions,
   installCemu,
   onCemuInstallProgress,
@@ -141,6 +144,49 @@ function cemuInstaller(box: HTMLElement): HTMLButtonElement {
   return install;
 }
 
+/// Cemu reads a Wii U disc image with that disc's key, from a keys file the
+/// user brings. Omoio adds the file's keys where Cemu looks and nothing more.
+async function keysBlock(): Promise<HTMLElement> {
+  const box = document.createElement("div");
+  box.className = "emu-keys";
+  const said = document.createElement("span");
+  said.className = "cfg-v";
+  const show = (n: number) => {
+    said.textContent = n === 0 ? "No keys added" : n === 1 ? "1 key" : `${n} keys`;
+  };
+  show(await cemuKeys());
+
+  const add = document.createElement("button");
+  add.className = "small-btn";
+  add.textContent = "Add keys";
+  add.onclick = async () => {
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      title: "Choose your keys file",
+      filters: [{ name: "Keys file", extensions: ["txt"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const added = await addCemuKeys(picked);
+      show(await cemuKeys());
+      if (added === 0) said.textContent += " · nothing new in that file";
+    } catch (err) {
+      said.textContent = typeof err === "string" ? err : "Couldn't add those keys.";
+    }
+  };
+
+  const actions = document.createElement("div");
+  actions.className = "row-actions";
+  actions.append(said, add);
+  const note = document.createElement("div");
+  note.className = "note plain";
+  note.textContent =
+    "For Wii U disc images from discs you own. Omoio doesn't supply keys or say where to find them, and pirated or unlicensed games don't belong here. Keeping your copies legal is up to you.";
+  box.append(actions, note);
+  return box;
+}
+
 export async function renderEmulators(): Promise<View> {
   const versions = await emulatorVersions();
   const versionOf = (runs?: string) => versions.find((v) => v.console === runs)?.version ?? null;
@@ -162,7 +208,9 @@ export async function renderEmulators(): Promise<View> {
   for (const emulator of mine) {
     const card = document.createElement("div");
     card.className = "emu-hero";
-    card.append(badge(emulator, "big"), text(emulator));
+    const words = text(emulator);
+    card.append(badge(emulator, "big"), words);
+    if (emulator.runs === "wiiu") words.appendChild(await keysBlock());
     const side = document.createElement("div");
     side.className = "emu-side";
     side.innerHTML = `<span class="status go">Installed</span><span class="emu-ver"></span>`;

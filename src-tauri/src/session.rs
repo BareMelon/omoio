@@ -72,7 +72,7 @@ impl Session {
         }
     }
 
-    fn pid(&self) -> Option<u32> {
+    pub fn pid(&self) -> Option<u32> {
         self.inner.lock().unwrap().as_ref().map(|r| r.pid)
     }
 

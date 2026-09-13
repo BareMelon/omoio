@@ -5,6 +5,8 @@
 
 pub mod compat;
 pub mod controllers;
+pub mod keys;
+pub mod portal;
 
 use crate::core::console::{Console, Features};
 use crate::core::library::Game;
@@ -184,13 +186,121 @@ fn without_top_folder(path: &Path) -> Option<PathBuf> {
     (!rest.as_os_str().is_empty()).then_some(rest)
 }
 
-/// A Wii U dump that cannot be read without a key: a disc image, `.wud` or
-/// `.wux`, or a download in NUS form, which carries a `title.tmd` beside its
-/// encrypted content (what-we-verified.md, "Formats"). Only the file's own
-/// name is looked at, wherever it sits.
-fn needs_key(name: &str) -> bool {
-    let file = name.rsplit(['/', '\\']).next().unwrap_or(name).to_ascii_lowercase();
-    file.ends_with(".wud") || file.ends_with(".wux") || file == "title.tmd"
+/// A file's own name, lower case, wherever it sits.
+fn file_name(name: &str) -> String {
+    name.rsplit(['/', '\\']).next().unwrap_or(name).to_ascii_lowercase()
+}
+
+/// A Wii U disc image, which Cemu reads with the user's own keys.
+fn is_disc_image(name: &str) -> bool {
+    let file = file_name(name);
+    file.ends_with(".wud") || file.ends_with(".wux")
+}
+
+/// A download in NUS form, which carries a `title.tmd` beside its encrypted
+/// content and needs its ticket as well as a key (what-we-verified.md,
+/// "Formats"). Omoio does not take those.
+fn is_download(name: &str) -> bool {
+    file_name(name) == "title.tmd"
+}
+
+/// Why a dump with these file names cannot be taken, if it cannot. A
+/// readable game in there wins, so a `title.tmd` or an image left beside an
+/// unpacked copy never turns the copy away.
+fn refusal(names: &[String], have_keys: bool) -> Option<String> {
+    if names.iter().any(|name| readable_meta(name)) {
+        return None;
+    }
+    if names.iter().any(|name| is_download(name)) {
+        return Some(
+            "This Wii U download is encrypted and needs its ticket, which Omoio doesn't take. \
+             Omoio takes Wii U games unpacked into code, content and meta folders, or disc images."
+                .to_string(),
+        );
+    }
+    if !have_keys && names.iter().any(|name| is_disc_image(name)) {
+        return Some(
+            "This Wii U disc image needs your keys to read. Add them under Emulators, Cemu, then import it again."
+                .to_string(),
+        );
+    }
+    None
+}
+
+/// The one disc image picked, or the one inside the folder picked, at the top
+/// or one level down, which is where an archive unpacks it. Two or more is
+/// not clear, so none.
+fn disc_image(picked: &Path) -> Option<PathBuf> {
+    let is_image = |path: &Path| path.is_file() && is_disc_image(&path.to_string_lossy());
+    if is_image(picked) {
+        return Some(picked.to_path_buf());
+    }
+    if !picked.is_dir() {
+        return None;
+    }
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(picked).ok()?.flatten() {
+        let path = entry.path();
+        if is_image(&path) {
+            found.push(path);
+        } else if path.is_dir() {
+            if let Ok(inner) = std::fs::read_dir(&path) {
+                found.extend(inner.flatten().map(|e| e.path()).filter(|p| is_image(p)));
+            }
+        }
+    }
+    (found.len() == 1).then(|| found.remove(0))
+}
+
+/// A game's name from its image's file name, without the region and language
+/// notes such names carry: "Game (Europe) (En,Fr)" is "Game".
+fn title_from_file(stem: &str) -> String {
+    let mut title = String::new();
+    let mut depth = 0;
+    for c in stem.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = (depth as i32 - 1).max(0) as usize,
+            _ if depth == 0 => title.push(c),
+            _ => {}
+        }
+    }
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if title.is_empty() {
+        stem.to_string()
+    } else {
+        title
+    }
+}
+
+/// An id for a disc image, which cannot be read for its real one without
+/// decrypting it. Made from the file's name so it is the same every time.
+fn disc_id(file: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in file.to_lowercase().bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("WUD{:013X}", hash >> 12)
+}
+
+fn identify_disc(image: &Path) -> Game {
+    let stem = image.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let file = image.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    Game {
+        console: Console::WiiU,
+        title_id: disc_id(&file),
+        title: title_from_file(&stem),
+        version: None,
+        update_version: None,
+        size_bytes: std::fs::metadata(image).map(|m| m.len()).unwrap_or(0),
+        path: image.to_path_buf(),
+    }
+}
+
+/// The meta.xml of an unpacked Wii U title, which Omoio can read.
+fn readable_meta(name: &str) -> bool {
+    name.replace('\\', "/").to_ascii_lowercase().ends_with("meta/meta.xml")
 }
 
 /// An unpacked Wii U title: the three folders Cemu itself looks for.
@@ -316,6 +426,42 @@ const FIRST_SETTINGS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 \x20   </Graphic>\n\
 </content>\n";
 
+/// The Wii U's Skylanders games, by name: each needs the portal, and nothing
+/// else uses it.
+fn is_skylanders(title: &str) -> bool {
+    title.to_lowercase().contains("skylanders")
+}
+
+/// Switches Cemu's emulated Skylanders portal on or off. Cemu leaves it off,
+/// and a game only finds a portal that is plugged in, so for a Skylanders
+/// game this is what lets figures reach it at all. Everything else in the
+/// file is left as it is.
+fn set_portal(settings: &Path, on: bool) -> std::io::Result<()> {
+    const OPEN: &str = "<EmulateSkylanderPortal>";
+    const CLOSE: &str = "</EmulateSkylanderPortal>";
+    let text = std::fs::read_to_string(settings)?;
+    let value = if on { "true" } else { "false" };
+    let changed = if let Some(start) = text.find(OPEN) {
+        let from = start + OPEN.len();
+        let Some(length) = text[from..].find(CLOSE) else {
+            return Ok(());
+        };
+        format!("{}{value}{}", &text[..from], &text[from + length..])
+    } else if let Some(end) = text.rfind("</content>") {
+        format!(
+            "{}    <EmulatedUsbDevices>\n        {OPEN}{value}{CLOSE}\n    </EmulatedUsbDevices>\n{}",
+            &text[..end],
+            &text[end..]
+        )
+    } else {
+        return Ok(());
+    };
+    if changed != text {
+        std::fs::write(settings, changed)?;
+    }
+    Ok(())
+}
+
 fn write_first_settings(portable: &Path) -> std::io::Result<()> {
     let path = portable.join("settings.xml");
     if path.exists() {
@@ -360,19 +506,18 @@ impl super::EmulatorBackend for Cemu {
     }
 
     fn recognises(&self, path: &Path) -> bool {
-        find_root(path).is_some()
+        find_root(path).is_some() || disc_image(path).is_some()
     }
 
     fn identify(&self, path: &Path) -> Result<Game, String> {
-        identify(path)
+        match (find_root(path), disc_image(path)) {
+            (None, Some(image)) => Ok(identify_disc(&image)),
+            _ => identify(path),
+        }
     }
 
-    fn needs_a_key(&self, names: &[String]) -> Option<String> {
-        names.iter().any(|name| needs_key(name)).then(|| {
-            "This Wii U game is encrypted and needs a key to read, which Omoio never handles. \
-             Omoio takes Wii U games that are already unpacked into code, content and meta folders."
-                .to_string()
-        })
+    fn refuses(&self, app: &AppHandle, names: &[String]) -> Option<String> {
+        refusal(names, keys::count(app) > 0)
     }
 
     fn icon(&self, _game: &Game) -> Option<PathBuf> {
@@ -381,14 +526,28 @@ impl super::EmulatorBackend for Cemu {
         None
     }
 
-    fn prepare(&self, app: &AppHandle) {
+    fn prepare(&self, app: &AppHandle, game: &Game) {
         let Ok(dir) = install_dir(app) else {
             return;
         };
         if !dir.join("Cemu.exe").is_file() {
             return;
         }
-        let _ = write_first_settings(&dir.join("portable"));
+        let portable = dir.join("portable");
+        let _ = write_first_settings(&portable);
+        let _ = set_portal(&portable.join("settings.xml"), is_skylanders(&game.title));
+    }
+
+    fn portal_figures(&self, pid: u32) -> Result<Vec<String>, String> {
+        portal::figures(pid)
+    }
+
+    fn portal_load(&self, pid: u32, slot: usize, figure: &Path) -> Result<Vec<String>, String> {
+        portal::load(pid, slot, figure)
+    }
+
+    fn portal_clear(&self, pid: u32, slot: usize) -> Result<Vec<String>, String> {
+        portal::clear(pid, slot)
     }
 
     fn button_names(&self) -> &'static [(&'static str, &'static str)] {
@@ -416,8 +575,8 @@ impl super::EmulatorBackend for Cemu {
         if !exe.is_file() {
             return Err("Install Cemu from the Emulators screen first, then you can play.".to_string());
         }
-        if !game.path.is_dir() {
-            return Err("This game's folder isn't there. Reconnect the drive it's on.".to_string());
+        if !game.path.exists() {
+            return Err("This game isn't where it was. Reconnect the drive it's on.".to_string());
         }
         // The game's own folder, so Cemu reads its meta and starts it as a
         // proper title rather than in the standalone mode it keeps for loose
@@ -549,13 +708,76 @@ Deluxe");
     }
 
     #[test]
-    fn disc_images_and_downloads_that_need_a_key_are_told_apart() {
-        assert!(needs_key("Swap Force/game.wux"));
-        assert!(needs_key("C:\\Games\\GAME.WUD"));
-        assert!(needs_key("0005000010abcd00/title.tmd"));
-        assert!(!needs_key("Example Game/meta/meta.xml"));
-        assert!(!needs_key("Example Game/code/app.xml"));
-        assert!(!needs_key("notes about title.tmd.txt"));
+    fn disc_images_and_downloads_are_told_apart() {
+        assert!(is_disc_image("Swap Force/game.wux"));
+        assert!(is_disc_image("C:\\Games\\GAME.WUD"));
+        assert!(is_download("0005000010abcd00/title.tmd"));
+        assert!(!is_disc_image("Example Game/meta/meta.xml"));
+        assert!(!is_download("notes about title.tmd.txt"));
+    }
+
+    #[test]
+    fn what_is_refused_depends_on_the_form_and_the_keys() {
+        let names = |list: &[&str]| list.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        let unpacked = names(&["Game/code/app.xml", "Game\\meta\\meta.xml", "Game/title.tmd"]);
+        assert!(refusal(&unpacked, false).is_none(), "a readable copy always gets through");
+        let disc = names(&["Game/game.wux"]);
+        assert!(refusal(&disc, false).unwrap().contains("Add them under Emulators"));
+        assert!(refusal(&disc, true).is_none(), "with keys, Cemu reads it");
+        let download = names(&["Game/title.tmd", "Game/00000000.app"]);
+        assert!(refusal(&download, true).is_some(), "a download needs its ticket too");
+    }
+
+    #[test]
+    fn a_disc_image_is_named_after_its_file() {
+        assert_eq!(title_from_file("Skylanders SWAP Force (Europe) (En,Fr,De)"), "Skylanders SWAP Force");
+        assert_eq!(title_from_file("Mario Kart 8 [USA]"), "Mario Kart 8");
+        assert_eq!(title_from_file("(only notes)"), "(only notes)");
+        assert_eq!(disc_id("Game.wux"), disc_id("GAME.WUX"), "the same file, the same id");
+        assert_ne!(disc_id("Game.wux"), disc_id("Other.wux"));
+        assert_eq!(disc_id("Game.wux").len(), 16);
+    }
+
+    #[test]
+    fn an_image_is_found_on_its_own_or_one_level_down() {
+        let dir = scratch("disc");
+        std::fs::create_dir_all(dir.join("Unpacked")).unwrap();
+        std::fs::write(dir.join("Unpacked").join("Game (Europe).wux"), b"x").unwrap();
+        let image = disc_image(&dir).unwrap();
+        assert!(image.ends_with("Game (Europe).wux"));
+        assert_eq!(disc_image(&image), Some(image.clone()));
+        let game = identify_disc(&image);
+        assert_eq!(game.title, "Game");
+        assert_eq!(game.console, Console::WiiU);
+
+        std::fs::write(dir.join("Second.wud"), b"x").unwrap();
+        assert!(disc_image(&dir).is_none(), "two images is not clear");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_portal_is_switched_in_place_or_added() {
+        let dir = scratch("portal");
+        let file = dir.join("settings.xml");
+
+        write_first_settings(&dir).unwrap();
+        set_portal(&file, true).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("<EmulateSkylanderPortal>true</EmulateSkylanderPortal>"), "{text}");
+        assert!(text.contains("<api>1</api>"), "the rest is left alone");
+
+        set_portal(&file, false).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("<EmulateSkylanderPortal>false</EmulateSkylanderPortal>"));
+        assert_eq!(text.matches("<EmulatedUsbDevices>").count(), 1, "switched, not added twice");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_skylanders_games_get_the_portal() {
+        assert!(is_skylanders("Skylanders SWAP Force"));
+        assert!(is_skylanders("Skylanders Imaginators"));
+        assert!(!is_skylanders("Mario Kart 8"));
     }
 
     #[test]

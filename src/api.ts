@@ -169,6 +169,7 @@ export interface Places {
   settings: string;
   logs: string;
   covers: string;
+  figures: string;
   rpcs3: string;
   games_folder: string | null;
 }
@@ -631,6 +632,53 @@ export function padInput(device: string): Promise<string[] | null> {
   return invoke("pad_input", { device });
 }
 
+/// Everything held on any pad plugged in.
+export function padsHeld(): Promise<string[]> {
+  return invoke("pads_held");
+}
+
+/// One of the user's figure files, kept in Omoio's figures folder.
+export interface Figure {
+  name: string;
+  path: string;
+}
+
+export function figures(): Promise<Figure[]> {
+  return invoke("figures");
+}
+
+/// Resolves to how many were added.
+export function addFigures(paths: string[]): Promise<number> {
+  return invoke("add_figures", { paths });
+}
+
+/// The figures on the running game's portal, by slot, empty where none is.
+export function portalFigures(): Promise<string[]> {
+  return invoke("portal_figures");
+}
+
+/// `slot` counts from 0. Resolves to what the portal holds afterwards.
+export function portalLoad(slot: number, figure: string): Promise<string[]> {
+  return invoke("portal_load", { slot, figure });
+}
+
+export function portalClear(slot: number): Promise<string[]> {
+  return invoke("portal_clear", { slot });
+}
+
+export function closePortalMenu(): Promise<void> {
+  return invoke("close_portal_menu");
+}
+
+/// The kind of pad that opened the portal menu.
+export function portalMenuFamily(): Promise<string> {
+  return invoke("portal_menu_family");
+}
+
+export function onPortalMenu(handler: (state: { open: boolean; family: string }) => void): Promise<UnlistenFn> {
+  return listen<{ open: boolean; family: string }>("portal-menu", (event) => handler(event.payload));
+}
+
 export function setCovers(on: boolean): Promise<void> {
   return invoke("set_covers", { on });
 }
@@ -666,6 +714,16 @@ export function installCemu(): Promise<string> {
 
 export function cancelCemuInstall(): Promise<void> {
   return invoke("cancel_cemu_install");
+}
+
+/// How many of the user's own keys Cemu has for Wii U disc images.
+export function cemuKeys(): Promise<number> {
+  return invoke("cemu_keys");
+}
+
+/// Resolves to how many of the file's keys were new.
+export function addCemuKeys(path: string): Promise<number> {
+  return invoke("add_cemu_keys", { path });
 }
 
 export function onCemuInstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {

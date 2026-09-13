@@ -1,4 +1,7 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+
+const page = (name: string) => fileURLToPath(new URL(`./src/${name}`, import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -7,6 +10,10 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
+    // Two pages: the app, and the portal menu that sits over a running game.
+    rollupOptions: {
+      input: { main: page("index.html"), portal: page("portal.html") },
+    },
   },
   // Vite options tailored for Tauri development.
   // Prevent Vite from obscuring Rust errors.

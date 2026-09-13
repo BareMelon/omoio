@@ -1,0 +1,130 @@
+/* The Skylanders menu sits in its own window over the game. The window is
+   see-through, so the page paints only a dimmed backdrop and the panel. Sizes
+   are larger than the app's, since it is read from a sofa. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  color: var(--ink);
+  font-family: system-ui, "Segoe UI", sans-serif;
+}
+
+#portal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--void) 74%, transparent);
+}
+
+.portal-panel {
+  width: min(1120px, 88vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 28px 32px 24px;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+}
+
+.portal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.portal-title {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.portal-keys {
+  font-size: 14px;
+  color: var(--mute);
+}
+
+.portal-sec {
+  margin: 22px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.portal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.portal-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.portal-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 60px;
+  padding: 12px 16px;
+  background: var(--raise);
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.portal-row .portal-item {
+  min-width: 180px;
+}
+
+.portal-item:hover {
+  border-color: var(--line2);
+}
+
+.portal-item:active {
+  transform: scale(0.98);
+}
+
+.portal-item.sel {
+  background: var(--raise2);
+  border-color: var(--brand);
+}
+
+.portal-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.portal-detail {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.portal-empty {
+  font-size: 15px;
+  color: var(--mute);
+}
+
+.portal-status {
+  min-height: 22px;
+  margin-top: 20px;
+  font-size: 15px;
+  color: var(--mute);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-item:active {
+    transform: none;
+  }
+}
