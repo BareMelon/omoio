@@ -57,6 +57,7 @@ const OPEN_BUTTON: i32 = 1;
 
 const WAIT: Duration = Duration::from_secs(5);
 const SAVE_WAIT: Duration = Duration::from_secs(15);
+const MAKER_WAIT: Duration = Duration::from_secs(20);
 
 fn text(window: HWND) -> String {
     let mut buffer = [0u16; 512];
@@ -337,7 +338,7 @@ pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
         .ok_or("Cemu's portal looks different from what Omoio knows.")?;
     press(load);
 
-    let picker = wait_for(pid, |w| class(w) == "#32770" && text(w) == OPEN_FIGURE)
+    let picker = wait_up_to(SAVE_WAIT, pid, |w| class(w) == "#32770" && text(w) == OPEN_FIGURE)
         .ok_or("Cemu didn't ask for the figure. Try again.")?;
     finish_file_window(pid, picker, file)?;
     if let Some(said) = dismiss_message(pid, &[OPEN_FIGURE]) {
@@ -396,14 +397,22 @@ fn send(window: HWND, message: u32, wparam: usize, lparam: isize) -> usize {
 }
 
 /// Cemu's figure maker, opened from the Create button of `slot` and put
-/// out of sight.
+/// out of sight. While a game runs it takes over five seconds to appear
+/// (5.4 s in Swap Force, against 0.4 s with no game), so it gets a longer
+/// wait than other windows, and one still open from a try that gave up is
+/// used rather than a second opened over it.
 fn open_creator(pid: u32, window: HWND, slot: usize) -> Result<HWND, String> {
+    if let Some(creator) = windows_of(pid).into_iter().find(|&w| text(w) == CREATOR) {
+        out_of_sight(creator);
+        return Ok(creator);
+    }
     let create = controls(window, "Button", Some("Create"))
         .into_iter()
         .nth(slot)
         .ok_or(LOOKS_DIFFERENT)?;
     press(create);
-    let creator = wait_for(pid, |w| text(w) == CREATOR).ok_or("Cemu's figure maker didn't open. Try again.")?;
+    let creator =
+        wait_up_to(MAKER_WAIT, pid, |w| text(w) == CREATOR).ok_or("Cemu's figure maker didn't open. Try again.")?;
     out_of_sight(creator);
     Ok(creator)
 }
