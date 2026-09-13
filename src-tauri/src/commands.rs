@@ -297,7 +297,8 @@ fn entry(app: &AppHandle, game: crate::core::library::Game) -> GameEntry {
     let (cover, cover_source) = cover_for(app, &game);
     GameEntry {
         set_up: game.is_set_up(),
-        available: game.is_set_up() && game.path.is_dir(),
+        // A folder for most games, a single file for a Wii U disc image.
+        available: game.is_set_up() && game.path.exists(),
         cover,
         cover_source,
         features: crate::backends::for_console(game.console)
