@@ -575,6 +575,10 @@ const OFF_SCREEN: &str = "-30000";
 /// - An empty TV sound device is Cemu's "no sound", and it starts empty.
 ///   With DirectSound, its first sound system, "default" is the system's
 ///   own device (`DirectSoundAPI.cpp`).
+/// - Cemu starts the game's volume at 20 of 100, which through a TV, or a
+///   cloud PC's stream, is next to silent: Swap Force measured 0.010 of full
+///   level at 20 and 0.353 at 100. Only that starting value is raised, so a
+///   volume someone set in Cemu stays.
 fn tune_settings(settings: &Path, skylanders: bool) -> std::io::Result<()> {
     let before = std::fs::read_to_string(settings)?;
     let portal = if skylanders { "true" } else { "false" };
@@ -590,6 +594,9 @@ fn tune_settings(settings: &Path, skylanders: bool) -> std::io::Result<()> {
     let no_device = setting(&text, &["Audio"], "TVDevice").is_none_or(|device| device.trim().is_empty());
     if direct_sound && no_device {
         text = set_setting(&text, &["Audio"], "TVDevice", "default");
+    }
+    if setting(&text, &["Audio"], "TVVolume").is_none_or(|volume| matches!(volume.trim(), "" | "20")) {
+        text = set_setting(&text, &["Audio"], "TVVolume", "100");
     }
     if text != before {
         std::fs::write(settings, text)?;
@@ -963,6 +970,7 @@ Deluxe");
         assert!(text.contains("<ShaderCompiling>false</ShaderCompiling>"), "{text}");
         assert!(text.contains("<TVDevice>default</TVDevice>"), "{text}");
         assert!(text.contains("<window_position><x>-30000</x>"), "{text}");
+        assert!(text.contains("<TVVolume>100</TVVolume>"), "{text}");
         assert!(text.contains("<y>-30000</y>"), "{text}");
 
         tune_settings(&file, false).unwrap();
@@ -999,11 +1007,15 @@ Deluxe");
     fn a_sound_device_the_user_chose_is_kept() {
         let dir = scratch("sound");
         let file = dir.join("settings.xml");
-        let chosen = CEMU_SETTINGS.replace("<TVDevice></TVDevice>", "<TVDevice>{0.0.0.00000000}.{abc}</TVDevice>");
+        let chosen = CEMU_SETTINGS.replace(
+            "<TVDevice></TVDevice>",
+            "<TVDevice>{0.0.0.00000000}.{abc}</TVDevice><TVVolume>55</TVVolume>",
+        );
         std::fs::write(&file, &chosen).unwrap();
         tune_settings(&file, true).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("<TVDevice>{0.0.0.00000000}.{abc}</TVDevice>"), "{text}");
+        assert!(text.contains("<TVVolume>55</TVVolume>"), "a volume someone chose stays: {text}");
 
         std::fs::write(&file, CEMU_SETTINGS).unwrap();
         tune_settings(&file, true).unwrap();

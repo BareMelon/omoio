@@ -21,16 +21,18 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 /// The Wii U's buttons with the place each sits, in the order of the
-/// GamePad's `ButtonId`, which counts from 1. A is what confirms, so it goes
-/// where the pad being used confirms: the bottom face button, with B on the
-/// right and X and Y where an Xbox pad prints them. Placing them the way
-/// Nintendo's pads do, as Cemu's own XInput layout does, put confirm on the
-/// Xbox B button (tried in Swap Force, 13 September 2026).
+/// GamePad's `ButtonId`, which counts from 1. They sit where Nintendo's pads
+/// have them, as Cemu's own XInput layout puts them: A on the right, B at the
+/// bottom, X at the top, Y on the left. Wii U games are made for those places,
+/// so jumping and attacking land on the bottom and left buttons of any pad.
+/// Going by the letters instead put Swap Force's jump on Xbox B and its
+/// attack on Xbox Y (13 September 2026). The price is that menus confirm with
+/// the right-hand button, as they do on a Wii U.
 pub const WII_U: [(&str, &str); 24] = [
-    ("South", "A"),
-    ("East", "B"),
-    ("West", "X"),
-    ("North", "Y"),
+    ("East", "A"),
+    ("South", "B"),
+    ("North", "X"),
+    ("West", "Y"),
     ("LB", "L"),
     ("RB", "R"),
     ("LT", "ZL"),
@@ -239,7 +241,8 @@ mod tests {
         assert!(one.contains("<type>Wii U GamePad</type>"));
         assert!(one.contains("<api>XInput</api>"));
         assert!(one.contains("<uuid>0</uuid>"));
-        assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A is the bottom button");
+        assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A is the right button");
+        assert!(one.contains("<mapping>2</mapping>\n\t\t\t\t<button>12</button>"), "B, which games jump with, is the bottom one");
 
         let two = profile(1, &Player::on(xinput(2)));
         assert!(two.contains("<type>Wii U Pro Controller</type>"));
@@ -255,7 +258,7 @@ mod tests {
             ("South".to_string(), "East".to_string()),
         ]);
         let text = profile(0, &Player::with_buttons(xinput(1), buttons));
-        assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A now on the right button");
+        assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A now on the bottom button");
     }
 
     #[test]
