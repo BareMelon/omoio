@@ -1,11 +1,15 @@
-# Omoio
+<p align="center">
+  <img src="Images/Icon/omoio-icon.svg" width="96" alt="Omoio logo">
+</p>
+<h1 align="center">Omoio</h1>
 
 Omoio puts all your console games in one library and plays them without you ever
 touching an emulator. Import your dumps, press Play, and Omoio sets up the
 emulator, the controller and the picture for you. It's made for big collections
 spread across systems, the kind that sits on a few drives in a home lab.
 
-![The catalogue, searching for Grand Theft Auto V](design/screenshots/catalogue.png)
+![The library, with PS3 and Wii U games side by side](design/screenshots/library.png)
+<sub>Covers from [RAWG](https://rawg.io).</sub>
 
 **Very early development.** PS3 (RPCS3) and Wii U (Cemu) work today, and eight
 more are planned: PS4, PS2, GameCube and Wii, PSP, PS1, Game Boy Advance, PS Vita
