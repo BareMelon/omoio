@@ -82,7 +82,14 @@ fn merged(file: &Path, text: &str) -> Result<usize, String> {
         ));
     }
     if new.is_empty() {
-        return Err("That file has no keys in it.".to_string());
+        // Cemu makes this file itself, with one example key, so it is the
+        // one people most often pick by mistake.
+        return Err(if text.to_ascii_lowercase().contains(EXAMPLE) {
+            "That's Cemu's own starting file. Its one key is an example that opens no disc, so there is nothing to add."
+                .to_string()
+        } else {
+            "That file has no keys in it.".to_string()
+        });
     }
     let existing = std::fs::read_to_string(file).unwrap_or_default();
     let (have, _) = read(&existing);
@@ -151,6 +158,8 @@ mod tests {
 
         assert!(merged(&file, "no keys here\n").is_err());
         assert!(merged(&file, "# only a comment\n").is_err());
+        let starting_file = format!("{HEADER}{EXAMPLE} # example key (can be deleted)\r\n");
+        assert!(merged(&file, &starting_file).unwrap_err().contains("Cemu's own starting file"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
