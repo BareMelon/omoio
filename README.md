@@ -1,59 +1,56 @@
 # Omoio
 
-Omoio is a Windows app for playing the PS3 and Wii U games you already own. You
-point it at a game, and it installs and updates the emulator, sets up your
-controller and the picture, and starts the game, so you never have to open an
-emulator yourself.
-
-In development, and usable.
+Omoio puts all your console games in one library and plays them without you ever
+touching an emulator. Import your dumps, press Play, and Omoio sets up the
+emulator, the controller and the picture for you. It's made for big collections
+spread across systems, the kind that sits on a few drives in a home lab.
 
 ![The catalogue, searching for Grand Theft Auto V](design/screenshots/catalogue.png)
 
-The tiles here are Omoio's own. Real cover art for your library and the catalogue
-is one switch away in Settings, with a free key from RAWG.
+**Very early development.** PS3 (RPCS3) and Wii U (Cemu) work today, and eight
+more are planned: PS4, PS2, GameCube and Wii, PSP, PS1, Game Boy Advance, PS Vita
+and DS. Things will break, and feedback is really appreciated, so open an issue.
+
+## What you get
+
+- One library for every system. Import a folder, a zip or 7z, or scan a whole
+  drive at once.
+- Games play inside Omoio's window, fullscreen with F11. You never see the
+  emulator.
+- Emulators installed and kept up to date for you.
+- One controller layout for every emulator, set up by pressing buttons, for up to
+  four players.
+- A catalogue of about 4,500 PS3 and Wii U games showing how well each one runs.
+- PS3 updates, patches and save backups, and emulator settings for each game.
+- A Skylanders portal menu for Wii U games that you use from the controller.
+- Real cover art from RAWG if you want it, with a free key. Otherwise Omoio draws
+  its own tiles.
 
 ## Install
 
-Download the latest `Omoio_x.y.z_x64-setup.exe` from Releases and run it. It
-installs for the current user and does not need administrator rights. The first
-time it opens, it asks which emulators to install: RPCS3 for PS3 games, Cemu for
-Wii U games, or both. It keeps them up to date from then on.
+Download `Omoio_x.y.z_x64-setup.exe` from Releases and run it. It doesn't need
+admin rights. On first start it asks which emulators you want. PS3 games also
+need Sony's free firmware: Omoio opens the download page and installs the file
+you pick.
 
-Windows may show a SmartScreen warning, because the installer is not code signed
-yet. Certificates cost money per year, and that is not worth it before the project
-has users. Choose More info, then Run anyway, if you are comfortable with that.
+The installer isn't code signed yet, so Windows SmartScreen may warn you. Click
+More info, then Run anyway.
 
-## What Omoio will not do
+## The small print
 
-Omoio does not distribute games. It has no store, no download button for
-commercial titles, and no links to anywhere you might find them. You supply your
-own copy of a game you own, and Omoio takes it from there.
-
-Omoio never decrypts anything and never supplies keys. It reads PS3 dumps that are
-already decrypted. For Wii U disc images (.wud and .wux), you can give Cemu your
-own keys file from the Emulators screen, and Cemu does the decrypting. Omoio never
-says where to find a key, and it refuses Wii U downloads in NUS form. Pirated or
-unlicensed games do not belong in Omoio, and whether a copy is legal is your
-responsibility.
-
-PS3 firmware comes from Sony. Omoio can open their download page for you, but you
-download the file and pick it yourself.
-
-RPCS3 and Cemu are separate programs, downloaded from their official releases and
-run as their own processes. Omoio does not bundle or modify them. All credit for
-the emulation itself belongs to the RPCS3 and Cemu teams.
-
-Cover art only ever comes from RAWG's API. Omoio never takes images from anywhere
-else.
+Omoio doesn't come with games and won't help you find any, so bring your own
+dumps of games you own. It doesn't crack anything: Wii U disc images need your own
+keys file, added on the Emulators screen. RPCS3 and Cemu are separate projects,
+run as their official builds, and all credit for the emulation goes to them.
 
 ## Build
 
-Requires Rust, Node 20 or newer, and the Tauri prerequisites for Windows.
+Needs Rust, Node 20 or newer, and the Tauri prerequisites for Windows.
 
 ```
 npm install
 npm run tauri dev      # run locally
-npm run tauri build    # produce the installer
+npm run tauri build    # build the installer
 ```
 
 ## Licence
