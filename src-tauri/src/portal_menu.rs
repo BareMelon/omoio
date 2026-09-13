@@ -3,9 +3,13 @@
 //! portal and the user's own figure files, and puts one on or takes one off
 //! through the game's emulator.
 //!
-//! The figure files are the user's own, copied into Omoio's figures folder
-//! from Settings. Omoio never supplies figure data or makes it itself.
+//! Figures are the user's own files, copied into Omoio's figures folder from
+//! Settings, or new ones of any character, which the emulator's own figure
+//! maker makes into the same folder. Omoio never writes figure data itself.
 
+use crate::backends::EmulatorBackend;
+use crate::core::console::Console;
+use crate::core::figures::{self, Character};
 use crate::core::settings::Settings;
 use crate::session::Session;
 use std::path::{Path, PathBuf};
@@ -102,6 +106,48 @@ pub fn add(app: &AppHandle, paths: &[String]) -> Result<usize, String> {
     Ok(added)
 }
 
+/// The characters an emulator's figure maker offered, kept with the
+/// emulator's version so a newer emulator is asked again.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Kept {
+    version: String,
+    characters: Vec<Character>,
+}
+
+/// Every character the running game's emulator can make a figure of. Read
+/// from the emulator the first time and kept, since the list only changes
+/// with a new emulator.
+pub fn characters(
+    app: &AppHandle,
+    backend: &dyn EmulatorBackend,
+    console: Console,
+    pid: u32,
+) -> Result<Vec<Character>, String> {
+    let version = backend.detect_version(app).unwrap_or_default();
+    let key = serde_json::to_string(&console).unwrap_or_default().replace('"', "");
+    let file = data_dir(app)?.join(format!("characters-{key}.json"));
+    let kept = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Kept>(&text).ok())
+        .filter(|kept| kept.version == version && !kept.characters.is_empty());
+    if let Some(kept) = kept {
+        return Ok(kept.characters);
+    }
+    let characters = backend.portal_characters(pid)?;
+    if let Ok(text) = serde_json::to_string(&Kept { version, characters: characters.clone() }) {
+        let _ = std::fs::write(&file, text);
+    }
+    Ok(characters)
+}
+
+/// Where a new figure of a character is kept: the figures folder, under the
+/// character's name.
+pub fn new_figure(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
+    let dir = folder(app)?;
+    std::fs::create_dir_all(&dir).map_err(|_| "Couldn't make the figures folder.".to_string())?;
+    Ok(dir.join(figures::free_name(name, |file| dir.join(file).exists())))
+}
+
 /// Remembers a figure as just used, so the menu lists it first.
 pub fn used(app: &AppHandle, figure: &str) {
     let (Ok(dir), Some(name)) = (data_dir(app), Path::new(figure).file_name()) else {
@@ -186,14 +232,39 @@ pub fn close(app: &AppHandle) {
     }
 }
 
-/// While a Skylanders game runs, Guide on any pad opens or closes the menu.
-/// Read twenty times a second, since a press lasts about a tenth of one. It
-/// ends with the game and takes the menu with it.
+/// The pad button that opens the menu, as a place on the pad.
+pub fn button(app: &AppHandle) -> String {
+    data_dir(app)
+        .map(|dir| Settings::load(&dir.join("settings.json")).portal_button)
+        .unwrap_or_else(|_| "Guide".to_string())
+}
+
+/// Makes `place` the button that opens the menu.
+pub fn set_button(app: &AppHandle, place: &str) -> Result<(), String> {
+    if !crate::core::pad_layout::INPUTS.contains(&place) {
+        return Err("That isn't a button Omoio knows.".to_string());
+    }
+    let file = data_dir(app)?.join("settings.json");
+    let mut settings = Settings::load(&file);
+    settings.portal_button = place.to_string();
+    settings.save(&file)
+}
+
+/// While a Skylanders game runs, the chosen button on any pad opens or
+/// closes the menu. Read twenty times a second, since a press lasts about a
+/// tenth of one, and the choice is read again every two seconds so one made
+/// while playing counts. It ends with the game and takes the menu with it.
 pub fn watch(app: AppHandle, pid: u32) {
     std::thread::spawn(move || {
         let mut was = false;
+        let mut wanted = button(&app);
+        let mut ticks = 0u32;
         loop {
             std::thread::sleep(Duration::from_millis(50));
+            ticks = ticks.wrapping_add(1);
+            if ticks % 40 == 0 {
+                wanted = button(&app);
+            }
             let session = app.state::<Session>();
             if session.pid() != Some(pid) {
                 let handle = app.clone();
@@ -212,7 +283,7 @@ pub fn watch(app: AppHandle, pid: u32) {
             }
             let pressing = crate::pads::connected()
                 .into_iter()
-                .find(|pad| crate::pads::held(&pad.device).is_some_and(|held| held.contains(&"Guide")));
+                .find(|pad| crate::pads::held(&pad.device).is_some_and(|held| held.iter().any(|h| *h == wanted)));
             let now = pressing.is_some();
             if now && !was {
                 if let Some(pad) = pressing {

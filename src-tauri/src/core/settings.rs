@@ -41,10 +41,18 @@ pub struct Settings {
     /// the Skylanders menu lists them first.
     #[serde(default)]
     pub recent_figures: Vec<String>,
+    /// The pad button that opens the portal menu over a Skylanders game, as
+    /// a place on the pad. The home button unless the user picks another.
+    #[serde(default = "default_portal_button")]
+    pub portal_button: String,
 }
 
 fn default_keep_sessions() -> usize {
     20
+}
+
+fn default_portal_button() -> String {
+    "Guide".to_string()
 }
 
 impl Default for Settings {
@@ -60,6 +68,7 @@ impl Default for Settings {
             rawg_key: None,
             applied_fixes: Default::default(),
             recent_figures: Vec::new(),
+            portal_button: default_portal_button(),
         }
     }
 }
@@ -107,6 +116,7 @@ mod tests {
             rawg_key: Some("k".to_string()),
             applied_fixes: Default::default(),
             recent_figures: vec!["Whirlwind.sky".to_string()],
+            portal_button: "Back".to_string(),
         };
         settings.save(&path).unwrap();
 

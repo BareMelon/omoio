@@ -500,9 +500,13 @@ impl super::EmulatorBackend for Cemu {
     }
 
     fn features(&self) -> Features {
-        // Starting games is what Omoio does for Cemu. Nothing beyond that is
-        // offered until it has been checked against Cemu the way RPCS3's was.
-        Features::default()
+        // Starting games, and the Skylanders portal through Cemu's own
+        // window. Nothing else is offered until it has been checked against
+        // Cemu the way RPCS3's was.
+        Features {
+            portal: true,
+            ..Features::default()
+        }
     }
 
     fn recognises(&self, path: &Path) -> bool {
@@ -548,6 +552,20 @@ impl super::EmulatorBackend for Cemu {
 
     fn portal_clear(&self, pid: u32, slot: usize) -> Result<Vec<String>, String> {
         portal::clear(pid, slot)
+    }
+
+    fn portal_characters(&self, pid: u32) -> Result<Vec<crate::core::figures::Character>, String> {
+        portal::characters(pid)
+    }
+
+    fn portal_create(
+        &self,
+        pid: u32,
+        slot: usize,
+        character: &crate::core::figures::Character,
+        file: &Path,
+    ) -> Result<Vec<String>, String> {
+        portal::create(pid, slot, character, file)
     }
 
     fn button_names(&self) -> &'static [(&'static str, &'static str)] {

@@ -269,6 +269,8 @@ impl super::EmulatorBackend for Rpcs3 {
             settings: true,
             saves: true,
             compatibility: true,
+            // RPCS3's portal window is Qt, which Omoio cannot drive yet.
+            portal: false,
         }
     }
 

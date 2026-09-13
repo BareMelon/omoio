@@ -1,5 +1,6 @@
 pub mod catalogue;
 pub mod console;
+pub mod figures;
 pub mod library;
 pub mod pad_layout;
 pub mod playlog;

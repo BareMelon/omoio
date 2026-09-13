@@ -313,7 +313,7 @@ export async function renderSettings(): Promise<View> {
   const counted = (n: number) => (n === 1 ? "1 figure" : `${n} figures`);
   const figuresRow = row(
     "Toy figures",
-    "Your own figure files, for the portal menu. Press the pad's home button (Guide, PS or Home) while playing a Skylanders game to open it."
+    "Figure files you already have. You don't need any: the portal menu makes a new figure of any character. Press the pad's home button (Guide, PS or Home) while playing a Skylanders game to open it."
   );
   const figuresSaid = value(counted((await figures()).length));
   figuresRow.right.append(

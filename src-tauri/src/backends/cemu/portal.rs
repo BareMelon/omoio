@@ -8,13 +8,14 @@
 //! covers the game. How this was proven is in docs/what-we-verified.md,
 //! "Skylanders".
 
+use crate::core::figures::Character;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, GetClassNameW, GetDlgItem, GetMenu, GetMenuItemCount, GetMenuItemID,
-    GetMenuStringW, GetSubMenu, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, SendMessageTimeoutW,
+    GetMenuStringW, GetParent, GetSubMenu, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, SendMessageTimeoutW,
     SetWindowPos, HMENU, MF_BYPOSITION, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE,
     WM_COMMAND, WM_GETTEXT, WM_SETTEXT,
 };
@@ -25,6 +26,20 @@ pub const SLOTS: usize = 16;
 /// The window, its menu item and its file window, as Cemu 2.6 titles them.
 const WINDOW: &str = "Emulated USB Devices";
 const OPEN_FIGURE: &str = "Open Skylander dump";
+
+/// Cemu's figure maker and the save window it opens
+/// (`EmulatedUSBDeviceFrame.cpp`, `CreateSkylanderDialog`).
+const CREATOR: &str = "Skylander Figure Creator";
+const SAVE_FIGURE: &str = "Create Skylander file";
+
+/// Asking a list box how many items it has, one item's text and its length,
+/// and the number kept with it. Windows carries these across processes.
+const CB_GETCOUNT: u32 = 0x0146;
+const CB_GETLBTEXT: u32 = 0x0148;
+const CB_GETLBTEXTLEN: u32 = 0x0149;
+const CB_GETITEMDATA: u32 = 0x0150;
+
+const LOOKS_DIFFERENT: &str = "Cemu's portal looks different from what Omoio knows.";
 
 /// A button press, sent as the button itself would get it.
 const BM_CLICK: u32 = 0x00F5;
@@ -211,9 +226,11 @@ fn check(slot: usize) -> Result<(), String> {
 }
 
 /// Clicks OK on a message Cemu put up, so it does not sit over the game, and
-/// hands on what it said.
-fn dismiss_message(pid: u32) -> Option<String> {
-    let message = windows_of(pid).into_iter().find(|&w| class(w) == "#32770" && text(w) != OPEN_FIGURE)?;
+/// hands on what it said. Windows Omoio opened on purpose are left alone.
+fn dismiss_message(pid: u32, expected: &[&str]) -> Option<String> {
+    let message = windows_of(pid)
+        .into_iter()
+        .find(|&w| class(w) == "#32770" && !expected.contains(&text(w).as_str()))?;
     let said = children(message)
         .into_iter()
         .filter(|&c| class(c) == "Static")
@@ -248,28 +265,152 @@ pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
 
     let picker = wait_for(pid, |w| class(w) == "#32770" && text(w) == OPEN_FIGURE)
         .ok_or("Cemu didn't ask for the figure. Try again.")?;
-    out_of_sight(picker);
-    let name_box = unsafe { GetDlgItem(Some(picker), FILE_NAME_BOX) }
-        .ok()
-        .and_then(|combo| children(combo).into_iter().find(|&c| class(c) == "Edit"))
-        .or_else(|| children(picker).into_iter().find(|&c| class(c) == "Edit"))
-        .ok_or("Cemu's file window looks different from what Omoio knows.")?;
-    set_text(name_box, &file.to_string_lossy());
-    let open_button = unsafe { GetDlgItem(Some(picker), OPEN_BUTTON) }
-        .map_err(|_| "Cemu's file window looks different from what Omoio knows.".to_string())?;
-    press(open_button);
-
-    let until = Instant::now() + WAIT;
-    while Instant::now() < until && windows_of(pid).contains(&picker) {
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    std::thread::sleep(Duration::from_millis(300));
-    if let Some(said) = dismiss_message(pid) {
+    finish_file_window(pid, picker, file)?;
+    if let Some(said) = dismiss_message(pid, &[OPEN_FIGURE]) {
         close(window);
         return Err(if said.is_empty() {
             "Cemu couldn't put that figure on the portal.".to_string()
         } else {
             format!("Cemu couldn't put that figure on the portal: {said}")
+        });
+    }
+    let names = read(window);
+    close(window);
+    Ok(names)
+}
+
+/// Fills in a Windows file window Cemu opened, out of sight, presses its
+/// Open or Save button, and waits for it to close.
+fn finish_file_window(pid: u32, picker: HWND, file: &Path) -> Result<(), String> {
+    const DIFFERENT: &str = "Cemu's file window looks different from what Omoio knows.";
+    out_of_sight(picker);
+    let name_box = unsafe { GetDlgItem(Some(picker), FILE_NAME_BOX) }
+        .ok()
+        .and_then(|combo| children(combo).into_iter().find(|&c| class(c) == "Edit"))
+        .or_else(|| children(picker).into_iter().find(|&c| class(c) == "Edit"))
+        .ok_or(DIFFERENT)?;
+    set_text(name_box, &file.to_string_lossy());
+    let button = unsafe { GetDlgItem(Some(picker), OPEN_BUTTON) }.map_err(|_| DIFFERENT.to_string())?;
+    press(button);
+    let until = Instant::now() + WAIT;
+    while Instant::now() < until && windows_of(pid).contains(&picker) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    Ok(())
+}
+
+fn send(window: HWND, message: u32, wparam: usize, lparam: isize) -> usize {
+    let mut result = 0usize;
+    unsafe {
+        SendMessageTimeoutW(
+            window,
+            message,
+            WPARAM(wparam),
+            LPARAM(lparam),
+            SMTO_ABORTIFHUNG,
+            2000,
+            Some(&mut result),
+        )
+    };
+    result
+}
+
+/// Cemu's figure maker, opened from the Create button of `slot` and put
+/// out of sight.
+fn open_creator(pid: u32, window: HWND, slot: usize) -> Result<HWND, String> {
+    let create = controls(window, "Button", Some("Create"))
+        .into_iter()
+        .nth(slot)
+        .ok_or(LOOKS_DIFFERENT)?;
+    press(create);
+    let creator = wait_for(pid, |w| text(w) == CREATOR).ok_or("Cemu's figure maker didn't open. Try again.")?;
+    out_of_sight(creator);
+    Ok(creator)
+}
+
+fn cancel_creator(creator: HWND) {
+    if let Some(cancel) = controls(creator, "Button", Some("Cancel")).into_iter().next() {
+        press(cancel);
+    }
+}
+
+/// Every character Cemu's figure maker offers, read from its list: the name
+/// each item shows and the id and variant it carries. The maker is closed
+/// again without making anything.
+pub fn characters(pid: u32) -> Result<Vec<Character>, String> {
+    let window = open(pid)?;
+    let creator = open_creator(pid, window, 0)?;
+    let found: Vec<Character> = children(creator)
+        .into_iter()
+        .find(|&c| class(c) == "ComboBox")
+        .map(|list| {
+            let count = send(list, CB_GETCOUNT, 0, 0).min(4096);
+            (0..count)
+                .filter_map(|at| {
+                    // A failed ask comes back as -1, so anything outlandish is skipped.
+                    let length = send(list, CB_GETLBTEXTLEN, at, 0);
+                    if length == 0 || length > 256 {
+                        return None;
+                    }
+                    let mut buffer = vec![0u16; length + 1];
+                    send(list, CB_GETLBTEXT, at, buffer.as_mut_ptr() as isize);
+                    let name = String::from_utf16_lossy(&buffer[..length]);
+                    Character::from_item(&name, send(list, CB_GETITEMDATA, at, 0) as u64)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    cancel_creator(creator);
+    std::thread::sleep(Duration::from_millis(300));
+    close(window);
+    if found.is_empty() {
+        Err("Couldn't read Cemu's list of characters.".to_string())
+    } else {
+        Ok(found)
+    }
+}
+
+/// Has Cemu's figure maker make a figure of `character` into `file`. Cemu
+/// then puts it on the portal in `slot` itself. Returns what the portal
+/// holds afterwards.
+pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Result<Vec<String>, String> {
+    check(slot)?;
+    let window = open(pid)?;
+    let creator = open_creator(pid, window, slot)?;
+    // The id and variant boxes, not the typing box inside the list above them.
+    let boxes: Vec<HWND> = children(creator)
+        .into_iter()
+        .filter(|&c| class(c) == "Edit" && unsafe { GetParent(c) }.ok() == Some(creator))
+        .collect();
+    let (Some(&id_box), Some(&variant_box), 2) = (boxes.first(), boxes.get(1), boxes.len()) else {
+        cancel_creator(creator);
+        close(window);
+        return Err(LOOKS_DIFFERENT.to_string());
+    };
+    set_text(id_box, &character.id.to_string());
+    set_text(variant_box, &character.variant.to_string());
+    let Some(make) = controls(creator, "Button", Some("Create")).into_iter().next() else {
+        cancel_creator(creator);
+        close(window);
+        return Err(LOOKS_DIFFERENT.to_string());
+    };
+    press(make);
+
+    let saver = wait_for(pid, |w| class(w) == "#32770" && text(w) == SAVE_FIGURE)
+        .ok_or("Cemu didn't ask where to keep the figure. Try again.")?;
+    finish_file_window(pid, saver, file)?;
+    let until = Instant::now() + WAIT;
+    while Instant::now() < until && windows_of(pid).contains(&creator) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    if let Some(said) = dismiss_message(pid, &[OPEN_FIGURE, SAVE_FIGURE, CREATOR]) {
+        close(window);
+        return Err(if said.is_empty() {
+            "Cemu couldn't make that figure.".to_string()
+        } else {
+            format!("Cemu couldn't make that figure: {said}")
         });
     }
     let names = read(window);

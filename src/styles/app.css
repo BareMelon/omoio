@@ -1407,6 +1407,42 @@ button {
   font-size: 10.5px;
   color: var(--dim);
 }
+
+/* The Skylanders row in a game's panel: its label, a small question mark
+   that opens the explanation, and the button that records a key. */
+.portal-key {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.portal-key .row-k {
+  flex: 1;
+}
+.help-dot {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--line2);
+  border-radius: 50%;
+  color: var(--mute);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.help-dot:hover,
+.help-dot[aria-expanded="true"] {
+  border-color: var(--brand);
+  color: var(--ink);
+}
+.help-dot:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 .bind-v {
   min-width: 132px;
   padding: 4px 10px;

@@ -9,6 +9,7 @@ pub mod rpcs3;
 
 use crate::core::console::{Console, Features};
 use crate::core::library::Game;
+use crate::core::figures::Character;
 use crate::core::pad_layout::Player;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
@@ -62,6 +63,18 @@ pub trait EmulatorBackend: Sync {
 
     /// Takes the figure in `slot` off the portal, and returns what is left.
     fn portal_clear(&self, _pid: u32, _slot: usize) -> Result<Vec<String>, String> {
+        Err(NO_PORTAL.to_string())
+    }
+
+    /// Every character the emulator's own figure maker can make.
+    fn portal_characters(&self, _pid: u32) -> Result<Vec<Character>, String> {
+        Err(NO_PORTAL.to_string())
+    }
+
+    /// Has the emulator's figure maker make a figure of `character` into
+    /// `file` and put it on the portal in `slot`. Returns what the portal
+    /// holds afterwards.
+    fn portal_create(&self, _pid: u32, _slot: usize, _character: &Character, _file: &Path) -> Result<Vec<String>, String> {
         Err(NO_PORTAL.to_string())
     }
 

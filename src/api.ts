@@ -82,6 +82,8 @@ export interface Game {
     settings: boolean;
     saves: boolean;
     compatibility: boolean;
+    /// The toy portal of a Skylanders game, filled from the portal menu.
+    portal: boolean;
   };
 }
 
@@ -673,6 +675,33 @@ export function closePortalMenu(): Promise<void> {
 /// The kind of pad that opened the portal menu.
 export function portalMenuFamily(): Promise<string> {
   return invoke("portal_menu_family");
+}
+
+/// A character the running game's emulator can make a figure of.
+export interface Character {
+  name: string;
+  id: number;
+  variant: number;
+}
+
+export function figureCharacters(): Promise<Character[]> {
+  return invoke("figure_characters");
+}
+
+/// Makes a new figure of `character` and puts it on the portal in `slot`,
+/// counted from 0. Resolves to what the portal holds afterwards.
+export function portalCreate(slot: number, character: Character): Promise<string[]> {
+  return invoke("portal_create", { slot, character });
+}
+
+/// The pad button that opens the portal menu while a Skylanders game runs,
+/// as a place such as "Guide".
+export function portalButton(): Promise<string> {
+  return invoke("portal_button");
+}
+
+export function setPortalButton(button: string): Promise<void> {
+  return invoke("set_portal_button", { button });
 }
 
 export function onPortalMenu(handler: (state: { open: boolean; family: string }) => void): Promise<UnlistenFn> {

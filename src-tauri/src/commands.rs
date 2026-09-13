@@ -1492,6 +1492,46 @@ pub fn pads_held() -> Vec<&'static str> {
     crate::pads::held_anywhere()
 }
 
+/// Every character the running game's emulator can make a figure of.
+#[tauri::command]
+pub async fn figure_characters(app: AppHandle) -> Result<Vec<crate::core::figures::Character>, String> {
+    let (backend, pid) = running_emulator(&app)?;
+    let console = app.state::<Session>().playing().ok_or("Start a game first.")?.console;
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::portal_menu::characters(&handle, backend, console, pid))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Has the emulator make a new figure of a character, kept in the figures
+/// folder, and put it on the portal in `slot`, counted from 0.
+#[tauri::command]
+pub async fn portal_create(
+    app: AppHandle,
+    slot: usize,
+    character: crate::core::figures::Character,
+) -> Result<Vec<String>, String> {
+    let (backend, pid) = running_emulator(&app)?;
+    let file = crate::portal_menu::new_figure(&app, &character.name)?;
+    let path = file.clone();
+    let names = tauri::async_runtime::spawn_blocking(move || backend.portal_create(pid, slot, &character, &path))
+        .await
+        .map_err(|e| e.to_string())??;
+    crate::portal_menu::used(&app, &file.to_string_lossy());
+    Ok(names)
+}
+
+/// The pad button that opens the portal menu, as a place on the pad.
+#[tauri::command]
+pub fn portal_button(app: AppHandle) -> String {
+    crate::portal_menu::button(&app)
+}
+
+#[tauri::command]
+pub fn set_portal_button(app: AppHandle, button: String) -> Result<(), String> {
+    crate::portal_menu::set_button(&app, &button)
+}
+
 #[tauri::command]
 pub async fn portal_clear(app: AppHandle, slot: usize) -> Result<Vec<String>, String> {
     let (backend, pid) = running_emulator(&app)?;

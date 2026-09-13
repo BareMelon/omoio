@@ -40,6 +40,8 @@ pub struct Features {
     pub saves: bool,
     /// A compatibility result for the game. RPCS3's list covers the PS3 only.
     pub compatibility: bool,
+    /// The toy portal of a Skylanders game, filled from Omoio's portal menu.
+    pub portal: bool,
 }
 
 #[cfg(test)]

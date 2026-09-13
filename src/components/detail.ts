@@ -8,11 +8,15 @@ import {
   gameUpdates,
   launchGame,
   listGames,
+  padsHeld,
+  portalButton,
   refreshCompatibility,
   removeGame,
+  setPortalButton,
   type Game,
 } from "../api";
 import { placeholderArt } from "./art";
+import { nameOf } from "./padNames";
 import type { CatalogueSelection } from "../state";
 import { openGameSettings } from "./gameSettingsSheet";
 import { openImportSheet } from "./importSheet";
@@ -82,6 +86,15 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       <button class="small-btn wide" id="detail-patches">Patches</button>
       <div class="note plain" id="detail-patches-note"></div>
     </div>
+    <div class="sec gone" id="sec-portal">
+      <div class="sec-h">Skylanders</div>
+      <div class="portal-key">
+        <span class="row-k">Keybind Skylander emulator</span>
+        <button class="help-dot" id="detail-portal-help" aria-label="How the Skylander emulator works" aria-expanded="false">?</button>
+        <button class="small-btn" id="detail-portal-button"></button>
+      </div>
+      <div class="note plain gone" id="detail-portal-about"></div>
+    </div>
     <div class="sec" id="sec-location">
       <div class="sec-h">Location</div>
       <div class="d-path"></div>
@@ -136,6 +149,52 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
 
   if (game.set_up && !game.available) {
     note.textContent = "Reconnect the drive this game is on to play it.";
+  }
+
+  // The button that opens the portal menu over a Skylanders game, shown only
+  // where the game's emulator lets Omoio fill the portal.
+  if (offers.portal && game.set_up && /skylanders/i.test(game.title)) {
+    body.querySelector("#sec-portal")!.classList.remove("gone");
+    const keyButton = body.querySelector<HTMLButtonElement>("#detail-portal-button")!;
+    const help = body.querySelector<HTMLButtonElement>("#detail-portal-help")!;
+    const about = body.querySelector<HTMLElement>("#detail-portal-about")!;
+    about.textContent =
+      "Skylanders games need a toy portal, and the emulator pretends one is plugged in. While playing, press this button to open the portal menu over the game. From there, put any character on the portal with New figure, use your own figure files, or take a figure off again. It all works with the pad. The home button is the best choice, since games don't use it.";
+    help.onclick = () => {
+      const open = !about.classList.toggle("gone");
+      help.setAttribute("aria-expanded", String(open));
+    };
+
+    const label = (place: string) => (place === "Guide" ? "Home button" : nameOf("generic", place));
+    const showKey = async () => {
+      keyButton.textContent = label(await portalButton());
+    };
+    void showKey();
+
+    // Waits a few seconds for a press on any pad. A stick pushed a little
+    // is not a press, so a pad resting off centre never records.
+    keyButton.onclick = async () => {
+      keyButton.disabled = true;
+      keyButton.textContent = "Press a button…";
+      const down = new Set(await padsHeld());
+      const until = Date.now() + 6000;
+      let pressed: string | undefined;
+      while (!pressed && Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        const now = await padsHeld();
+        pressed = now.find((input) => !down.has(input) && !/^(LS|RS) [XY][+-]$/.test(input));
+        for (const input of [...down]) if (!now.includes(input)) down.delete(input);
+      }
+      if (pressed) {
+        try {
+          await setPortalButton(pressed);
+        } catch (err) {
+          note.textContent = typeof err === "string" ? err : "Couldn't save that button.";
+        }
+      }
+      keyButton.disabled = false;
+      await showKey();
+    };
   }
   play.onclick = async () => {
     play.disabled = true;
