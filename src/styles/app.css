@@ -642,8 +642,10 @@ button {
   flex-direction: column;
   max-height: calc(100vh - 96px);
 }
+/* Gone means gone, whatever else sets the element's display: `.small-btn.wide`
+   outranked it, and a hidden Patches button showed for Wii U games. */
 .gone {
-  display: none;
+  display: none !important;
 }
 .tabs {
   display: flex;
