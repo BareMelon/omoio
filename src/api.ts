@@ -181,8 +181,8 @@ export function getPlaces(): Promise<Places> {
 }
 
 export interface GameOption {
-  /// The setting's full path through RPCS3's config, joined with newlines.
-  /// A section name can contain a slash, so nothing gentler is safe.
+  /// The setting's full path through the emulator's config, joined with
+  /// newlines. A section name can contain a slash, so nothing gentler is safe.
   key: string;
   group: string;
   name: string;
@@ -199,10 +199,20 @@ export interface GameOption {
 /// path -> value. Anything absent is RPCS3's own default.
 export type ChosenSettings = Record<string, string>;
 
-/// The options, what this game is set to, and why Omoio set any of them itself.
-export function gameSettings(
-  titleId: string
-): Promise<[GameOption[], ChosenSettings, Record<string, string>]> {
+/// Everything the settings sheet needs for one game.
+export interface GameSettings {
+  /// The emulator's name, as in "Cemu default".
+  emulator: string;
+  options: GameOption[];
+  /// What this game is set to.
+  chosen: ChosenSettings;
+  /// Why Omoio set any of them itself, by key.
+  reasons: Record<string, string>;
+  /// The groups the Common tab shows, in order.
+  common_groups: string[];
+}
+
+export function gameSettings(titleId: string): Promise<GameSettings> {
   return invoke("game_settings", { titleId });
 }
 

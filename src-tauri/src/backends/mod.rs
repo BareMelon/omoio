@@ -8,6 +8,7 @@ pub mod cemu;
 pub mod rpcs3;
 
 use crate::core::console::{Console, Features};
+use crate::core::game_settings::{Chosen, GameSettings};
 use crate::core::library::Game;
 use crate::core::figures::Character;
 use crate::core::pad_layout::Player;
@@ -124,6 +125,17 @@ pub trait EmulatorBackend: Sync {
     /// Called again and again while a game runs, for anything the emulator
     /// puts on its window that doesn't belong over the game.
     fn tidy_window(&self, _pid: u32) {}
+
+    /// The emulator's own settings for one game, for the settings sheet.
+    fn game_settings(&self, _app: &AppHandle, _game: &Game) -> Result<GameSettings, String> {
+        Err("This emulator has no settings of its own for a game.".to_string())
+    }
+
+    /// Saves only what was chosen. Choosing nothing puts the game back on
+    /// the emulator's own settings.
+    fn set_game_settings(&self, _app: &AppHandle, _game: &Game, _chosen: &Chosen) -> Result<(), String> {
+        Err("This emulator has no settings of its own for a game.".to_string())
+    }
 
     /// Every title this console's compatibility list knows, or `None` until
     /// the list has been downloaded.

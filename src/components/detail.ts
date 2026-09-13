@@ -318,17 +318,25 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     openPatches(game.title_id, game.title, showPatchCount);
 
   const settingsNote = body.querySelector<HTMLElement>("#detail-settings-note")!;
+  const settingsButton = body.querySelector<HTMLButtonElement>("#detail-settings")!;
   const showSettingsCount = async () => {
-    const [, chosen] = await gameSettings(game.title_id);
-    const changed = Object.keys(chosen).length;
-    settingsNote.textContent =
-      changed === 0
-        ? "Running with RPCS3's own settings."
-        : `${changed} setting${changed === 1 ? "" : "s"} changed for this game.`;
+    try {
+      const { emulator, chosen } = await gameSettings(game.title_id);
+      const changed = Object.keys(chosen).length;
+      settingsButton.disabled = false;
+      settingsNote.textContent =
+        changed === 0
+          ? `Running with ${emulator}'s own settings.`
+          : `${changed} setting${changed === 1 ? "" : "s"} changed for this game.`;
+    } catch (err) {
+      // A Wii U disc image's settings are filed under an id only known once
+      // the game has run, which the message says.
+      settingsButton.disabled = true;
+      settingsNote.textContent = typeof err === "string" ? err : "Couldn't read this game's settings.";
+    }
   };
   if (offers.settings) showSettingsCount();
-  body.querySelector<HTMLButtonElement>("#detail-settings")!.onclick = () =>
-    openGameSettings(game.title_id, game.title, showSettingsCount);
+  settingsButton.onclick = () => openGameSettings(game.title_id, game.title, showSettingsCount);
 
   body.querySelector<HTMLButtonElement>("#detail-remove")!.onclick = async () => {
     await removeGame(game.title_id);

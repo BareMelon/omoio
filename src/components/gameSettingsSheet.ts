@@ -9,12 +9,17 @@ const GROUP_TITLES: Record<string, string> = {
   Video: "Picture",
   Core: "Processor",
   Audio: "Sound",
+  Graphics: "Picture",
+  CPU: "Processor",
 };
 
-/// Every control offers "RPCS3 default" and starts there. Choosing it removes
-/// the setting rather than writing a value, so Omoio never states a preference
-/// the user did not express.
+/// Every control offers the emulator's own default and starts there. Choosing
+/// it removes the setting rather than writing a value, so Omoio never states a
+/// preference the user did not express.
 const DEFAULT = "";
+
+/// "RPCS3 default", "Cemu default": named for the emulator of the open sheet.
+let defaultLabel = "Default";
 
 function control(
   option: GameOption,
@@ -26,8 +31,8 @@ function control(
     select.className = "select";
     const values: [string, string][] =
       option.kind === "switch"
-        ? [[DEFAULT, "RPCS3 default"], ["true", "On"], ["false", "Off"]]
-        : [[DEFAULT, "RPCS3 default"], ...option.choices.map((c): [string, string] => [c, c])];
+        ? [[DEFAULT, defaultLabel], ["true", "On"], ["false", "Off"]]
+        : [[DEFAULT, defaultLabel], ...option.choices.map((c): [string, string] => [c, c])];
     for (const [value, label] of values) {
       const opt = document.createElement("option");
       opt.value = value;
@@ -42,8 +47,8 @@ function control(
   const input = document.createElement("input");
   input.className = option.kind === "number" ? "number" : "text-in";
   input.value = current;
-  // RPCS3's own value, so leaving the field empty is visibly the same as
-  // not setting it.
+  // The emulator's own value, so leaving the field empty is visibly the same
+  // as not setting it.
   input.placeholder = option.default === "" ? "default" : option.default;
 
   if (option.kind === "number") {
@@ -85,9 +90,10 @@ function settingRow(
   name.textContent = option.label;
   left.appendChild(name);
 
-  // Where we have renamed a setting, its RPCS3 name is shown underneath,
-  // because that is the name in any advice you have been given. Where we have
-  // not, the name above is already RPCS3's own and repeating it says nothing.
+  // Where we have renamed a setting, the emulator's name for it is shown
+  // underneath, because that is the name in any advice you have been given.
+  // Where we have not, the name above is already the emulator's own and
+  // repeating it says nothing.
   if (showKey && option.label !== option.name) {
     const path = document.createElement("div");
     path.className = "setting-path";
@@ -167,7 +173,8 @@ export async function openGameSettings(
   title: string,
   onSaved: () => void
 ): Promise<void> {
-  const [options, saved, reasons] = await gameSettings(titleId);
+  const { emulator, options, chosen: saved, reasons, common_groups } = await gameSettings(titleId);
+  defaultLabel = `${emulator} default`;
   // Worked on as a copy, so Cancel really does leave things as they were.
   const chosen: ChosenSettings = { ...saved };
 
@@ -193,7 +200,7 @@ export async function openGameSettings(
     <div class="sheet-p"></div>
   `;
   head.querySelector<HTMLElement>(".sheet-p")!.textContent =
-    `Only for ${title}. Anything left on default is left to RPCS3.`;
+    `Only for ${title}. Anything left on default is left to ${emulator}.`;
   sheet.appendChild(head);
 
   const changedCount = document.createElement("span");
@@ -237,11 +244,9 @@ export async function openGameSettings(
     commonPane.appendChild(empty);
   }
 
-  // RPCS3 lists the processor first. Picture is what people come here to
-  // change, so Common leads with it.
-  const common = ["Video", "Core", "Audio"].flatMap((group) =>
-    options.filter((o) => o.common && o.group === group)
-  );
+  // Emulators list the processor first. Picture is what people come here to
+  // change, so each emulator names its groups for Common starting with it.
+  const common = common_groups.flatMap((group) => options.filter((o) => o.common && o.group === group));
   groupInto(commonPane, common, chosen, refreshCount, false, reasons);
   const advanced = groupInto(advancedPane, options, chosen, refreshCount, true, reasons);
 

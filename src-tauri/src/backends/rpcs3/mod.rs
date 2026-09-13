@@ -274,6 +274,32 @@ impl super::EmulatorBackend for Rpcs3 {
         }
     }
 
+    fn game_settings(
+        &self,
+        app: &AppHandle,
+        game: &crate::core::library::Game,
+    ) -> Result<crate::core::game_settings::GameSettings, String> {
+        Ok(crate::core::game_settings::GameSettings {
+            emulator: "RPCS3".to_string(),
+            options: game_config::catalogue(app),
+            chosen: game_config::read(app, &game.title_id),
+            reasons: fixes::setting_reasons(&game.title_id)
+                .into_iter()
+                .map(|(key, reason)| (key.to_string(), reason.to_string()))
+                .collect(),
+            common_groups: ["Video", "Core", "Audio"].map(String::from).to_vec(),
+        })
+    }
+
+    fn set_game_settings(
+        &self,
+        app: &AppHandle,
+        game: &crate::core::library::Game,
+        chosen: &crate::core::game_settings::Chosen,
+    ) -> Result<(), String> {
+        game_config::write(app, &game.title_id, chosen)
+    }
+
     fn recognises(&self, path: &Path) -> bool {
         crate::import::recognises(path)
     }

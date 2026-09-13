@@ -494,34 +494,36 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
 /// The settings Omoio offers per game, what this game is currently set to, and
 /// the reason for any Omoio sets itself.
 #[tauri::command]
-pub fn game_settings(
-    app: AppHandle,
-    title_id: String,
-) -> (
-    Vec<rpcs3::game_config::Setting>,
-    rpcs3::game_config::Chosen,
-    std::collections::BTreeMap<String, String>,
-) {
-    let reasons = rpcs3::fixes::setting_reasons(&title_id)
-        .into_iter()
-        .map(|(key, reason)| (key.to_string(), reason.to_string()))
-        .collect();
-    (
-        rpcs3::game_config::catalogue(&app),
-        rpcs3::game_config::read(&app, &title_id),
-        reasons,
-    )
+pub fn game_settings(app: AppHandle, title_id: String) -> Result<crate::core::game_settings::GameSettings, String> {
+    let (backend, game) = game_and_emulator(&app, &title_id)?;
+    backend.game_settings(&app, &game)
 }
 
-/// Saves only what was chosen. Clearing everything removes the file, so the
-/// game runs exactly as RPCS3 would run it.
+/// Saves only what was chosen. Clearing everything puts the game back on its
+/// emulator's own settings.
 #[tauri::command]
 pub fn set_game_settings(
     app: AppHandle,
     title_id: String,
-    chosen: rpcs3::game_config::Chosen,
+    chosen: crate::core::game_settings::Chosen,
 ) -> Result<(), String> {
-    rpcs3::game_config::write(&app, &title_id, &chosen)
+    let (backend, game) = game_and_emulator(&app, &title_id)?;
+    backend.set_game_settings(&app, &game, &chosen)
+}
+
+/// A game in the library and the emulator that runs it.
+fn game_and_emulator(
+    app: &AppHandle,
+    title_id: &str,
+) -> Result<(&'static dyn crate::backends::EmulatorBackend, crate::core::library::Game), String> {
+    let game = Library::load(&library_path(app)?)
+        .games()
+        .iter()
+        .find(|game| game.title_id == title_id)
+        .cloned()
+        .ok_or("That game isn't in the library any more.")?;
+    let backend = crate::backends::for_console(game.console).ok_or("No emulator runs this game.")?;
+    Ok((backend, game))
 }
 
 #[tauri::command]

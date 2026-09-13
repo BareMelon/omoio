@@ -5,6 +5,7 @@
 
 pub mod compat;
 pub mod controllers;
+pub mod game_profile;
 pub mod keys;
 pub mod portal;
 
@@ -298,6 +299,58 @@ fn identify_disc(image: &Path) -> Game {
     }
 }
 
+/// The title id Cemu writes to its log as a game loads, "TitleId:
+/// 00050000-10140400", as the sixteen lower-case digits its game profiles
+/// are named by.
+fn title_id_in_log(log: &str) -> Option<String> {
+    log.lines()
+        .find_map(|line| line.split_once("TitleId: ").map(|(_, id)| id.trim().replace('-', "").to_ascii_lowercase()))
+        .filter(|id| id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+const NOT_PLAYED_YET: &str = "Play this game once, and its settings can be changed here.";
+
+/// The title id Cemu files a game's settings under. An unpacked title is
+/// imported under it already. A disc image is encrypted, so its id is known
+/// only once Cemu has run it: it is read from the log Omoio keeps of that
+/// play, and remembered, since old logs are cleared away.
+fn title_id_for(app: &AppHandle, game: &Game) -> Option<String> {
+    let own = game.title_id.to_ascii_lowercase();
+    if own.len() == 16 && own.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Some(own);
+    }
+    let data = app.path().data_dir().ok()?.join("Omoio");
+    let known_file = data.join("cemu-title-ids.json");
+    let mut known: std::collections::BTreeMap<String, String> = std::fs::read_to_string(&known_file)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    if let Some(id) = known.get(&game.title_id) {
+        return Some(id.clone());
+    }
+    let prefix = format!("{}-", game.title_id);
+    let mut logs: Vec<PathBuf> = std::fs::read_dir(data.join("logs"))
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&prefix) && name.ends_with(".log"))
+        })
+        .collect();
+    logs.sort();
+    let id = logs
+        .iter()
+        .rev()
+        .find_map(|log| std::fs::read_to_string(log).ok().and_then(|text| title_id_in_log(&text)))?;
+    known.insert(game.title_id.clone(), id.clone());
+    if let Ok(text) = serde_json::to_string_pretty(&known) {
+        let _ = std::fs::write(&known_file, text);
+    }
+    Some(id)
+}
+
 /// The title version Cemu writes to its log as a game loads, "TitleVersion:
 /// v16", in the same numbers meta.xml uses. A disc image's meta.xml is
 /// encrypted, so this is where Omoio learns its version: after the first play.
@@ -502,6 +555,10 @@ fn set_setting(text: &str, parents: &[&str], name: &str, value: &str) -> String 
     }
 }
 
+/// Where Cemu's window starts: off every screen, and short of -32000, which
+/// Windows uses for a minimised window.
+const OFF_SCREEN: &str = "-30000";
+
 /// What Omoio sets in Cemu's settings.xml before each game. Cemu v2.6 reads
 /// all of these at start (`CemuConfig.cpp`), and a user's own sound device is
 /// never replaced.
@@ -510,6 +567,9 @@ fn set_setting(text: &str, parents: &[&str], name: &str, value: &str) -> String 
 ///   leaves it out, and a game finds only a portal that is there.
 /// - Cemu starts windowed. Omoio places the picture itself, and Cemu keeps
 ///   its own fullscreen from the last time F11 was pressed in it.
+/// - Cemu opens its window far off the screen. It puts the window where
+///   `window_position` says without checking (`MainWindow.cpp`), so nothing
+///   of Cemu shows before Omoio has taken the picture into its own window.
 /// - Cemu's notices over the picture are off: the controller profile of
 ///   every player, shaders being compiled, and the friend service.
 /// - An empty TV sound device is Cemu's "no sound", and it starts empty.
@@ -520,6 +580,9 @@ fn tune_settings(settings: &Path, skylanders: bool) -> std::io::Result<()> {
     let portal = if skylanders { "true" } else { "false" };
     let mut text = set_setting(&before, &["EmulatedUsbDevices"], "EmulateSkylanderPortal", portal);
     text = set_setting(&text, &[], "fullscreen", "false");
+    text = set_setting(&text, &[], "window_maximized", "false");
+    text = set_setting(&text, &["window_position"], "x", OFF_SCREEN);
+    text = set_setting(&text, &["window_position"], "y", OFF_SCREEN);
     for notice in ["ControllerProfiles", "ShaderCompiling", "FriendService"] {
         text = set_setting(&text, &["Graphic", "Notification"], notice, "false");
     }
@@ -572,11 +635,12 @@ impl super::EmulatorBackend for Cemu {
     }
 
     fn features(&self) -> Features {
-        // Starting games, and the Skylanders portal through Cemu's own
-        // window. Nothing else is offered until it has been checked against
-        // Cemu the way RPCS3's was.
+        // Starting games, the Skylanders portal through Cemu's own window,
+        // and Cemu's settings for a game. Nothing else is offered until it
+        // has been checked against Cemu the way RPCS3's was.
         Features {
             portal: true,
+            settings: true,
             ..Features::default()
         }
     }
@@ -616,6 +680,27 @@ impl super::EmulatorBackend for Cemu {
 
     fn tidy_window(&self, pid: u32) {
         portal::tidy(pid);
+    }
+
+    fn game_settings(&self, app: &AppHandle, game: &Game) -> Result<crate::core::game_settings::GameSettings, String> {
+        let title_id = title_id_for(app, game).ok_or(NOT_PLAYED_YET)?;
+        Ok(crate::core::game_settings::GameSettings {
+            emulator: "Cemu".to_string(),
+            options: game_profile::options(),
+            chosen: game_profile::read(&install_dir(app)?, &title_id),
+            reasons: std::collections::BTreeMap::new(),
+            common_groups: ["Graphics", "CPU", "General"].map(String::from).to_vec(),
+        })
+    }
+
+    fn set_game_settings(
+        &self,
+        app: &AppHandle,
+        game: &Game,
+        chosen: &crate::core::game_settings::Chosen,
+    ) -> Result<(), String> {
+        let title_id = title_id_for(app, game).ok_or(NOT_PLAYED_YET)?;
+        game_profile::write(&install_dir(app)?, &title_id, &game.title, chosen)
     }
 
     fn portal_figures(&self, pid: u32) -> Result<Vec<String>, String> {
@@ -726,6 +811,7 @@ mod tests {
                    [10:41:02.118] TitleVersion: v16\n\
                    [10:41:02.118] TitleRegion: EU\n";
         assert_eq!(title_version(log).as_deref(), Some("16"));
+        assert_eq!(title_id_in_log(log).as_deref(), Some("0005000010101e00"));
         assert_eq!(title_version("[10:41:02.118] Mounting title 0005000010101e00"), None);
     }
 
@@ -876,6 +962,8 @@ Deluxe");
         assert!(text.contains("<fullscreen>false</fullscreen>"), "{text}");
         assert!(text.contains("<ShaderCompiling>false</ShaderCompiling>"), "{text}");
         assert!(text.contains("<TVDevice>default</TVDevice>"), "{text}");
+        assert!(text.contains("<window_position><x>-30000</x>"), "{text}");
+        assert!(text.contains("<y>-30000</y>"), "{text}");
 
         tune_settings(&file, false).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();

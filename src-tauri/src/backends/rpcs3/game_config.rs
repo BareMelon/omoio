@@ -16,8 +16,6 @@
 //! under the names RPCS3 uses, which are the names anyone advising you will
 //! use as well.
 
-use serde::Serialize;
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tauri::AppHandle;
 
@@ -26,22 +24,7 @@ use tauri::AppHandle;
 /// one rather than on any kind of punctuation.
 const SEP: &str = "\n";
 
-/// A setting as the interface should present it: RPCS3's own key and default,
-/// plus our own words where we have them.
-#[derive(Serialize)]
-pub struct Setting {
-    pub key: String,
-    pub group: String,
-    pub name: String,
-    pub label: String,
-    pub hint: String,
-    pub kind: String,
-    pub choices: &'static [&'static str],
-    pub default: String,
-    pub min: i64,
-    pub max: i64,
-    pub common: bool,
-}
+pub use crate::core::game_settings::{Chosen, Setting};
 
 struct Curated {
     section: &'static str,
@@ -131,10 +114,6 @@ fn config_path(app: &AppHandle, title_id: &str) -> Result<PathBuf, String> {
 fn defaults_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(super::install_dir(app)?.join("config").join("config.yml"))
 }
-
-/// What the user has chosen for this game, keyed by the setting's full path.
-/// Anything absent is RPCS3's own default and is deliberately not represented.
-pub type Chosen = BTreeMap<String, String>;
 
 /// Every setting the installed RPCS3 has, in the order it lists them.
 ///
