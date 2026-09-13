@@ -1,47 +1,50 @@
 # Omoio
 
-Omoio is a desktop app for PS3 emulation. You point it at a game you already own,
-and it handles the setup, updates and configuration that RPCS3 leaves to you.
+Omoio is a Windows app for playing the PS3 and Wii U games you already own. You
+point it at a game, and it installs and updates the emulator, sets up your
+controller and the picture, and starts the game, so you never have to open an
+emulator yourself.
 
 In development, and usable.
 
-![Library](design/screenshots/library.png)
+![The catalogue, searching for Grand Theft Auto V](design/screenshots/catalogue.png)
 
-## What it does
+The tiles here are Omoio's own. Real cover art for your library and the catalogue
+is one switch away in Settings, with a free key from RAWG.
 
-Omoio installs and manages RPCS3 for you, detects your hardware, imports a game
-folder or archive in one step, finds official updates, applies community patches,
-and launches the game. No manual folder work, no title ID lookups, no emulator
-menus.
+## Install
 
-It also browses every PS3 title with a known compatibility result, so you can
-check how a game runs before setting it up, and installs a .pkg you already have
-onto the emulated console.
+Download the latest `Omoio_x.y.z_x64-setup.exe` from Releases and run it. It
+installs for the current user and does not need administrator rights. The first
+time it opens, it asks which emulators to install: RPCS3 for PS3 games, Cemu for
+Wii U games, or both. It keeps them up to date from then on.
 
-## What it does not do
+Windows may show a SmartScreen warning, because the installer is not code signed
+yet. Certificates cost money per year, and that is not worth it before the project
+has users. Choose More info, then Run anyway, if you are comfortable with that.
+
+## What Omoio will not do
 
 Omoio does not distribute games. It has no store, no download button for
 commercial titles, and no links to anywhere you might find them. You supply your
 own copy of a game you own, and Omoio takes it from there.
 
-It also does not touch copy protection. Omoio reads dumps that are already
-decrypted, and it never handles keys of any kind.
+Omoio never decrypts anything and never supplies keys. It reads PS3 dumps that are
+already decrypted. For Wii U disc images (.wud and .wux), you can give Cemu your
+own keys file from the Emulators screen, and Cemu does the decrypting. Omoio never
+says where to find a key, and it refuses Wii U downloads in NUS form. Pirated or
+unlicensed games do not belong in Omoio, and whether a copy is legal is your
+responsibility.
 
 PS3 firmware comes from Sony. Omoio can open their download page for you, but you
 download the file and pick it yourself.
 
-RPCS3 is a separate program, downloaded from its official releases and run as its
-own process. Omoio does not bundle or modify it. All credit for the emulation
-itself belongs to the RPCS3 team.
+RPCS3 and Cemu are separate programs, downloaded from their official releases and
+run as their own processes. Omoio does not bundle or modify them. All credit for
+the emulation itself belongs to the RPCS3 and Cemu teams.
 
-## Install
-
-Download the latest `Omoio_x.y.z_x64-setup.exe` from Releases and run it. It
-installs for the current user and does not need administrator rights.
-
-Windows may show a SmartScreen warning, because the installer is not code signed
-yet. Certificates cost money per year, and that is not worth it before the project
-has users. Choose More info, then Run anyway, if you are comfortable with that.
+Cover art only ever comes from RAWG's API. Omoio never takes images from anywhere
+else.
 
 ## Build
 
