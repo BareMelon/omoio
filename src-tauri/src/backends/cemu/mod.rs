@@ -442,32 +442,94 @@ fn is_skylanders(title: &str) -> bool {
     title.to_lowercase().contains("skylanders")
 }
 
-/// Switches Cemu's emulated Skylanders portal on or off. Cemu leaves it off,
-/// and a game only finds a portal that is plugged in, so for a Skylanders
-/// game this is what lets figures reach it at all. Everything else in the
-/// file is left as it is.
-fn set_portal(settings: &Path, on: bool) -> std::io::Result<()> {
-    const OPEN: &str = "<EmulateSkylanderPortal>";
-    const CLOSE: &str = "</EmulateSkylanderPortal>";
-    let text = std::fs::read_to_string(settings)?;
-    let value = if on { "true" } else { "false" };
-    let changed = if let Some(start) = text.find(OPEN) {
-        let from = start + OPEN.len();
-        let Some(length) = text[from..].find(CLOSE) else {
-            return Ok(());
-        };
-        format!("{}{value}{}", &text[..from], &text[from + length..])
-    } else if let Some(end) = text.rfind("</content>") {
-        format!(
-            "{}    <EmulatedUsbDevices>\n        {OPEN}{value}{CLOSE}\n    </EmulatedUsbDevices>\n{}",
-            &text[..end],
-            &text[end..]
-        )
-    } else {
-        return Ok(());
+/// Where the inside of the element nested as `parents` sits in settings.xml,
+/// found one level at a time from the top. `Err` gives where the first
+/// missing parent would go and how many of the parents were found.
+fn section(text: &str, parents: &[&str]) -> Result<(usize, usize), (usize, usize)> {
+    let (Some(top), Some(bottom)) = (text.find("<content>"), text.rfind("</content>")) else {
+        return Err((text.len(), usize::MAX));
     };
-    if changed != text {
-        std::fs::write(settings, changed)?;
+    let (mut start, mut end) = (top + "<content>".len(), bottom);
+    for (depth, parent) in parents.iter().enumerate() {
+        let (open, close) = (format!("<{parent}>"), format!("</{parent}>"));
+        let Some(at) = text[start..end].find(&open) else {
+            return Err((end, depth));
+        };
+        let from = start + at + open.len();
+        let Some(length) = text[from..end].find(&close) else {
+            return Err((text.len(), usize::MAX));
+        };
+        (start, end) = (from, from + length);
+    }
+    Ok((start, end))
+}
+
+/// The text of one setting, `None` when it isn't there.
+fn setting(text: &str, parents: &[&str], name: &str) -> Option<String> {
+    let (start, end) = section(text, parents).ok()?;
+    let (open, close) = (format!("<{name}>"), format!("</{name}>"));
+    let from = start + text[start..end].find(&open)? + open.len();
+    let length = text[from..end].find(&close)?;
+    Some(text[from..from + length].to_string())
+}
+
+/// Sets one setting, adding it and any missing parents. Everything else in
+/// the file is left as it is.
+fn set_setting(text: &str, parents: &[&str], name: &str, value: &str) -> String {
+    let (open, close) = (format!("<{name}>"), format!("</{name}>"));
+    match section(text, parents) {
+        Ok((start, end)) => {
+            if let Some(at) = text[start..end].find(&open) {
+                let from = start + at + open.len();
+                if let Some(length) = text[from..end].find(&close) {
+                    return format!("{}{value}{}", &text[..from], &text[from + length..]);
+                }
+            }
+            let empty = format!("<{name}/>");
+            if let Some(at) = text[start..end].find(&empty) {
+                let from = start + at;
+                return format!("{}{open}{value}{close}{}", &text[..from], &text[from + empty.len()..]);
+            }
+            format!("{}{open}{value}{close}\n{}", &text[..end], &text[end..])
+        }
+        Err((_, usize::MAX)) => text.to_string(),
+        Err((at, found)) => {
+            let missing = &parents[found..];
+            let opening: String = missing.iter().map(|p| format!("<{p}>")).collect();
+            let closing: String = missing.iter().rev().map(|p| format!("</{p}>")).collect();
+            format!("{}{opening}{open}{value}{close}{closing}\n{}", &text[..at], &text[at..])
+        }
+    }
+}
+
+/// What Omoio sets in Cemu's settings.xml before each game. Cemu v2.6 reads
+/// all of these at start (`CemuConfig.cpp`), and a user's own sound device is
+/// never replaced.
+///
+/// - The Skylanders portal is plugged in for a Skylanders game only. Cemu
+///   leaves it out, and a game finds only a portal that is there.
+/// - Cemu starts windowed. Omoio places the picture itself, and Cemu keeps
+///   its own fullscreen from the last time F11 was pressed in it.
+/// - Cemu's notices over the picture are off: the controller profile of
+///   every player, shaders being compiled, and the friend service.
+/// - An empty TV sound device is Cemu's "no sound", and it starts empty.
+///   With DirectSound, its first sound system, "default" is the system's
+///   own device (`DirectSoundAPI.cpp`).
+fn tune_settings(settings: &Path, skylanders: bool) -> std::io::Result<()> {
+    let before = std::fs::read_to_string(settings)?;
+    let portal = if skylanders { "true" } else { "false" };
+    let mut text = set_setting(&before, &["EmulatedUsbDevices"], "EmulateSkylanderPortal", portal);
+    text = set_setting(&text, &[], "fullscreen", "false");
+    for notice in ["ControllerProfiles", "ShaderCompiling", "FriendService"] {
+        text = set_setting(&text, &["Graphic", "Notification"], notice, "false");
+    }
+    let direct_sound = matches!(setting(&text, &["Audio"], "api").as_deref().map(str::trim), None | Some("0"));
+    let no_device = setting(&text, &["Audio"], "TVDevice").is_none_or(|device| device.trim().is_empty());
+    if direct_sound && no_device {
+        text = set_setting(&text, &["Audio"], "TVDevice", "default");
+    }
+    if text != before {
+        std::fs::write(settings, text)?;
     }
     Ok(())
 }
@@ -549,7 +611,11 @@ impl super::EmulatorBackend for Cemu {
         }
         let portable = dir.join("portable");
         let _ = write_first_settings(&portable);
-        let _ = set_portal(&portable.join("settings.xml"), is_skylanders(&game.title));
+        let _ = tune_settings(&portable.join("settings.xml"), is_skylanders(&game.title));
+    }
+
+    fn tidy_window(&self, pid: u32) {
+        portal::tidy(pid);
     }
 
     fn portal_figures(&self, pid: u32) -> Result<Vec<String>, String> {
@@ -798,20 +864,63 @@ Deluxe");
     }
 
     #[test]
-    fn the_portal_is_switched_in_place_or_added() {
+    fn settings_are_switched_in_place_or_added() {
         let dir = scratch("portal");
         let file = dir.join("settings.xml");
 
         write_first_settings(&dir).unwrap();
-        set_portal(&file, true).unwrap();
+        tune_settings(&file, true).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("<EmulateSkylanderPortal>true</EmulateSkylanderPortal>"), "{text}");
         assert!(text.contains("<api>1</api>"), "the rest is left alone");
+        assert!(text.contains("<fullscreen>false</fullscreen>"), "{text}");
+        assert!(text.contains("<ShaderCompiling>false</ShaderCompiling>"), "{text}");
+        assert!(text.contains("<TVDevice>default</TVDevice>"), "{text}");
 
-        set_portal(&file, false).unwrap();
+        tune_settings(&file, false).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("<EmulateSkylanderPortal>false</EmulateSkylanderPortal>"));
         assert_eq!(text.matches("<EmulatedUsbDevices>").count(), 1, "switched, not added twice");
+        assert_eq!(text.matches("<Notification>").count(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The shape Cemu 2.6 writes, cut down.
+    const CEMU_SETTINGS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n\
+        \x20   <fullscreen_menubar>false</fullscreen_menubar>\n\
+        \x20   <fullscreen>true</fullscreen>\n\
+        \x20   <Graphic>\n        <api>1</api>\n        <Notification>\n\
+        \x20           <ControllerProfiles>true</ControllerProfiles>\n\
+        \x20           <ControllerBattery>true</ControllerBattery>\n\
+        \x20       </Notification>\n    </Graphic>\n\
+        \x20   <Audio>\n        <api>0</api>\n        <TVDevice></TVDevice>\n    </Audio>\n</content>\n";
+
+    #[test]
+    fn only_the_named_setting_changes() {
+        let text = set_setting(CEMU_SETTINGS, &[], "fullscreen", "false");
+        assert!(text.contains("<fullscreen_menubar>false</fullscreen_menubar>"));
+        assert!(text.contains("<fullscreen>false</fullscreen>"));
+        let text = set_setting(&text, &["Graphic", "Notification"], "ControllerProfiles", "false");
+        assert!(text.contains("<ControllerProfiles>false</ControllerProfiles>"));
+        assert!(text.contains("<ControllerBattery>true</ControllerBattery>"), "battery warnings stay");
+        assert_eq!(setting(&text, &["Audio"], "api").as_deref(), Some("0"), "the sound api, not the graphics one");
+        assert_eq!(setting(&text, &["Audio"], "TVDevice").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn a_sound_device_the_user_chose_is_kept() {
+        let dir = scratch("sound");
+        let file = dir.join("settings.xml");
+        let chosen = CEMU_SETTINGS.replace("<TVDevice></TVDevice>", "<TVDevice>{0.0.0.00000000}.{abc}</TVDevice>");
+        std::fs::write(&file, &chosen).unwrap();
+        tune_settings(&file, true).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("<TVDevice>{0.0.0.00000000}.{abc}</TVDevice>"), "{text}");
+
+        std::fs::write(&file, CEMU_SETTINGS).unwrap();
+        tune_settings(&file, true).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("<TVDevice>default</TVDevice>"), "an empty one is filled in");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

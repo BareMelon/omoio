@@ -10,14 +10,15 @@
 
 use crate::core::figures::Character;
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, GetClassNameW, GetDlgItem, GetMenu, GetMenuItemCount, GetMenuItemID,
     GetMenuStringW, GetParent, GetSubMenu, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, SendMessageTimeoutW,
-    SetWindowPos, HMENU, MF_BYPOSITION, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE,
-    WM_COMMAND, WM_GETTEXT, WM_SETTEXT,
+    SetMenu, SetWindowPos, HMENU, MF_BYPOSITION, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    WM_CLOSE, WM_COMMAND, WM_GETTEXT, WM_SETTEXT,
 };
 
 /// How many figures Cemu's portal holds (`MAX_SKYLANDERS`).
@@ -172,6 +173,40 @@ fn menu_command(menu: HMENU, wanted: &str) -> Option<u32> {
     None
 }
 
+/// The Emulated USB Devices menu command of each running Cemu, by process.
+/// Its number is read from the menu while the bar is on the window, and kept:
+/// Omoio takes the bar off the game picture, and Cemu's own fullscreen takes
+/// it off too, but either way the command still works (`MainWindow.cpp`,
+/// `SetFullScreen`, v2.6).
+static COMMANDS: Mutex<Vec<(u32, u32)>> = Mutex::new(Vec::new());
+
+fn main_window(pid: u32) -> Option<HWND> {
+    windows_of(pid)
+        .into_iter()
+        .find(|&w| !unsafe { GetMenu(w) }.is_invalid() || text(w).starts_with("Cemu"))
+}
+
+/// Learns the portal command from Cemu's menu bar, then takes the bar off the
+/// window so it never shows over the game. Called while the game runs, since
+/// Cemu puts the bar back each time it leaves its own fullscreen.
+pub fn tidy(pid: u32) {
+    let Some(main) = main_window(pid) else {
+        return;
+    };
+    let menu = unsafe { GetMenu(main) };
+    if menu.is_invalid() {
+        return;
+    }
+    let Some(command) = menu_command(menu, WINDOW) else {
+        return;
+    };
+    let mut known = COMMANDS.lock().unwrap();
+    known.retain(|&(other, _)| other != pid);
+    known.push((pid, command));
+    drop(known);
+    let _ = unsafe { SetMenu(main, None) };
+}
+
 /// The Emulated USB Devices window, opened if it is not already, and put out
 /// of sight.
 fn open(pid: u32) -> Result<HWND, String> {
@@ -179,12 +214,15 @@ fn open(pid: u32) -> Result<HWND, String> {
         out_of_sight(window);
         return Ok(window);
     }
-    let main = windows_of(pid)
-        .into_iter()
-        .find(|&w| !unsafe { GetMenu(w) }.is_invalid())
-        .ok_or("Cemu isn't answering. Try again once the game has started.")?;
-    let command = menu_command(unsafe { GetMenu(main) }, WINDOW)
-        .ok_or("This Cemu has no Emulated USB Devices window.")?;
+    tidy(pid);
+    let main = main_window(pid).ok_or("Cemu isn't answering. Try again once the game has started.")?;
+    let command = COMMANDS
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|&&(known, _)| known == pid)
+        .map(|&(_, command)| command)
+        .ok_or("Cemu's portal isn't ready yet. Try again in a moment.")?;
     let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(command as usize), LPARAM(0)) };
     let window = wait_for(pid, |w| text(w) == WINDOW).ok_or("Cemu's portal didn't open. Try again.")?;
     out_of_sight(window);

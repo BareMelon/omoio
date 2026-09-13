@@ -21,14 +21,16 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 /// The Wii U's buttons with the place each sits, in the order of the
-/// GamePad's `ButtonId`, which counts from 1. Nintendo's A is the right-hand
-/// face button and B the bottom one, which is also where Cemu's own XInput
-/// layout puts them (`VPADController.cpp`, `ProController.cpp`).
+/// GamePad's `ButtonId`, which counts from 1. A is what confirms, so it goes
+/// where the pad being used confirms: the bottom face button, with B on the
+/// right and X and Y where an Xbox pad prints them. Placing them the way
+/// Nintendo's pads do, as Cemu's own XInput layout does, put confirm on the
+/// Xbox B button (tried in Swap Force, 13 September 2026).
 pub const WII_U: [(&str, &str); 24] = [
-    ("East", "A"),
-    ("South", "B"),
-    ("North", "X"),
-    ("West", "Y"),
+    ("South", "A"),
+    ("East", "B"),
+    ("West", "X"),
+    ("North", "Y"),
     ("LB", "L"),
     ("RB", "R"),
     ("LT", "ZL"),
@@ -237,7 +239,7 @@ mod tests {
         assert!(one.contains("<type>Wii U GamePad</type>"));
         assert!(one.contains("<api>XInput</api>"));
         assert!(one.contains("<uuid>0</uuid>"));
-        assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A is the right button");
+        assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A is the bottom button");
 
         let two = profile(1, &Player::on(xinput(2)));
         assert!(two.contains("<type>Wii U Pro Controller</type>"));
@@ -253,7 +255,7 @@ mod tests {
             ("South".to_string(), "East".to_string()),
         ]);
         let text = profile(0, &Player::with_buttons(xinput(1), buttons));
-        assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A now on the bottom button");
+        assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A now on the right button");
     }
 
     #[test]

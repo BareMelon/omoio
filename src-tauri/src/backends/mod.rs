@@ -121,6 +121,10 @@ pub trait EmulatorBackend: Sync {
         None
     }
 
+    /// Called again and again while a game runs, for anything the emulator
+    /// puts on its window that doesn't belong over the game.
+    fn tidy_window(&self, _pid: u32) {}
+
     /// Every title this console's compatibility list knows, or `None` until
     /// the list has been downloaded.
     fn catalogue(&self, app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>>;
