@@ -233,6 +233,14 @@ body {
   color: var(--go);
 }
 
+.portal-item.picked {
+  border-color: var(--brand-lit);
+}
+
+.portal-item.picked .portal-note {
+  color: var(--brand-text);
+}
+
 .portal-quiet {
   font-size: 16px;
   color: var(--mute);

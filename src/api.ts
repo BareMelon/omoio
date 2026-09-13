@@ -698,6 +698,8 @@ export interface Character {
 export interface Offer extends Character {
   element: FigureElement | null;
   kind: FigureKind;
+  /// A Swap Force swapper is two figures, a top and a bottom.
+  half: "top" | "bottom" | null;
 }
 
 export function figureCharacters(): Promise<Offer[]> {

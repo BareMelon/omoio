@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, EnumWindows, GetClassNameW, GetDlgItem, GetMenu, GetMenuItemCount, GetMenuItemID,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetDlgCtrlID, GetDlgItem, GetMenu, GetMenuItemCount, GetMenuItemID,
     GetMenuStringW, GetParent, GetSubMenu, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, SendMessageTimeoutW,
     SetMenu, SetWindowPos, HMENU, MF_BYPOSITION, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
     WM_CLOSE, WM_COMMAND, WM_GETTEXT, WM_SETTEXT,
@@ -42,13 +42,21 @@ const CB_GETITEMDATA: u32 = 0x0150;
 
 const LOOKS_DIFFERENT: &str = "Cemu's portal looks different from what Omoio knows.";
 
-/// A button press, sent as the button itself would get it.
-const BM_CLICK: u32 = 0x00F5;
-/// The file name box and the Open button in a Windows file window.
-const FILE_NAME_BOX: i32 = 0x047C;
+/// What a button tells its window when it is clicked, in the high half of a
+/// `WM_COMMAND`'s first number.
+const BN_CLICKED: usize = 0;
+/// The file name box in a Windows file window: in an open window an Edit
+/// inside the list numbered `FILE_NAME_LIST`, in a save window an Edit
+/// numbered `FILE_NAME_EDIT` itself (Cemu's "Create Skylander file", seen 13
+/// September 2026). Any other Edit, such as the search box, would take the
+/// name and be ignored, and Cemu would save under its own name somewhere else.
+const FILE_NAME_LIST: i32 = 0x047C;
+const FILE_NAME_EDIT: i32 = 1001;
+/// The Open or Save button.
 const OPEN_BUTTON: i32 = 1;
 
 const WAIT: Duration = Duration::from_secs(5);
+const SAVE_WAIT: Duration = Duration::from_secs(15);
 
 fn text(window: HWND) -> String {
     let mut buffer = [0u16; 512];
@@ -84,16 +92,40 @@ fn set_text(window: HWND, value: &str) {
     };
 }
 
+/// Selecting all of a box's text, and one typed character.
+const EM_SETSEL: u32 = 0x00B1;
+const WM_CHAR: u32 = 0x0102;
+
+/// Types `value` into a box as keys would, replacing what it held. Setting
+/// the text outright shows it, but a save window never hears of the change
+/// and saves under the name it had before (seen 13 September 2026). The
+/// characters are posted, so they arrive in order before anything posted
+/// after them.
+fn type_into(field: HWND, value: &str) {
+    let _ = unsafe { PostMessageW(Some(field), EM_SETSEL, WPARAM(0), LPARAM(-1)) };
+    for unit in value.encode_utf16() {
+        let _ = unsafe { PostMessageW(Some(field), WM_CHAR, WPARAM(usize::from(unit)), LPARAM(1)) };
+    }
+}
+
 fn class(window: HWND) -> String {
     let mut buffer = [0u16; 128];
     let length = unsafe { GetClassNameW(window, &mut buffer) };
     String::from_utf16_lossy(&buffer[..length.max(0) as usize])
 }
 
-fn press(window: HWND) {
+/// Presses a button by telling its window the button was clicked, which is
+/// what the button itself does after a real click. A simulated mouse click
+/// (`BM_CLICK`) only counts in the window in front, and Cemu's windows are
+/// kept out of sight behind the game: in the figure maker it did nothing.
+fn press(button: HWND) {
+    let Ok(parent) = (unsafe { GetParent(button) }) else {
+        return;
+    };
+    let id = unsafe { GetDlgCtrlID(button) } as usize & 0xFFFF;
     // Posted rather than sent: the press can open a window that waits for an
     // answer, and waiting on it here would wait forever.
-    let _ = unsafe { PostMessageW(Some(window), BM_CLICK, WPARAM(0), LPARAM(0)) };
+    let _ = unsafe { PostMessageW(Some(parent), WM_COMMAND, WPARAM((BN_CLICKED << 16) | id), LPARAM(button.0 as isize)) };
 }
 
 fn close(window: HWND) {
@@ -141,7 +173,11 @@ fn windows_of(pid: u32) -> Vec<HWND> {
 }
 
 fn wait_for(pid: u32, found: impl Fn(HWND) -> bool) -> Option<HWND> {
-    let until = Instant::now() + WAIT;
+    wait_up_to(WAIT, pid, found)
+}
+
+fn wait_up_to(limit: Duration, pid: u32, found: impl Fn(HWND) -> bool) -> Option<HWND> {
+    let until = Instant::now() + limit;
     while Instant::now() < until {
         if let Some(window) = windows_of(pid).into_iter().find(|&w| found(w)) {
             return Some(window);
@@ -322,12 +358,17 @@ pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
 fn finish_file_window(pid: u32, picker: HWND, file: &Path) -> Result<(), String> {
     const DIFFERENT: &str = "Cemu's file window looks different from what Omoio knows.";
     out_of_sight(picker);
-    let name_box = unsafe { GetDlgItem(Some(picker), FILE_NAME_BOX) }
-        .ok()
-        .and_then(|combo| children(combo).into_iter().find(|&c| class(c) == "Edit"))
-        .or_else(|| children(picker).into_iter().find(|&c| class(c) == "Edit"))
+    let name_box = children(picker)
+        .into_iter()
+        .filter(|&c| class(c) == "Edit")
+        .find(|&c| {
+            let own = unsafe { GetDlgCtrlID(c) };
+            let inside = unsafe { GetParent(c) }.map_or(0, |list| unsafe { GetDlgCtrlID(list) });
+            own == FILE_NAME_EDIT || inside == FILE_NAME_LIST
+        })
         .ok_or(DIFFERENT)?;
-    set_text(name_box, &file.to_string_lossy());
+    type_into(name_box, &file.to_string_lossy());
+    std::thread::sleep(Duration::from_millis(400));
     let button = unsafe { GetDlgItem(Some(picker), OPEN_BUTTON) }.map_err(|_| DIFFERENT.to_string())?;
     press(button);
     let until = Instant::now() + WAIT;
@@ -435,8 +476,24 @@ pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Resu
     };
     press(make);
 
-    let saver = wait_for(pid, |w| class(w) == "#32770" && text(w) == SAVE_FIGURE)
-        .ok_or("Cemu didn't ask where to keep the figure. Try again.")?;
+    // Windows' save window can take several seconds the first time a program
+    // opens one. Anything else Cemu puts up instead is an error of its own,
+    // and the figure maker is closed either way: left open it is modal, and
+    // every later try would find the portal window unable to answer.
+    let saver = wait_up_to(SAVE_WAIT, pid, |w| {
+        class(w) == "#32770" && (text(w) == SAVE_FIGURE || !matches!(text(w).as_str(), CREATOR | WINDOW))
+    });
+    let Some(saver) = saver.filter(|&w| text(w) == SAVE_FIGURE) else {
+        let said = dismiss_message(pid, &[CREATOR, WINDOW, SAVE_FIGURE]);
+        std::thread::sleep(Duration::from_millis(300));
+        cancel_creator(creator);
+        std::thread::sleep(Duration::from_millis(300));
+        close(window);
+        return Err(match said {
+            Some(said) if !said.is_empty() => format!("Cemu couldn't make that figure: {said}"),
+            _ => "Cemu didn't ask where to keep the figure. Try again.".to_string(),
+        });
+    };
     finish_file_window(pid, saver, file)?;
     let until = Instant::now() + WAIT;
     while Instant::now() < until && windows_of(pid).contains(&creator) {

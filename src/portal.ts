@@ -99,6 +99,8 @@ interface Entry {
   kind: FigureKind | null;
   figure?: Figure;
   offer?: Offer;
+  /// A Swap Force swapper: both halves of one character.
+  swap?: { top: Offer; bottom: Offer };
 }
 
 interface Tab {
@@ -124,6 +126,8 @@ let zone: "grid" | "portal" = "grid";
 let at = 0;
 let chip = 0;
 let status = "";
+/// The top half picked for a swapper, while waiting for its bottom.
+let pickedTop: { name: string; top: Offer } | null = null;
 
 function placed(): { name: string; slot: number }[] {
   return onPortal.map((name, slot) => ({ name, slot })).filter((figure) => figure.name);
@@ -137,6 +141,21 @@ function portalName(entry: Entry): string {
   return entry.offer?.name ?? madeAs?.name ?? entry.name;
 }
 
+/// A swapper half's character, without the "(Top)" or "(Bottom)" the
+/// emulator's list adds.
+function baseName(name: string): string {
+  return name.replace(/\s*\((Top|Bottom)\)\s*$/i, "").trim();
+}
+
+function savedFor(offer: Offer): Figure | undefined {
+  return mine.find((figure) => figure.id === offer.id && figure.variant === offer.variant);
+}
+
+function isOn(entry: Entry): boolean {
+  if (entry.swap) return [entry.swap.top, entry.swap.bottom].some((half) => onPortal.includes(half.name));
+  return onPortal.includes(portalName(entry));
+}
+
 function buildTabs() {
   const kept = tabs[tab]?.label;
   const byName = (a: Entry, b: Entry) => a.name.localeCompare(b.name);
@@ -145,9 +164,9 @@ function buildTabs() {
     element: offer.element,
     kind: offer.kind,
     offer,
-    figure: mine.find((figure) => figure.id === offer.id && figure.variant === offer.variant),
+    figure: savedFor(offer),
   });
-  const characters = offers.filter((offer) => offer.kind === "character");
+  const characters = offers.filter((offer) => offer.kind === "character" && !offer.half);
   const next: Tab[] = [
     {
       label: "Saved",
@@ -160,6 +179,15 @@ function buildTabs() {
   }
   const others = characters.filter((offer) => !offer.element).map(entry).sort(byName);
   if (others.length > 0) next.push({ label: "Other", entries: others });
+  const halves = offers.filter((offer) => offer.half);
+  const swappers: Entry[] = halves
+    .filter((offer) => offer.half === "top")
+    .flatMap((top) => {
+      const bottom = halves.find((offer) => offer.half === "bottom" && baseName(offer.name) === baseName(top.name));
+      return bottom ? [{ name: baseName(top.name), element: top.element, kind: top.kind, swap: { top, bottom } }] : [];
+    })
+    .sort(byName);
+  if (swappers.length > 0) next.push({ label: "Swappers", entries: swappers });
   for (const [kind, label] of KINDS) {
     const entries = offers.filter((offer) => offer.kind === kind).map(entry).sort(byName);
     if (entries.length > 0) next.push({ label, entries });
@@ -247,11 +275,15 @@ function renderBody(): HTMLElement {
   }
   const grid = node("div", "portal-grid");
   current.entries.forEach((entry, index) => {
-    const on = onPortal.includes(portalName(entry));
-    const tile = node("button", `portal-item${zone === "grid" && index === at ? " sel" : ""}${on ? " on" : ""}`);
+    const on = isOn(entry);
+    const chosen = Boolean(entry.swap) && pickedTop?.name === entry.name;
+    const tile = node(
+      "button",
+      `portal-item${zone === "grid" && index === at ? " sel" : ""}${on ? " on" : ""}${chosen ? " picked" : ""}`
+    );
     const words = node("span", "portal-words");
     words.appendChild(node("span", "portal-name", entry.name));
-    const note = on ? "On the portal" : entry.offer && entry.figure ? "Saved" : "";
+    const note = chosen ? "Top picked" : on ? "On the portal" : entry.offer && entry.figure ? "Saved" : "";
     if (note) words.appendChild(node("span", "portal-note", note));
     tile.append(mark(entry.element, entry.kind), words);
     tile.onclick = () => {
@@ -274,10 +306,10 @@ function renderFoot(): HTMLElement {
   if (zone === "portal") {
     hints.push(["South", "Take off"]);
   } else {
-    hints.push(["South", "Put on"]);
-    if (entry && onPortal.includes(portalName(entry))) hints.push(["West", "Take off"]);
+    hints.push(["South", entry?.swap ? (pickedTop ? "Pick bottom" : "Pick top") : "Put on"]);
+    if (entry && isOn(entry)) hints.push(["West", "Take off"]);
   }
-  hints.push(["East", "Close"]);
+  hints.push(["East", pickedTop ? "Back" : "Close"]);
   const row = node("div", "portal-hints");
   for (const [input, words] of hints) {
     const hint = node("span", "portal-hint");
@@ -315,6 +347,7 @@ function showTab(index: number) {
   tab = (index + tabs.length) % tabs.length;
   at = 0;
   zone = "grid";
+  pickedTop = null;
   render();
 }
 
@@ -379,8 +412,50 @@ async function takeOff() {
     return;
   }
   const entry = tabs[tab]?.entries[at];
-  const slot = entry ? onPortal.indexOf(portalName(entry)) : -1;
-  if (slot >= 0) await takeOffSlot(slot, onPortal[slot]);
+  if (!entry) return;
+  const names = entry.swap ? [entry.swap.top.name, entry.swap.bottom.name] : [portalName(entry)];
+  for (const name of names) {
+    const slot = onPortal.indexOf(name);
+    if (slot >= 0) await takeOffSlot(slot, name);
+  }
+}
+
+/// Puts one figure on the portal in the first free slot: the saved one when
+/// there is one, otherwise a new one the emulator makes. Says whether it is
+/// on now.
+async function putOn(name: string, figure: Figure | undefined, offer: Offer | undefined): Promise<boolean> {
+  const slot = freeSlot();
+  if (slot < 0) {
+    say("The portal is full. Take a figure off first.");
+    return false;
+  }
+  if (figure) {
+    await change(
+      `Putting ${name} on the portal…`,
+      () => portalLoad(slot, figure.path),
+      (names) => `${names[slot] || name} is on the portal.`
+    );
+  } else if (offer) {
+    await change(
+      `Making ${offer.name}…`,
+      () => portalCreate(slot, offer),
+      (names) => `${names[slot] || offer.name} is on the portal.`
+    );
+  }
+  return Boolean(onPortal[slot]);
+}
+
+/// Both halves of a swapper, one after the other, each the saved figure when
+/// there is one. The top and bottom may be of different characters.
+async function putSwapper(top: Offer, bottom: Offer) {
+  const halves = [top, bottom].filter((half) => !onPortal.includes(half.name));
+  const free = onPortal.length === 0 ? halves.length : onPortal.filter((name) => !name).length;
+  if (free < halves.length) return say("A swapper needs two free places on the portal. Take a figure off first.");
+  for (const half of halves) {
+    if (!(await putOn(half.name, savedFor(half), half))) return;
+  }
+  const same = baseName(top.name) === baseName(bottom.name);
+  say(`${same ? baseName(top.name) : `${baseName(top.name)} and ${baseName(bottom.name)}`} is on the portal.`);
 }
 
 /// Puts the selected figure on the portal: the saved one when there is one,
@@ -390,24 +465,18 @@ async function choose() {
   if (zone === "portal") return takeOff();
   const entry = tabs[tab]?.entries[at];
   if (!entry || busy) return;
+  if (entry.swap) {
+    if (!pickedTop) {
+      pickedTop = { name: entry.name, top: entry.swap.top };
+      return say(`Top: ${entry.name}. Now pick the bottom.`);
+    }
+    const top = pickedTop.top;
+    pickedTop = null;
+    return putSwapper(top, entry.swap.bottom);
+  }
   const name = portalName(entry);
   if (onPortal.includes(name)) return say(`${name} is already on the portal.`);
-  const slot = freeSlot();
-  if (slot < 0) return say("The portal is full. Take a figure off first.");
-  const { figure, offer } = entry;
-  if (figure) {
-    await change(
-      `Putting ${entry.name} on the portal…`,
-      () => portalLoad(slot, figure.path),
-      (names) => `${names[slot] || entry.name} is on the portal.`
-    );
-  } else if (offer) {
-    await change(
-      `Making ${offer.name}…`,
-      () => portalCreate(slot, offer),
-      (names) => `${names[slot] || offer.name} is on the portal.`
-    );
-  }
+  await putOn(entry.name, entry.figure, entry.offer);
 }
 
 /// The characters come from the emulator's own figure maker the first time
@@ -472,7 +541,11 @@ function press(input: string) {
   if (move) return zone === "portal" ? movePortal(move) : moveGrid(move);
   if (input === "LB") return showTab(tab - 1);
   if (input === "RB") return showTab(tab + 1);
-  if (input === "East") return void closePortalMenu();
+  if (input === "East") {
+    if (!pickedTop) return void closePortalMenu();
+    pickedTop = null;
+    return say("");
+  }
   if (busy) return;
   if (input === "South") void choose();
   else if (input === "West") void takeOff();

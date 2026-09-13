@@ -221,6 +221,25 @@ impl Character {
     }
 }
 
+/// Which half of a Swap Force swapper a figure is. A swapper is two figures,
+/// a top and a bottom, each with its own id: bottoms from 1000, tops from
+/// 2000, in the same order. Both go on the portal together, and a top of one
+/// character works with the bottom of another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Half {
+    Top,
+    Bottom,
+}
+
+pub fn half(id: u16) -> Option<Half> {
+    match id {
+        1000..=1999 => Some(Half::Bottom),
+        2000..=2999 => Some(Half::Top),
+        _ => None,
+    }
+}
+
 /// A character as the menu lists it, with where it belongs.
 #[derive(Debug, Clone, Serialize)]
 pub struct Offer {
@@ -228,6 +247,7 @@ pub struct Offer {
     pub character: Character,
     pub element: Option<Element>,
     pub kind: Kind,
+    pub half: Option<Half>,
 }
 
 /// The characters `game` reads, each with its element and kind. Every one
@@ -239,6 +259,7 @@ pub fn offers(characters: Vec<Character>, game: Option<Game>) -> Vec<Offer> {
         .map(|character| Offer {
             element: element(character.id),
             kind: kind(character.id),
+            half: half(character.id),
             character,
         })
         .collect()
@@ -334,6 +355,14 @@ mod tests {
         assert_eq!(game_from_title("Skylanders: Trap Team"), Some(Game::TrapTeam));
         assert_eq!(game_from_title("Skylanders SuperChargers"), Some(Game::SuperChargers));
         assert_eq!(game_from_title("LittleBigPlanet 3"), None);
+    }
+
+    #[test]
+    fn swap_force_halves_are_told_apart() {
+        assert_eq!(half(1000), Some(Half::Bottom)); // Boom Jet (Bottom)
+        assert_eq!(half(2015), Some(Half::Top)); // Wash Buckler (Top)
+        assert_eq!(half(3000), None); // Scratch, a whole figure
+        assert_eq!(half(16), None); // Spyro
     }
 
     #[test]
