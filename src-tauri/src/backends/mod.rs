@@ -126,6 +126,13 @@ pub trait EmulatorBackend: Sync {
     /// puts on its window that doesn't belong over the game.
     fn tidy_window(&self, _pid: u32) {}
 
+    /// Stops the running game hearing the pad while one of Omoio's menus is
+    /// over it, or lets it hear again. An emulator that needs nothing done,
+    /// or can't be told, leaves this alone.
+    fn hush(&self, _pid: u32, _hushed: bool) -> Result<(), String> {
+        Ok(())
+    }
+
     /// The emulator's own settings for one game, for the settings sheet.
     fn game_settings(&self, _app: &AppHandle, _game: &Game) -> Result<GameSettings, String> {
         Err("This emulator has no settings of its own for a game.".to_string())

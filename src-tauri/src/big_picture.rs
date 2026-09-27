@@ -61,6 +61,7 @@ pub fn set(app: &AppHandle, on: bool) -> Result<(), String> {
         crate::session::place(&window, &session);
         session.show_game(false);
     }
+    crate::session::quiet_game(app);
     tell(app);
     Ok(())
 }
@@ -76,6 +77,7 @@ pub fn resume(app: &AppHandle) {
         crate::session::place(&window, &session);
     }
     session.show_game(true);
+    crate::session::quiet_game(app);
     tell(app);
 }
 

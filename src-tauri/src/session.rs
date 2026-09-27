@@ -270,6 +270,34 @@ pub fn watch(app: AppHandle, pid: u32) {
     });
 }
 
+/// Keeps the running game from hearing the pad while one of Omoio's menus is
+/// over it: the portal menu, or Big Picture with the game hidden behind it.
+/// Worked out afresh from what is showing, one change at a time, so a menu
+/// closing just as another opens never leaves the game listening. Omoio's
+/// window takes the keyboard back afterwards: the emulator's own window for
+/// this can take it, and keys typed there would change its settings.
+pub fn quiet_game(app: &AppHandle) {
+    static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let _turn = ONE_AT_A_TIME.lock().unwrap();
+        let session = app.state::<Session>();
+        let (Some(pid), Some(playing)) = (session.pid(), session.playing()) else {
+            return;
+        };
+        let Some(backend) = crate::backends::for_console(playing.console) else {
+            return;
+        };
+        let portal = crate::portal_menu::showing(&app);
+        let over = portal || session.is_hidden();
+        if backend.hush(pid, over).is_ok() && over {
+            if let Some(window) = app.get_webview_window(if portal { "portal" } else { "main" }) {
+                let _ = window.set_focus();
+            }
+        }
+    });
+}
+
 /// Fills in a game's version from the emulator's log when the game's own
 /// files couldn't give one, as with an encrypted Wii U disc image.
 fn learn_version(app: &AppHandle, title_id: &str, version: String) {

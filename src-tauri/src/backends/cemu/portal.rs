@@ -7,6 +7,9 @@
 //! the mouse, and each window is put out of sight as it opens so it never
 //! covers the game. How this was proven is in docs/what-we-verified.md,
 //! "Skylanders".
+//!
+//! The same way, through Cemu's input settings window, it keeps the game from
+//! hearing the pad while the portal menu or Big Picture is over it.
 
 use crate::core::figures::Character;
 use std::path::Path;
@@ -27,6 +30,10 @@ pub const SLOTS: usize = 16;
 /// The window, its menu item and its file window, as Cemu 2.6 titles them.
 const WINDOW: &str = "Emulated USB Devices";
 const OPEN_FIGURE: &str = "Open Skylander dump";
+
+/// Cemu's input settings window and its menu item, both titled this
+/// (`InputSettings2.cpp`, `MainWindow.cpp`, v2.6).
+const INPUT_SETTINGS: &str = "Input settings";
 
 /// Cemu's figure maker and the save window it opens
 /// (`EmulatedUSBDeviceFrame.cpp`, `CreateSkylanderDialog`).
@@ -210,22 +217,37 @@ fn menu_command(menu: HMENU, wanted: &str) -> Option<u32> {
     None
 }
 
-/// The Emulated USB Devices menu command of each running Cemu, by process.
-/// Its number is read from the menu while the bar is on the window, and kept:
-/// Omoio takes the bar off the game picture, and Cemu's own fullscreen takes
-/// it off too, but either way the command still works (`MainWindow.cpp`,
-/// `SetFullScreen`, v2.6).
-static COMMANDS: Mutex<Vec<(u32, u32)>> = Mutex::new(Vec::new());
+/// The menu commands Omoio uses of each running Cemu, by process and menu
+/// text. Their numbers are read from the menu while the bar is on the window,
+/// and kept: Omoio takes the bar off the game picture, and Cemu's own
+/// fullscreen takes it off too, but either way the commands still work
+/// (`MainWindow.cpp`, `SetFullScreen`, v2.6).
+static COMMANDS: Mutex<Vec<(u32, &'static str, u32)>> = Mutex::new(Vec::new());
 
-fn main_window(pid: u32) -> Option<HWND> {
-    windows_of(pid)
-        .into_iter()
-        .find(|&w| !unsafe { GetMenu(w) }.is_invalid() || text(w).starts_with("Cemu"))
+fn command(pid: u32, label: &str) -> Option<u32> {
+    COMMANDS
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|&&(known, item, _)| known == pid && item == label)
+        .map(|&(_, _, command)| command)
 }
 
-/// Learns the portal command from Cemu's menu bar, then takes the bar off the
-/// window so it never shows over the game. Called while the game runs, since
-/// Cemu puts the bar back each time it leaves its own fullscreen.
+/// Cemu's main window, found whether or not it is showing: Big Picture hides
+/// the game's window while it is up.
+fn main_window(pid: u32) -> Option<HWND> {
+    let mut all: Vec<HWND> = Vec::new();
+    let _ = unsafe { EnumWindows(Some(collect), LPARAM(&mut all as *mut Vec<HWND> as isize)) };
+    all.into_iter().find(|&window| {
+        let mut owner = 0u32;
+        unsafe { GetWindowThreadProcessId(window, Some(&mut owner)) };
+        owner == pid && (!unsafe { GetMenu(window) }.is_invalid() || text(window).starts_with("Cemu"))
+    })
+}
+
+/// Learns the commands Omoio uses from Cemu's menu bar, then takes the bar off
+/// the window so it never shows over the game. Called while the game runs,
+/// since Cemu puts the bar back each time it leaves its own fullscreen.
 pub fn tidy(pid: u32) {
     let Some(main) = main_window(pid) else {
         return;
@@ -234,14 +256,55 @@ pub fn tidy(pid: u32) {
     if menu.is_invalid() {
         return;
     }
-    let Some(command) = menu_command(menu, WINDOW) else {
+    let found: Vec<(&'static str, u32)> = [WINDOW, INPUT_SETTINGS]
+        .into_iter()
+        .filter_map(|label| menu_command(menu, label).map(|command| (label, command)))
+        .collect();
+    if found.is_empty() {
         return;
-    };
+    }
     let mut known = COMMANDS.lock().unwrap();
-    known.retain(|&(other, _)| other != pid);
-    known.push((pid, command));
+    known.retain(|&(other, _, _)| other != pid);
+    known.extend(found.into_iter().map(|(label, command)| (pid, label, command)));
     drop(known);
     let _ = unsafe { SetMenu(main, None) };
+}
+
+/// Stops the game hearing the pad, or lets it hear again.
+///
+/// Cemu reads no game input while its own input settings window exists:
+/// `g_inputConfigWindowHasFocus` is set in `InputSettings2`'s constructor and
+/// cleared in its destructor, and `vpad.cpp` and `padscore.cpp` skip every
+/// read while it is set (v2.6). So the window is opened out of sight while an
+/// Omoio menu is over the game, and closed after. It is modal and disables
+/// Cemu's main window, but a posted menu command still opens Emulated USB
+/// Devices, so the portal keeps working (tried 27 September 2026).
+pub fn hush(pid: u32, hushed: bool) -> Result<(), String> {
+    let open_now = windows_of(pid).into_iter().find(|&w| text(w) == INPUT_SETTINGS);
+    if !hushed {
+        if let Some(window) = open_now {
+            close(window);
+        }
+        return Ok(());
+    }
+    if let Some(window) = open_now {
+        out_of_sight(window);
+        return Ok(());
+    }
+    tidy(pid);
+    let main = main_window(pid).ok_or("Cemu isn't answering.")?;
+    let input = command(pid, INPUT_SETTINGS).ok_or("Cemu isn't ready yet.")?;
+    let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(input as usize), LPARAM(0)) };
+    // Looked for often, so it is out of sight before it can be seen.
+    let until = Instant::now() + WAIT;
+    while Instant::now() < until {
+        if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == INPUT_SETTINGS) {
+            out_of_sight(window);
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    Err("Cemu's input settings didn't open.".to_string())
 }
 
 /// The Emulated USB Devices window, opened if it is not already, and put out
@@ -253,14 +316,8 @@ fn open(pid: u32) -> Result<HWND, String> {
     }
     tidy(pid);
     let main = main_window(pid).ok_or("Cemu isn't answering. Try again once the game has started.")?;
-    let command = COMMANDS
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|&&(known, _)| known == pid)
-        .map(|&(_, command)| command)
-        .ok_or("Cemu's portal isn't ready yet. Try again in a moment.")?;
-    let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(command as usize), LPARAM(0)) };
+    let devices = command(pid, WINDOW).ok_or("Cemu's portal isn't ready yet. Try again in a moment.")?;
+    let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(devices as usize), LPARAM(0)) };
     let window = wait_for(pid, |w| text(w) == WINDOW).ok_or("Cemu's portal didn't open. Try again.")?;
     out_of_sight(window);
     Ok(window)

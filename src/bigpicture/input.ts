@@ -1,4 +1,3 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { padsHeld } from "../api";
 
 export type Move = "up" | "down" | "left" | "right";
@@ -41,28 +40,16 @@ const KEYS: Record<string, Action> = {
 const REPEAT_AFTER = 380;
 const REPEAT_EVERY = 110;
 
-let windowFocused = true;
-
-/// Whether Omoio's window is the one in front. The pads are read by Omoio
-/// itself rather than through the page, so a pad would otherwise keep
-/// driving Big Picture while the user is in another program.
-export function inFront(): boolean {
-  return windowFocused;
-}
-
 /// Turns the keyboard and every pad into actions, while `active` says Big
-/// Picture is the thing being used. `pressed` hears each press as it goes
-/// down and `released` as it comes up, for the feel of a button under the
-/// thumb.
+/// Picture is the thing being used. `pressed` hears the bottom face button
+/// go down and come up, for the feel of a button under the thumb. The pads
+/// report nothing while another program is in front, so that needs no
+/// check here.
 export function listen(
   act: (action: Action, source: Source) => void,
   active: () => boolean,
   pressed: (down: boolean) => void
 ): void {
-  const win = getCurrentWindow();
-  void win.isFocused().then((focused) => (windowFocused = focused));
-  void win.onFocusChanged(({ payload }) => (windowFocused = payload));
-
   document.addEventListener("keydown", (event) => {
     if (!active() || event.altKey || event.ctrlKey || event.metaKey) return;
     const action = KEYS[event.key];
@@ -89,14 +76,14 @@ export function listen(
 
   window.setInterval(async () => {
     if (reading) return;
-    if (!active() || !windowFocused) {
+    if (!active()) {
       fresh = true;
       return;
     }
     reading = true;
     try {
       const now = new Set(await padsHeld().catch((): string[] => []));
-      if (!active() || !windowFocused) return;
+      if (!active()) return;
       if (fresh) {
         // Whatever is held as Big Picture comes up, such as the two buttons
         // that brought it, is not a press.

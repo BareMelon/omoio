@@ -645,12 +645,12 @@ impl super::EmulatorBackend for Cemu {
         // Starting games, the Skylanders portal through Cemu's own window,
         // and Cemu's settings for a game. Nothing else is offered until it
         // has been checked against Cemu the way RPCS3's was. Cemu reads the
-        // pad whatever is in front: v2.6 stops only while its own input
-        // settings window has focus (`vpad.cpp`, `padscore.cpp`), and its SDL
-        // input allows background events. So it is not quiet behind Omoio.
+        // pad whatever is in front, so Omoio keeps its input settings window
+        // open while a menu is over the game, which stops that (`hush`).
         Features {
             portal: true,
             settings: true,
+            quiet_behind: true,
             ..Features::default()
         }
     }
@@ -690,6 +690,10 @@ impl super::EmulatorBackend for Cemu {
 
     fn tidy_window(&self, pid: u32) {
         portal::tidy(pid);
+    }
+
+    fn hush(&self, pid: u32, hushed: bool) -> Result<(), String> {
+        portal::hush(pid, hushed)
     }
 
     fn game_settings(&self, app: &AppHandle, game: &Game) -> Result<crate::core::game_settings::GameSettings, String> {

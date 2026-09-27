@@ -228,19 +228,22 @@ fn tell(app: &AppHandle, open: bool) {
     let _ = app.emit_to(LABEL, "portal-menu", MenuState { open, family: family() });
 }
 
-fn is_open(app: &AppHandle) -> bool {
+/// Whether the menu is on the screen.
+pub fn showing(app: &AppHandle) -> bool {
     app.get_webview_window(LABEL)
         .and_then(|window| window.is_visible().ok())
         .unwrap_or(false)
 }
 
 /// Shows the menu over the whole screen Omoio is on. Made the first time and
-/// kept, hidden, after that, so opening it again is instant.
+/// kept, hidden, after that, so opening it again is instant. The game stops
+/// hearing the pad while it is up.
 fn open(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         window.show().map_err(|e| e.to_string())?;
         let _ = window.set_focus();
         tell(app, true);
+        crate::session::quiet_game(app);
         return Ok(());
     }
     let main = app.get_webview_window("main").ok_or("Omoio's window isn't there.")?;
@@ -263,14 +266,16 @@ fn open(app: &AppHandle) -> Result<(), String> {
         .inner_size(size.width as f64 / scale, size.height as f64 / scale)
         .build()
         .map_err(|e| e.to_string())?;
+    crate::session::quiet_game(app);
     Ok(())
 }
 
-/// Hides the menu. The game underneath carries on.
+/// Hides the menu. The game underneath carries on, and hears the pad again.
 pub fn close(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();
         tell(app, false);
+        crate::session::quiet_game(app);
     }
 }
 
@@ -334,7 +339,7 @@ pub fn watch(app: AppHandle, pid: u32) {
                 let handle = app.clone();
                 // Windows are made and shown on the main thread.
                 let _ = app.run_on_main_thread(move || {
-                    if is_open(&handle) {
+                    if showing(&handle) {
                         close(&handle);
                     } else {
                         let _ = open(&handle);

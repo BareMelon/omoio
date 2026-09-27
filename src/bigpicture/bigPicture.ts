@@ -22,7 +22,7 @@ import {
 import { placeholderArt, tint } from "../components/art";
 import { store } from "../state";
 import { focusables, nearest, remember, revealInColumn, revealInRow } from "./focus";
-import { inFront, listen, untilLetGo, type Action, type Source } from "./input";
+import { listen, untilLetGo, type Action, type Source } from "./input";
 import { keycap } from "./keys";
 import { h, navButton, type Choice, type Kit, type Question, type Screen, type Section } from "./kit";
 import { gameOptionsScreen, patchesScreen, savesScreen, settingsScreen, type Category } from "./settings";
@@ -1163,7 +1163,7 @@ export function renderBigPicture(): HTMLElement {
     if (showing) tick();
   }, 10_000);
   window.setInterval(() => {
-    if (showing && inFront()) void readPads();
+    if (showing) void readPads();
   }, 4000);
 
   let wasSuspended = false;

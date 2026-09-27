@@ -1526,9 +1526,21 @@ pub fn portal_menu_family() -> String {
     crate::portal_menu::family()
 }
 
-/// Everything held on any pad, for the menu, which any player may use.
+/// Everything held on any pad, for a menu any player may use. Nothing while
+/// another program is in front, so Omoio's menus never act on presses meant
+/// for it. Asked of Windows rather than of the page's focus: the page loses
+/// focus to the web view inside it the moment the window gains it (tao sends
+/// `Focused(false)` on `WM_KILLFOCUS` when wry moves focus into WebView2),
+/// so the page almost never believes it is in front. The running game's
+/// windows count as Omoio's, since the one that keeps Cemu from hearing the
+/// pad can be in front for a moment.
 #[tauri::command]
-pub fn pads_held() -> Vec<&'static str> {
+pub fn pads_held(app: AppHandle) -> Vec<&'static str> {
+    let mut ours = vec![std::process::id()];
+    ours.extend(app.state::<Session>().pid());
+    if !crate::backends::rpcs3::overlay::front_belongs_to(&ours) {
+        return Vec::new();
+    }
     crate::pads::held_anywhere()
 }
 
