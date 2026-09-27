@@ -21,8 +21,9 @@ and DS. Things will break, and feedback is really appreciated, so open an issue.
   drive at once.
 - Games play inside Omoio's window, fullscreen with F11. You never see the
   emulator.
-- Big Picture for a TV: the whole screen, used with a controller. Press View
-  and Menu together during a game to come back to it, with the game waiting.
+- Big Picture for a TV: the whole screen, used with a controller, with each
+  game's settings, patches and saves. Press View and Menu together during a
+  game to come back to it, with the game waiting.
 - Emulators installed and kept up to date for you.
 - One controller layout for every emulator, set up by pressing buttons, for up to
   four players.
