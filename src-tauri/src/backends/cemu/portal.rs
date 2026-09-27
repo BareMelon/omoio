@@ -7,9 +7,6 @@
 //! the mouse, and each window is put out of sight as it opens so it never
 //! covers the game. How this was proven is in docs/what-we-verified.md,
 //! "Skylanders".
-//!
-//! The same way, through Cemu's input settings window, it keeps the game from
-//! hearing the pad while the portal menu or Big Picture is over it.
 
 use crate::core::figures::Character;
 use std::path::Path;
@@ -30,10 +27,6 @@ pub const SLOTS: usize = 16;
 /// The window, its menu item and its file window, as Cemu 2.6 titles them.
 const WINDOW: &str = "Emulated USB Devices";
 const OPEN_FIGURE: &str = "Open Skylander dump";
-
-/// Cemu's input settings window and its menu item, both titled this
-/// (`InputSettings2.cpp`, `MainWindow.cpp`, v2.6).
-const INPUT_SETTINGS: &str = "Input settings";
 
 /// Cemu's figure maker and the save window it opens
 /// (`EmulatedUSBDeviceFrame.cpp`, `CreateSkylanderDialog`).
@@ -256,55 +249,14 @@ pub fn tidy(pid: u32) {
     if menu.is_invalid() {
         return;
     }
-    let found: Vec<(&'static str, u32)> = [WINDOW, INPUT_SETTINGS]
-        .into_iter()
-        .filter_map(|label| menu_command(menu, label).map(|command| (label, command)))
-        .collect();
-    if found.is_empty() {
+    let Some(devices) = menu_command(menu, WINDOW) else {
         return;
-    }
+    };
     let mut known = COMMANDS.lock().unwrap();
     known.retain(|&(other, _, _)| other != pid);
-    known.extend(found.into_iter().map(|(label, command)| (pid, label, command)));
+    known.push((pid, WINDOW, devices));
     drop(known);
     let _ = unsafe { SetMenu(main, None) };
-}
-
-/// Stops the game hearing the pad, or lets it hear again.
-///
-/// Cemu reads no game input while its own input settings window exists:
-/// `g_inputConfigWindowHasFocus` is set in `InputSettings2`'s constructor and
-/// cleared in its destructor, and `vpad.cpp` and `padscore.cpp` skip every
-/// read while it is set (v2.6). So the window is opened out of sight while an
-/// Omoio menu is over the game, and closed after. It is modal and disables
-/// Cemu's main window, but a posted menu command still opens Emulated USB
-/// Devices, so the portal keeps working (tried 27 September 2026).
-pub fn hush(pid: u32, hushed: bool) -> Result<(), String> {
-    let open_now = windows_of(pid).into_iter().find(|&w| text(w) == INPUT_SETTINGS);
-    if !hushed {
-        if let Some(window) = open_now {
-            close(window);
-        }
-        return Ok(());
-    }
-    if let Some(window) = open_now {
-        out_of_sight(window);
-        return Ok(());
-    }
-    tidy(pid);
-    let main = main_window(pid).ok_or("Cemu isn't answering.")?;
-    let input = command(pid, INPUT_SETTINGS).ok_or("Cemu isn't ready yet.")?;
-    let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(input as usize), LPARAM(0)) };
-    // Looked for often, so it is out of sight before it can be seen.
-    let until = Instant::now() + WAIT;
-    while Instant::now() < until {
-        if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == INPUT_SETTINGS) {
-            out_of_sight(window);
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    Err("Cemu's input settings didn't open.".to_string())
 }
 
 /// The Emulated USB Devices window, opened if it is not already, and put out
