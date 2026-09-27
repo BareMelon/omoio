@@ -22,8 +22,8 @@ body {
 .portal-panel {
   display: flex;
   flex-direction: column;
-  width: min(1180px, 90vw);
-  height: min(780px, 88vh);
+  width: min(1480px, 94vw);
+  height: min(920px, 92vh);
   overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--line2);
@@ -69,9 +69,21 @@ body {
   cursor: pointer;
 }
 
-.portal-chip .portal-mark {
+.portal-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
   width: 28px;
   height: 28px;
+  border-radius: 50%;
+  color: var(--tint);
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tint) 42%, transparent);
+}
+
+.portal-mark svg {
+  width: 56%;
+  height: 56%;
 }
 
 .portal-chip.sel {
@@ -113,10 +125,6 @@ body {
   cursor: pointer;
 }
 
-.portal-tab:hover {
-  color: var(--ink);
-}
-
 .portal-tab.sel {
   color: var(--ink);
   border-bottom-color: var(--brand);
@@ -151,36 +159,119 @@ body {
 .portal-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 26px 20px;
 }
 
+/* A tile is a picture with the name and element under it, like a game in
+   Big Picture, so the picture is what the eye finds first. */
 .portal-item {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 72px;
-  padding: 10px 12px;
-  background: var(--raise);
-  border: 2px solid transparent;
-  border-radius: var(--r);
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
   color: var(--ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  scroll-margin: 18px;
 }
 
-.portal-item:hover {
-  border-color: var(--line2);
+.portal-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  margin-bottom: 8px;
+  border-radius: var(--r);
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--tint) 30%, transparent), transparent 68%),
+    var(--raise);
+  color: var(--tint);
 }
 
-.portal-item:active,
-.portal-chip:active {
-  transform: scale(0.98);
+.portal-art > svg {
+  width: 46%;
+  height: 46%;
+  filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--tint) 45%, transparent));
 }
 
-.portal-item.sel {
-  background: var(--raise2);
-  border-color: var(--brand);
+/* The ring of a figure on the portal, or of a swapper's picked top, is drawn
+   over the picture rather than under it. */
+.portal-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.portal-item.on .portal-art::after {
+  box-shadow: inset 0 0 0 3px var(--go);
+}
+
+.portal-item.picked .portal-art::after {
+  box-shadow: inset 0 0 0 3px var(--brand-lit);
+}
+
+.portal-item.sel .portal-art {
+  transform: scale(1.04);
+  box-shadow:
+    0 0 0 3px var(--panel),
+    0 0 0 6px var(--ink);
+}
+
+.portal-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 8px;
+  border-radius: 999px;
+  background: var(--glass);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-badge svg {
+  width: 15px;
+  height: 15px;
+}
+
+.portal-badge.on {
+  color: var(--go);
+}
+
+.portal-badge.picked {
+  color: var(--brand-text);
+}
+
+.portal-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.portal-kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  color: var(--tint);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.portal-kind svg {
+  width: 17px;
+  height: 17px;
 }
 
 .portal-item:focus-visible,
@@ -190,55 +281,32 @@ body {
   outline-offset: 2px;
 }
 
-.portal-mark {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  color: var(--tint);
-  background: color-mix(in srgb, var(--tint) 16%, transparent);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tint) 42%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .portal-tab:hover {
+    color: var(--ink);
+  }
+
+  .portal-item:hover:not(.sel) .portal-art {
+    box-shadow: 0 0 0 2px var(--line2);
+  }
 }
 
-.portal-mark svg {
-  width: 56%;
-  height: 56%;
-}
+/* Feedback on pointer-down. A pad press has none: the menu is drawn again
+   at once, and moving through a list shouldn't wait on an animation. */
+@media (prefers-reduced-motion: no-preference) {
+  .portal-art,
+  .portal-chip {
+    transition: transform 160ms var(--ease-out);
+  }
 
-.portal-words {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
+  .portal-item:active .portal-art,
+  .portal-chip:active {
+    transform: scale(0.97);
+  }
 
-.portal-name {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.portal-note {
-  font-size: 12px;
-  color: var(--mute);
-}
-
-.portal-item.on .portal-note {
-  color: var(--go);
-}
-
-.portal-item.picked {
-  border-color: var(--brand-lit);
-}
-
-.portal-item.picked .portal-note {
-  color: var(--brand-text);
+  .portal-item.sel:active .portal-art {
+    transform: scale(1.01);
+  }
 }
 
 .portal-quiet {
@@ -281,7 +349,8 @@ body {
   font-weight: 700;
 }
 
-/* Each element's colour, for its mark and its tab. */
+/* Each element's colour, for its drawing, its name under a figure's and
+   its tab. */
 .tint-air { --tint: var(--el-air); }
 .tint-earth { --tint: var(--el-earth); }
 .tint-fire { --tint: var(--el-fire); }
@@ -293,10 +362,3 @@ body {
 .tint-light { --tint: var(--el-light); }
 .tint-dark { --tint: var(--el-dark); }
 .tint-none { --tint: var(--mute); }
-
-@media (prefers-reduced-motion: reduce) {
-  .portal-item:active,
-  .portal-chip:active {
-    transform: none;
-  }
-}

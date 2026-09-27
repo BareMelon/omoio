@@ -63,6 +63,8 @@ const ELEMENTS: [FigureElement, string][] = [
   ["dark", "Dark"],
 ];
 
+const ELEMENT_NAMES = new Map(ELEMENTS);
+
 const KINDS: [FigureKind, string][] = [
   ["item", "Items"],
   ["trap", "Traps"],
@@ -71,8 +73,19 @@ const KINDS: [FigureKind, string][] = [
   ["trophy", "Trophies"],
 ];
 
-/// A mark for each element, and for the kinds that have none, in place of
-/// pictures of the figures, which Omoio doesn't have.
+/// What a figure without an element is called under its name.
+const KIND_NAMES: Partial<Record<FigureKind, string>> = {
+  item: "Item",
+  trap: "Trap",
+  adventure: "Adventure pack",
+  vehicle: "Vehicle",
+  trophy: "Trophy",
+};
+
+/// Omoio's own drawing for each element, and for the kinds that have none,
+/// shown large where a figure's picture goes. Omoio has no pictures of the
+/// figures, so a child who can't read yet goes by the element's shape and
+/// colour, which the games use too.
 const MARKS: Record<string, string> = {
   air: `<path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
   earth: `<path d="M2 20 9 8l4 6 3-4 6 10z" fill="currentColor"/>`,
@@ -90,6 +103,14 @@ const MARKS: Record<string, string> = {
   trophy: `<path d="M7 3h10v5a5 5 0 0 1-10 0zM7 5H4a3 3 0 0 0 3.3 4M17 5h3a3 3 0 0 1-3.3 4M12 13v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`,
   figure: `<circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/>`,
 };
+
+/// The corner of a tile says when its figure is on the portal, saved, or
+/// picked as a swapper's top, with a shape as well as words.
+const BADGES = {
+  on: ["On the portal", `<path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`],
+  saved: ["Saved", `<path d="M6 3h12v18l-6-4.5L6 21z" fill="currentColor"/>`],
+  picked: ["Top picked", `<path d="M12 3.5 20 13h-5v7.5H9V13H4z" fill="currentColor"/>`],
+} as const;
 
 /// One tile: a saved figure, a character the emulator can make, or both when
 /// the character has been made before.
@@ -213,11 +234,42 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, 
   return made;
 }
 
+function drawing(element: FigureElement | null, kind: FigureKind | null): string {
+  const shape = element ?? (kind && kind in MARKS ? kind : "figure");
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKS[shape]}</svg>`;
+}
+
 function mark(element: FigureElement | null, kind: FigureKind | null): HTMLElement {
   const badge = node("span", `portal-mark tint-${element ?? "none"}`);
-  const shape = element ?? (kind && kind in MARKS ? kind : "figure");
-  badge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKS[shape]}</svg>`;
+  badge.innerHTML = drawing(element, kind);
   return badge;
+}
+
+/// The picture spot at the top of a tile, with its corner badge.
+function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
+  const spot = node("span", `portal-art tint-${entry.element ?? "none"}`);
+  spot.innerHTML = drawing(entry.element, entry.kind);
+  if (badge) {
+    const [words, shape] = BADGES[badge];
+    const corner = node("span", `portal-badge ${badge}`);
+    corner.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${shape}</svg>`;
+    corner.append(words);
+    spot.appendChild(corner);
+  }
+  return spot;
+}
+
+/// The line under a tile's name: the element in its colour and shape, or
+/// the kind of figure when it has no element.
+function kindLine(entry: Entry): HTMLElement {
+  const line = node("span", `portal-kind tint-${entry.element ?? "none"}`);
+  if (entry.element) {
+    line.innerHTML = drawing(entry.element, null);
+    line.append(ELEMENT_NAMES.get(entry.element) ?? "");
+  } else if (entry.kind) {
+    line.append(KIND_NAMES[entry.kind] ?? "");
+  }
+  return line;
 }
 
 function renderHead(): HTMLElement {
@@ -281,11 +333,8 @@ function renderBody(): HTMLElement {
       "button",
       `portal-item${zone === "grid" && index === at ? " sel" : ""}${on ? " on" : ""}${chosen ? " picked" : ""}`
     );
-    const words = node("span", "portal-words");
-    words.appendChild(node("span", "portal-name", entry.name));
-    const note = chosen ? "Top picked" : on ? "On the portal" : entry.offer && entry.figure ? "Saved" : "";
-    if (note) words.appendChild(node("span", "portal-note", note));
-    tile.append(mark(entry.element, entry.kind), words);
+    const badge = chosen ? "picked" : on ? "on" : entry.offer && entry.figure ? "saved" : null;
+    tile.append(picture(entry, badge), node("span", "portal-name", entry.name), kindLine(entry));
     tile.onclick = () => {
       zone = "grid";
       at = index;
