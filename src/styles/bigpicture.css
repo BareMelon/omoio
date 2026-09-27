@@ -960,3 +960,389 @@ body.bp-on .bp {
     transform: none;
   }
 }
+
+/* ---------- the controller in the corner ---------- */
+
+.bp-pad {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  max-width: 16em;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--mute);
+}
+.bp-pad span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bp-pad svg {
+  flex: none;
+  width: 1.45em;
+  height: 1.45em;
+  color: var(--go);
+}
+.bp-pad.none svg {
+  color: var(--dim);
+}
+
+/* ---------- Home: everything that isn't a game ---------- */
+
+.bp-home .bp-more {
+  margin-top: auto;
+  padding-top: 2.4em;
+}
+.bp-card {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  width: 17.5em;
+  height: 5.2em;
+  padding: 0 1.2em;
+  border: 1px solid var(--line);
+  border-radius: var(--bp-r);
+  background: color-mix(in srgb, var(--panel) 74%, transparent);
+  backdrop-filter: blur(14px);
+  text-align: left;
+  transition:
+    transform 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out),
+    background-color 120ms ease;
+}
+.bp-card-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.7em;
+  height: 2.7em;
+  border-radius: var(--bp-r);
+  background: var(--raise);
+  color: var(--brand-text);
+}
+.bp-card-icon svg {
+  width: 1.45em;
+  height: 1.45em;
+}
+.bp-card-words {
+  display: grid;
+  gap: 0.15em;
+  min-width: 0;
+}
+.bp-card-title {
+  font-weight: 700;
+}
+.bp-card-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82em;
+  color: var(--mute);
+}
+.bp-card.focused {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 0 0.16em var(--void),
+    0 0 0 0.32em var(--ink),
+    0 1em 2.4em -1em var(--brand-glow);
+}
+.bp-card.focused.pressed,
+.bp-card:active {
+  transform: scale(1.02);
+}
+
+/* ---------- a game's page: what else it offers ---------- */
+
+.bp-page-extras {
+  margin-top: 0.9em;
+}
+
+/* ---------- lists of settings ---------- */
+
+.bp-list {
+  display: grid;
+  gap: 0.35em;
+  max-width: 62em;
+}
+.bp-list-h {
+  margin: 1.5em 0 0.45em;
+  font-size: 0.78em;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.bp-list-h:first-child {
+  margin-top: 0;
+}
+.bp-list-note {
+  max-width: 46em;
+  margin-bottom: 0.9em;
+  line-height: 1.5;
+  color: var(--mute);
+}
+.bp-quiet {
+  padding: 1em 0;
+  color: var(--mute);
+}
+.bp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2em;
+  width: 100%;
+  min-height: 3.5em;
+  padding: 0.7em 1.2em;
+  border-radius: var(--bp-r);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 160ms var(--ease-out);
+}
+.bp-row-words {
+  display: grid;
+  gap: 0.2em;
+  min-width: 0;
+}
+.bp-row-label {
+  font-weight: 650;
+}
+.bp-row-hint {
+  font-size: 0.82em;
+  line-height: 1.4;
+  color: var(--mute);
+}
+.bp-row-value {
+  flex: none;
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 600;
+  color: var(--mute);
+}
+.bp-row-value.live {
+  color: var(--go);
+}
+.bp-row.changed .bp-row-value {
+  color: var(--brand-text);
+}
+.bp-row.spare .bp-row-label {
+  color: var(--mute);
+}
+.bp-caps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+/* A row that does something turns light; one that only tells lifts a
+   little, so the highlight is always visible but never promises a press. */
+.bp-row.focused {
+  background: var(--ink);
+  color: var(--void);
+}
+.bp-row.focused .bp-row-hint,
+.bp-row.focused .bp-row-value {
+  color: color-mix(in srgb, var(--void) 72%, transparent);
+}
+/* Button labels inside a row that has turned light turn dark with it. */
+.bp-row.focused:not(.info) .bp-key {
+  background: color-mix(in srgb, var(--void) 14%, transparent);
+  color: var(--void);
+}
+.bp-row.info.focused {
+  background: color-mix(in srgb, var(--ink) 15%, var(--panel));
+  color: var(--ink);
+}
+.bp-row.info.focused .bp-row-hint,
+.bp-row.info.focused .bp-row-value {
+  color: var(--mute);
+}
+.bp-row.focused.pressed:not(.info),
+.bp-row:not(.info):active {
+  transform: scale(0.99);
+}
+.bp-row[aria-disabled="true"] {
+  opacity: 0.5;
+}
+
+.bp-switch {
+  position: relative;
+  flex: none;
+  width: 2.6em;
+  height: 1.5em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+  transition: background-color 160ms ease;
+}
+.bp-switch-dot {
+  position: absolute;
+  top: 0.2em;
+  left: 0.2em;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  background: var(--ink);
+  transition:
+    transform 220ms var(--ease-out),
+    background-color 160ms ease;
+}
+.bp-switch.on {
+  background: var(--brand);
+}
+.bp-switch.on .bp-switch-dot {
+  transform: translateX(1.1em);
+  background: var(--on-brand);
+}
+.bp-row.focused .bp-switch:not(.on) {
+  background: color-mix(in srgb, var(--void) 22%, transparent);
+}
+.bp-row.focused .bp-switch:not(.on) .bp-switch-dot {
+  background: var(--void);
+}
+
+/* ---------- the Settings screen: categories down the left ---------- */
+
+.bp-settings {
+  display: grid;
+  grid-template-columns: 15em minmax(0, 1fr);
+  gap: 2.6em;
+  padding: 0.4em var(--gutter) 0;
+  overflow: hidden;
+}
+.bp-cats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+.bp-cats .bp-page-title {
+  margin-bottom: 0.7em;
+}
+.bp-cat {
+  padding: 0.75em 1em;
+  border-radius: var(--bp-r);
+  text-align: left;
+  font-weight: 650;
+  color: var(--mute);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.bp-cat.on {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink);
+}
+.bp-cat.focused {
+  background: var(--ink);
+  color: var(--void);
+}
+.bp-cat-pane {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 3.6em 0.2em 2em;
+}
+
+/* ---------- a list screen of a game's own ---------- */
+
+.bp-listpage {
+  padding: 0.4em var(--gutter) 2em;
+}
+.bp-listpage-head {
+  margin-bottom: 1.5em;
+}
+.bp-listpage-over {
+  margin-bottom: 0.25em;
+  font-weight: 650;
+  color: var(--mute);
+}
+
+/* ---------- a list to choose from ---------- */
+
+.bp-picker {
+  width: min(30em, 86vw);
+  padding: 1.6em 1.1em 1.1em;
+}
+.bp-picker .bp-dialog-title {
+  padding: 0 0.7em 0.7em;
+}
+.bp-pick-list {
+  display: grid;
+  gap: 0.2em;
+  max-height: min(26em, 62vh);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.bp-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 0.7em 0.9em;
+  border-radius: var(--bp-r);
+  text-align: left;
+  font-weight: 600;
+  color: var(--mute);
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
+}
+.bp-pick svg {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  color: var(--brand-text);
+}
+.bp-pick.on {
+  color: var(--ink);
+}
+.bp-pick.focused {
+  background: var(--ink);
+  color: var(--void);
+}
+.bp-pick.focused svg {
+  color: var(--void);
+}
+
+/* ---------- waiting for a button: the time left runs down ---------- */
+
+.bp-record {
+  height: 0.35em;
+  margin-top: 1.6em;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.bp-record-fill {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transform-origin: left;
+}
+.bp-record.run .bp-record-fill {
+  transform: scaleX(0);
+  transition: transform 6s linear;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bp-row:not(.info):not(.focused):hover,
+  .bp-cat:not(.focused):hover,
+  .bp-pick:not(.focused):hover {
+    background: color-mix(in srgb, var(--ink) 12%, var(--panel));
+    color: var(--ink);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-card.focused {
+    transform: none;
+  }
+  /* The time left is still shown, as a still bar, rather than jumping. */
+  .bp-record.run .bp-record-fill {
+    transform: none;
+  }
+}

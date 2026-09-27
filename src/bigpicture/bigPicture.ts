@@ -8,6 +8,7 @@ import {
   listSessions,
   onGameStopped,
   padsConnected,
+  padsHeld,
   resumeGame,
   setBigPicture,
   setStartInBigPicture,
@@ -15,6 +16,7 @@ import {
   type Compatibility,
   type Console,
   type Game,
+  type Pad,
   type PadFamily,
 } from "../api";
 import { placeholderArt, tint } from "../components/art";
@@ -22,6 +24,8 @@ import { store } from "../state";
 import { focusables, nearest, remember, revealInColumn, revealInRow } from "./focus";
 import { inFront, listen, untilLetGo, type Action, type Source } from "./input";
 import { keycap } from "./keys";
+import { h, navButton, type Choice, type Kit, type Question, type Screen, type Section } from "./kit";
+import { gameOptionsScreen, patchesScreen, savesScreen, settingsScreen, type Category } from "./settings";
 
 /// Big Picture: Omoio for the sofa. The whole screen, big type, and every
 /// part of it reachable with the d-pad or left stick: the bottom face button
@@ -32,24 +36,14 @@ import { keycap } from "./keys";
 /// Big Picture back over it with the game still running, which is handled
 /// by the backend since the game has the keyboard at that moment.
 
-type Section = "home" | "library";
-
-interface Screen {
-  section: Section;
-  draw(): HTMLElement;
-  /// The key of what is highlighted when the screen opens.
-  first(): string | undefined;
-  /// The bumpers, for a screen with tabs of its own.
-  tab?(step: number): void;
-  /// What was highlighted when the screen was last on show.
-  left?: string;
-}
-
-interface Question {
-  title: string;
-  text: string;
-  confirm: string;
-  run: () => void;
+/// Something over the screen that takes every press until it is dealt with:
+/// a question, a list to choose from, or a wait for a button.
+interface Modal {
+  cancel(): void;
+  /// The key highlighted before it opened, to go back to.
+  returnTo?: string;
+  /// Recording a button: every press belongs to it.
+  capture?: boolean;
 }
 
 const SHORT: Record<Console, string> = { ps3: "PS3", wiiu: "Wii U" };
@@ -60,27 +54,13 @@ const MARK = `<svg viewBox="0 0 1254 1254" fill="currentColor" fill-rule="evenod
 </svg>`;
 
 const PLAY_ICON = `<svg viewBox="0 0 12 14" fill="currentColor" aria-hidden="true"><path d="M1.5 1.2 11 7l-9.5 5.8z"/></svg>`;
+const CHECK_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>`;
+const PAD_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M7.5 7h9a4.5 4.5 0 0 1 4.4 5.4l-.9 4.3a2.3 2.3 0 0 1-4 1L14.6 16H9.4L7 17.7a2.3 2.3 0 0 1-4-1l-.9-4.3A4.5 4.5 0 0 1 7.5 7z"/><path d="M7.8 10v3.2M6.2 11.6h3.2"/><circle cx="15.6" cy="10.8" r=".6" fill="currentColor"/><circle cx="17.2" cy="12.6" r=".6" fill="currentColor"/></svg>`;
+const LIBRARY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8.5 4v16"/></svg>`;
+const SETTINGS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.2" fill="var(--raise)"/><circle cx="15" cy="12" r="2.2" fill="var(--raise)"/><circle cx="10" cy="17" r="2.2" fill="var(--raise)"/></svg>`;
+const SYSTEM_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg>`;
 
 // ---- small helpers ----
-
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text?: string): HTMLElementTagNameMap[K] {
-  const made = document.createElement(tag);
-  if (className) made.className = className;
-  if (text !== undefined) made.textContent = text;
-  return made;
-}
-
-/// Something the highlight can land on. `key` finds it again after the
-/// screen is drawn anew; `group` is the row it belongs to.
-function navButton(className: string, key: string, run: () => void, group?: string): HTMLButtonElement {
-  const button = h("button", `${className} nav`);
-  button.dataset.key = key;
-  if (group) button.dataset.group = group;
-  button.onclick = () => {
-    if (button.getAttribute("aria-disabled") !== "true") run();
-  };
-  return button;
-}
 
 function artFor(game: Game): string {
   return game.cover
@@ -133,6 +113,7 @@ const dialogLayer = h("div", "bp-dialog");
 const startingLayer = h("div", "bp-starting");
 const toast = h("div", "bp-toast");
 toast.setAttribute("role", "status");
+const padBadge = h("span", "bp-pad");
 
 mainLayer.append(topBar, screenHost);
 root.append(backdrop, mainLayer, hintsBar, menu, dialogLayer, startingLayer, toast);
@@ -142,13 +123,13 @@ let showing = false;
 let current: HTMLElement | null = null;
 let menuOpen = false;
 let menuReturn: string | undefined;
-let question: Question | null = null;
-let questionReturn: string | undefined;
+let modal: Modal | null = null;
 let starting: Game | null = null;
 let stopping = false;
 let quitting = false;
 let source: Source = "pad";
 let family: PadFamily | null = null;
+let pads: Pad[] = [];
 let startInBigPicture = false;
 let libraryConsole: Console | "" = "";
 let drawnFor = "";
@@ -181,7 +162,7 @@ function compatibility(game: Game): Promise<Compatibility> | null {
 /// The layer the highlight moves within: whatever sits on top.
 function layer(): HTMLElement {
   if (starting) return startingLayer;
-  if (question) return dialogLayer;
+  if (modal) return dialogLayer;
   if (menuOpen) return menu;
   return mainLayer;
 }
@@ -191,7 +172,12 @@ function byKey(key: string | undefined, within: HTMLElement = layer()): HTMLElem
   return focusables(within).find((el) => el.dataset.key === key) ?? null;
 }
 
-// ---- the backdrop: the highlighted game's picture, blurred, behind everything ----
+/// A button on the pad in hand, drawn the way it is printed on it.
+function cap(input: string): string {
+  return keycap(input, family ?? "generic", "pad") ?? input;
+}
+
+// ---- the backdrop: the highlighted game's picture, behind everything ----
 
 let backdropGame = "";
 let backdropTimer: number | undefined;
@@ -239,7 +225,10 @@ function focus(el: HTMLElement | null | undefined, animate = true): void {
   el.classList.add("focused");
   if (document.activeElement !== el) el.focus({ preventScroll: true });
   remember(el);
-  if (mainLayer.contains(el) && screenHost.contains(el)) top().left = el.dataset.key;
+  if (screenHost.contains(el)) {
+    top().left = el.dataset.key;
+    top().landed?.(el);
+  }
 
   const track = el.parentElement;
   if (track?.classList.contains("bp-track")) {
@@ -250,7 +239,7 @@ function focus(el: HTMLElement | null | undefined, animate = true): void {
       track.style.transition = "";
     }
   }
-  const scroller = el.closest<HTMLElement>(".bp-screen");
+  const scroller = el.closest<HTMLElement>(".bp-scroll");
   if (scroller) revealInColumn(el, scroller, animate && !reducedMotion());
 
   if (el.dataset.game) {
@@ -279,6 +268,12 @@ function pressed(down: boolean): void {
 // ---- actions ----
 
 function act(action: Action, from: Source): void {
+  if (modal?.capture) {
+    // Every press belongs to the button being recorded. The keyboard can
+    // still back out, since it has no button to record.
+    if (from === "keyboard" && action === "back") modal.cancel();
+    return;
+  }
   if (from !== source) {
     source = from;
     drawHints();
@@ -296,18 +291,18 @@ function act(action: Action, from: Source): void {
       return;
     case "back":
       if (starting) void cancelStart();
-      else if (question) closeQuestion();
+      else if (modal) modal.cancel();
       else if (menuOpen) closeMenu();
       else back();
       return;
     case "menu":
-      if (starting || question) return;
+      if (starting || modal) return;
       if (menuOpen) closeMenu();
-      else openMenu();
+      else void openMenu();
       return;
     case "prev":
     case "next":
-      if (!starting && !question && !menuOpen) top().tab?.(action === "next" ? 1 : -1);
+      if (!starting && !modal && !menuOpen) top().tab?.(action === "next" ? 1 : -1);
   }
 }
 
@@ -318,13 +313,25 @@ function back(): void {
   } else if (top().section !== "home") {
     go("home");
   } else {
-    openMenu();
+    void openMenu();
   }
+}
+
+function rootScreen(section: Section): Screen {
+  if (section === "library") return library();
+  if (section === "settings") return settingsScreen(kit, cap);
+  return home();
 }
 
 function go(section: Section): void {
   stack.length = 0;
-  stack.push(section === "home" ? home() : library());
+  stack.push(rootScreen(section));
+  render(true);
+}
+
+function openSettings(category: Category): void {
+  stack.length = 0;
+  stack.push(settingsScreen(kit, cap, category));
   render(true);
 }
 
@@ -433,16 +440,15 @@ function drawMenu(): void {
   const head = h("div", "bp-menu-head");
   head.innerHTML = MARK;
   head.append(h("span", "", "Omoio"));
+  const goTo = (section: Section) => () => {
+    closeMenu();
+    go(section);
+  };
   panel.append(
     head,
-    menuItem("menu:home", "Home", () => {
-      closeMenu();
-      go("home");
-    }),
-    menuItem("menu:library", "Library", () => {
-      closeMenu();
-      go("library");
-    }),
+    menuItem("menu:home", "Home", goTo("home")),
+    menuItem("menu:library", "Library", goTo("library")),
+    menuItem("menu:settings", "Settings", goTo("settings")),
     h("div", "bp-menu-rule"),
     menuItem(
       "menu:start",
@@ -463,12 +469,20 @@ function drawMenu(): void {
   menu.replaceChildren(scrim, panel);
 }
 
-function openMenu(): void {
+async function openMenu(): Promise<void> {
   menuOpen = true;
   menuReturn = current?.dataset.key;
   drawMenu();
   menu.classList.add("open");
   focus(byKey("menu:home", menu));
+  // The setting may have been changed on the Settings screen meanwhile.
+  const settings = await getSettings().catch(() => null);
+  if (settings && menuOpen && settings.start_in_big_picture !== startInBigPicture) {
+    startInBigPicture = settings.start_in_big_picture;
+    const at = current?.dataset.key;
+    drawMenu();
+    focus(byKey(at, menu) ?? byKey("menu:home", menu));
+  }
 }
 
 function closeMenu(): void {
@@ -477,35 +491,127 @@ function closeMenu(): void {
   focus(byKey(menuReturn, mainLayer) ?? focusables(mainLayer)[0]);
 }
 
-// ---- questions ----
+// ---- over the screen: questions, lists to choose from, a wait for a button ----
+
+function openModal(card: HTMLElement, next: Modal, first?: HTMLElement | null): void {
+  modal = { ...next, returnTo: current?.dataset.key };
+  dialogLayer.replaceChildren(card);
+  dialogLayer.classList.add("open");
+  focus(first ?? focusables(dialogLayer)[0]);
+  // A wait for a button has nothing to highlight, and the hints still change.
+  drawHints();
+}
+
+function closeModal(): void {
+  const returnTo = modal?.returnTo;
+  modal = null;
+  dialogLayer.classList.remove("open");
+  dialogLayer.replaceChildren();
+  focus(byKey(returnTo, menuOpen ? menu : mainLayer) ?? focusables(layer())[0], false);
+}
+
+dialogLayer.addEventListener("click", (event) => {
+  if (event.target === dialogLayer) modal?.cancel();
+});
 
 function ask(next: Question): void {
-  question = next;
-  questionReturn = current?.dataset.key;
   const card = h("div", "bp-dialog-card");
   card.setAttribute("role", "alertdialog");
   card.setAttribute("aria-label", next.title);
   const actions = h("div", "bp-dialog-actions");
   const yes = navButton("bp-btn primary", "question:yes", () => {
-    closeQuestion();
+    closeModal();
     next.run();
   });
   yes.textContent = next.confirm;
-  const no = navButton("bp-btn", "question:no", closeQuestion);
+  const no = navButton("bp-btn", "question:no", closeModal);
   no.textContent = "Cancel";
   actions.append(yes, no);
   card.append(h("div", "bp-dialog-title", next.title), h("div", "bp-dialog-text", next.text), actions);
-  dialogLayer.replaceChildren(card);
-  dialogLayer.classList.add("open");
-  focus(yes);
+  openModal(card, { cancel: closeModal }, yes);
 }
 
-function closeQuestion(): void {
-  question = null;
-  dialogLayer.classList.remove("open");
-  dialogLayer.replaceChildren();
-  focus(byKey(questionReturn, menuOpen ? menu : mainLayer) ?? focusables(layer())[0]);
+function pick(title: string, choices: Choice[], chosen: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const card = h("div", "bp-dialog-card bp-picker");
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-label", title);
+    const list = h("div", "bp-pick-list bp-scroll");
+    let ticked: HTMLElement | null = null;
+    choices.forEach((choice, at) => {
+      const on = choice.value === chosen;
+      const button = navButton(`bp-pick${on ? " on" : ""}`, `pick:${at}`, () => {
+        closeModal();
+        resolve(choice.value);
+      });
+      button.dataset.hint = "Choose";
+      button.append(h("span", "", choice.label));
+      if (on) {
+        button.insertAdjacentHTML("beforeend", CHECK_ICON);
+        ticked = button;
+      }
+      list.append(button);
+    });
+    card.append(h("div", "bp-dialog-title", title), list);
+    openModal(
+      card,
+      {
+        cancel: () => {
+          closeModal();
+          resolve(null);
+        },
+      },
+      ticked
+    );
+  });
 }
+
+/// Waits a few seconds for a press on any pad. A stick pushed a little is
+/// not a press, so a pad resting off centre never records.
+function record(title: string, text: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const card = h("div", "bp-dialog-card");
+    card.setAttribute("role", "alertdialog");
+    card.setAttribute("aria-label", title);
+    const bar = h("div", "bp-record");
+    bar.append(h("span", "bp-record-fill"));
+    card.append(h("div", "bp-dialog-title", title), h("div", "bp-dialog-text", text), bar);
+    let done = false;
+    const finish = (input: string | null) => {
+      if (done) return;
+      done = true;
+      closeModal();
+      resolve(input);
+    };
+    openModal(card, { cancel: () => finish(null), capture: true });
+    // Laid out full first, so the time left runs down from there.
+    void bar.offsetWidth;
+    bar.classList.add("run");
+    void (async () => {
+      const down = new Set(await padsHeld().catch((): string[] => []));
+      const until = Date.now() + 6000;
+      while (!done && Date.now() < until) {
+        await new Promise((wait) => setTimeout(wait, 60));
+        const now = await padsHeld().catch((): string[] => []);
+        const fresh = now.find((input) => !down.has(input) && !/^(LS|RS) [XY][+-]$/.test(input));
+        if (fresh) return finish(fresh);
+        for (const input of [...down]) if (!now.includes(input)) down.delete(input);
+      }
+      finish(null);
+    })();
+  });
+}
+
+const kit: Kit = {
+  open,
+  redraw(screen) {
+    if (showing && top() === screen) render(false);
+  },
+  ask,
+  pick,
+  record,
+  say,
+};
 
 // ---- starting a game ----
 
@@ -553,8 +659,17 @@ function tick(): void {
   clock.textContent = timeFormat.format(new Date());
 }
 
+/// Which pads are plugged in, in the corner, as a console shows it.
+function drawPadBadge(): void {
+  padBadge.classList.toggle("none", pads.length === 0);
+  padBadge.innerHTML = PAD_ICON;
+  padBadge.append(
+    h("span", "", pads.length === 0 ? "No controller" : pads.length === 1 ? pads[0].name : `${pads.length} controllers`)
+  );
+}
+
 function drawTop(): void {
-  const brand = navButton("bp-brand", "top:menu", openMenu);
+  const brand = navButton("bp-brand", "top:menu", () => void openMenu());
   brand.setAttribute("aria-label", "Menu");
   brand.innerHTML = `${MARK}<span>Omoio</span>`;
 
@@ -562,6 +677,7 @@ function drawTop(): void {
   for (const [section, label] of [
     ["home", "Home"],
     ["library", "Library"],
+    ["settings", "Settings"],
   ] as const) {
     const tab = navButton(`bp-section${top().section === section ? " on" : ""}`, `top:${section}`, () => go(section));
     tab.textContent = label;
@@ -577,15 +693,16 @@ function drawTop(): void {
     right.append(now);
   }
   tick();
-  right.append(clock);
+  drawPadBadge();
+  right.append(padBadge, clock);
   topBar.replaceChildren(brand, sections, right);
 }
 
 function hint(input: string, words: string): HTMLElement | null {
-  const cap = keycap(input, family, source);
-  if (!cap) return null;
+  const shownCap = keycap(input, family, source);
+  if (!shownCap || !words) return null;
   const el = h("span", "bp-hint");
-  el.innerHTML = cap;
+  el.innerHTML = shownCap;
   el.append(h("span", "", words));
   return el;
 }
@@ -594,8 +711,10 @@ function drawHints(): void {
   const shown: (HTMLElement | null)[] = [];
   if (starting) {
     shown.push(hint("East", "Cancel"));
-  } else if (question) {
-    shown.push(hint("South", "Select"), hint("East", "Cancel"));
+  } else if (modal?.capture) {
+    shown.push(hint("East", "Cancel"));
+  } else if (modal) {
+    shown.push(hint("South", current?.dataset.hint ?? "Select"), hint("East", "Cancel"));
   } else if (menuOpen) {
     shown.push(hint("South", "Select"), hint("East", "Close"));
   } else {
@@ -648,6 +767,27 @@ function consoles(): Console[] {
   return [...new Set(games().map((game) => game.console))];
 }
 
+/// A row that slides along by itself rather than scrolling, with the wheel
+/// moving the highlight along it for a mouse.
+function shelf(title: string, items: HTMLElement[], className = ""): HTMLElement {
+  const section = h("section", `bp-shelf ${className}`.trim());
+  const rail = h("div", "bp-rail");
+  const track = h("div", "bp-track");
+  track.append(...items);
+  rail.append(track);
+  rail.addEventListener(
+    "wheel",
+    (event) => {
+      if (!current || !track.contains(current)) return;
+      event.preventDefault();
+      move(event.deltaY + event.deltaX > 0 ? "right" : "left");
+    },
+    { passive: false }
+  );
+  section.append(h("h2", "bp-shelf-h", title), rail);
+  return section;
+}
+
 // ---- Home ----
 
 /// The game on the spotlight under the row on Home: its name and what is
@@ -693,6 +833,33 @@ function nowPlaying(): HTMLElement | null {
   return banner;
 }
 
+/// The row of everything that isn't a game: the whole library, settings,
+/// controllers and this computer, as a console keeps them beside its games.
+function moreRow(): HTMLElement {
+  const count = games().length;
+  const cards: [string, string, string, string, () => void][] = [
+    ["library", "Library", `${count} ${count === 1 ? "game" : "games"}`, LIBRARY_ICON, () => go("library")],
+    ["settings", "Settings", "Big Picture, covers, region", SETTINGS_ICON, () => openSettings("general")],
+    [
+      "controllers",
+      "Controllers",
+      pads.length === 0 ? "None plugged in" : pads.length === 1 ? pads[0].name : `${pads.length} plugged in`,
+      PAD_ICON,
+      () => openSettings("controllers"),
+    ],
+    ["system", "System", "Computer and emulators", SYSTEM_ICON, () => openSettings("system")],
+  ];
+  const items = cards.map(([id, title, sub, icon, run]) => {
+    const card = navButton("bp-card", `more:${id}`, run, "more");
+    card.innerHTML = `<span class="bp-card-icon">${icon}</span>`;
+    const words = h("span", "bp-card-words");
+    words.append(h("span", "bp-card-title", title), h("span", "bp-card-sub", sub));
+    card.append(words);
+    return card;
+  });
+  return shelf("More", items, "bp-more");
+}
+
 function emptyLibrary(): HTMLElement {
   const empty = h("div", "bp-empty");
   const exit = navButton("bp-btn", "empty:exit", () => void setBigPicture(false));
@@ -719,31 +886,13 @@ function home(): Screen {
       return first ? `home:${first.title_id}` : "empty:exit";
     },
     draw() {
-      const screen = h("div", "bp-screen bp-home");
+      const screen = h("div", "bp-screen bp-scroll bp-home");
       const banner = nowPlaying();
       if (banner) screen.append(banner);
       const list = homeGames();
-      if (list.length === 0) {
-        screen.append(emptyLibrary());
-        return screen;
-      }
-      const shelf = h("section", "bp-shelf");
-      const rail = h("div", "bp-rail");
-      const track = h("div", "bp-track");
-      track.append(...list.map((game) => tile(game, "home", false)));
-      rail.append(track);
-      // A wheel moves along the row, since the row itself doesn't scroll.
-      rail.addEventListener(
-        "wheel",
-        (event) => {
-          if (!current || !track.contains(current)) return;
-          event.preventDefault();
-          move(event.deltaY + event.deltaX > 0 ? "right" : "left");
-        },
-        { passive: false }
-      );
-      shelf.append(h("h2", "bp-shelf-h", "Your games"), rail);
-      screen.append(shelf, h("div", "bp-spot"));
+      if (list.length === 0) screen.append(emptyLibrary());
+      else screen.append(shelf("Your games", list.map((game) => tile(game, "home", false))), h("div", "bp-spot"));
+      screen.append(moreRow());
       return screen;
     },
   };
@@ -769,7 +918,7 @@ function library(): Screen {
       return first ? `library:${first.title_id}` : "empty:exit";
     },
     draw() {
-      const page = h("div", "bp-screen bp-library");
+      const page = h("div", "bp-screen bp-scroll bp-library");
       const head = h("div", "bp-library-head");
       const all = games();
       const shown = libraryGames();
@@ -832,7 +981,7 @@ function gamePage(titleId: string, section: Section): Screen {
     section,
     first: () => "game:primary",
     draw() {
-      const page = h("div", "bp-screen bp-page");
+      const page = h("div", "bp-screen bp-scroll bp-page");
       const game = gameById(titleId);
       if (!game) {
         page.append(h("div", "bp-empty-title", "This game isn't in your library any more."));
@@ -871,6 +1020,21 @@ function gamePage(titleId: string, section: Section): Screen {
         actions.append(quit);
       }
 
+      // Only what this game's emulator offers, as on the desktop.
+      const extras = h("div", "bp-page-actions bp-page-extras");
+      const offers: [boolean, string, string, () => Screen][] = [
+        [game.features.settings, "settings", "Settings", () => gameOptionsScreen(kit, game, section)],
+        [game.features.patches, "patches", "Patches", () => patchesScreen(kit, game, section)],
+        [game.features.saves, "saves", "Saved games", () => savesScreen(kit, game, section)],
+      ];
+      for (const [offered, id, label, make] of offers) {
+        if (!offered || !game.set_up) continue;
+        const button = navButton("bp-btn", `game:${id}`, () => open(make()));
+        button.dataset.game = titleId;
+        button.textContent = label;
+        extras.append(button);
+      }
+
       const notes = h("div", "bp-page-notes");
       const note = !game.set_up
         ? "Import this game's files from the desktop to play it."
@@ -890,7 +1054,9 @@ function gamePage(titleId: string, section: Section): Screen {
       });
       if (playable(game) && family) notes.append(chordNote("while you play brings you back here."));
 
-      info.append(meta, h("h1", "bp-page-title", game.title), actions, notes);
+      info.append(meta, h("h1", "bp-page-title", game.title), actions);
+      if (extras.childElementCount > 0) info.append(extras);
+      info.append(notes);
       page.append(art, info);
       return page;
     },
@@ -904,13 +1070,17 @@ function gamePage(titleId: string, section: Section): Screen {
 function render(entering: boolean): void {
   const screen = top();
   if (!screen) return;
-  const scrolled = entering ? 0 : (screenHost.querySelector(".bp-screen")?.scrollTop ?? 0);
+  const scrolled = entering
+    ? []
+    : [...screenHost.querySelectorAll<HTMLElement>(".bp-scroll")].map((el) => el.scrollTop);
   root.classList.toggle("hero", stack.length === 1 && screen.section === "home");
   drawTop();
   const el = screen.draw();
   if (entering && !reducedMotion()) el.classList.add("entering");
   screenHost.replaceChildren(el);
-  el.scrollTop = scrolled;
+  screenHost.querySelectorAll<HTMLElement>(".bp-scroll").forEach((scroller, at) => {
+    scroller.scrollTop = scrolled[at] ?? 0;
+  });
   drawnFor = drawnFrom();
   if (layer() === mainLayer) {
     focus(byKey(screen.left) ?? byKey(screen.first()) ?? focusables(mainLayer)[0], entering);
@@ -922,12 +1092,13 @@ function render(entering: boolean): void {
 /// What the screens are drawn from, so a change elsewhere in the app that
 /// doesn't touch them never redraws them.
 function drawnFrom(): string {
-  const { games: all, playing, suspended } = store.get();
+  const { games: all, playing, suspended, firmwareVersion } = store.get();
   return JSON.stringify([
     all?.map((game) => [game.title_id, game.title, game.cover, game.available, game.set_up]),
     playing?.title_id,
     suspended,
     quitting,
+    firmwareVersion,
   ]);
 }
 
@@ -942,12 +1113,15 @@ async function readSessions(): Promise<void> {
 }
 
 async function readPads(): Promise<void> {
-  const pads = await padsConnected().catch(() => []);
+  const found = await padsConnected().catch((): Pad[] => []);
+  const changed = found.map((pad) => pad.device).join() !== pads.map((pad) => pad.device).join();
+  pads = found;
   const next = pads[0]?.family ?? null;
   if (next !== family) {
     family = next;
     if (showing) drawHints();
   }
+  if (changed && showing) drawPadBadge();
 }
 
 let arriving = false;
@@ -1014,10 +1188,10 @@ export function renderBigPicture(): HTMLElement {
     if (state.suspended && !wasSuspended && state.playing) {
       wasSuspended = true;
       if (menuOpen) closeMenu();
-      if (question) closeQuestion();
+      if (modal) modal.cancel();
       const page = top().section;
       stack.length = 0;
-      stack.push(home(), gamePage(state.playing.title_id, page));
+      stack.push(home(), gamePage(state.playing.title_id, page === "settings" ? "home" : page));
       render(true);
       return;
     }

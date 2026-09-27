@@ -5,7 +5,7 @@ import {
   type GameOption,
 } from "../api";
 
-const GROUP_TITLES: Record<string, string> = {
+export const GROUP_TITLES: Record<string, string> = {
   Video: "Picture",
   Core: "Processor",
   Audio: "Sound",
