@@ -33,6 +33,8 @@ struct Running {
     playing: Playing,
     window: Option<isize>,
     fullscreen: bool,
+    /// Taken off the screen for Big Picture while the game carries on.
+    hidden: bool,
     started: std::time::Instant,
     /// Set by Stop, so a session we ended is never reported as a crash.
     stopped_by_us: bool,
@@ -45,9 +47,57 @@ impl Session {
             playing,
             window: None,
             fullscreen: false,
+            hidden: false,
             started: std::time::Instant::now(),
             stopped_by_us: false,
         });
+    }
+
+    pub fn is_hidden(&self) -> bool {
+        self.inner.lock().unwrap().as_ref().is_some_and(|r| r.hidden)
+    }
+
+    /// Takes the game picture off the screen and leaves the game running.
+    /// A game still starting has no window yet; it is hidden the moment it
+    /// gets one. Says whether a game was running.
+    pub fn hide_game(&self) -> bool {
+        let window = {
+            let mut inner = self.inner.lock().unwrap();
+            let Some(running) = inner.as_mut() else {
+                return false;
+            };
+            running.hidden = true;
+            running.window
+        };
+        // Outside the lock: the call waits on the emulator's window.
+        if let Some(window) = window {
+            overlay::hide(window);
+        }
+        true
+    }
+
+    /// Hands the keyboard and pad back to the game after Omoio moved it,
+    /// unless it is hidden behind Big Picture.
+    pub fn focus_game(&self) {
+        let window = self.inner.lock().unwrap().as_ref().filter(|r| !r.hidden).and_then(|r| r.window);
+        if let Some(window) = window {
+            overlay::focus(window);
+        }
+    }
+
+    /// Puts the game picture back, and with `activate` gives it the keyboard.
+    pub fn show_game(&self, activate: bool) {
+        let window = {
+            let mut inner = self.inner.lock().unwrap();
+            let Some(running) = inner.as_mut() else {
+                return;
+            };
+            running.hidden = false;
+            running.window
+        };
+        if let Some(window) = window {
+            overlay::show(window, activate);
+        }
     }
 
     fn started_at(&self) -> Option<std::time::Instant> {
@@ -181,13 +231,15 @@ pub fn watch(app: AppHandle, pid: u32) {
             // The game holds the keyboard, so this is the only way back out of
             // a picture that covers the screen. Read it even when we are not
             // going to act on it, so a press meant for another window is
-            // consumed rather than saved up for later.
+            // consumed rather than saved up for later. Big Picture always
+            // fills the screen, so there it changes nothing.
             let pressed = overlay::fullscreen_key_pressed();
             if let (true, Some(game)) = (pressed, session.window()) {
-                if overlay::ours_has_focus(game, host) {
+                if !crate::big_picture::is_on() && overlay::ours_has_focus(game, host) {
                     let now = !session.is_fullscreen();
                     session.set_fullscreen(now);
                     let _ = app.emit("game-fullscreen", now);
+                    session.focus_game();
                 }
             }
 
@@ -197,6 +249,12 @@ pub fn watch(app: AppHandle, pid: u32) {
                 if let Some(game) = overlay::find_window(pid) {
                     overlay::attach(game, host);
                     session.adopt_window(game);
+                    // Big Picture was asked for while the game was starting.
+                    if session.is_hidden() {
+                        overlay::hide(game);
+                    } else if overlay::front_belongs_to(&[std::process::id(), pid]) {
+                        overlay::focus(game);
+                    }
                     attached = true;
                     let _ = app.emit("game-started", session.playing());
                 }
@@ -297,14 +355,15 @@ fn keep_session_log(app: &AppHandle, playing: &Playing, seconds: u64, stopped_by
     }
 }
 
-/// Fills the content area, or the whole screen when the user asked for that.
+/// Fills the content area, or the whole screen when the user asked for that
+/// or Big Picture is on.
 pub fn place(window: &WebviewWindow, session: &Session) {
     let Some(game) = session.window() else {
         return;
     };
     let scale = window.scale_factor().unwrap_or(1.0);
 
-    if session.is_fullscreen() {
+    if session.is_fullscreen() || crate::big_picture::is_on() {
         if let Ok(Some(monitor)) = window.current_monitor() {
             let pos = monitor.position();
             let size = monitor.size();

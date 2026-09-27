@@ -1,6 +1,7 @@
 pub mod archive;
 pub mod covers;
 mod backends;
+mod big_picture;
 mod commands;
 mod controllers;
 pub mod core;
@@ -39,6 +40,7 @@ pub fn run() {
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            big_picture::start(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -125,6 +127,11 @@ pub fn run() {
             commands::set_games_folder,
             commands::import_archive,
             commands::cancel_import,
+            commands::big_picture,
+            commands::set_big_picture,
+            commands::resume_game,
+            commands::set_start_in_big_picture,
+            commands::pads_connected,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

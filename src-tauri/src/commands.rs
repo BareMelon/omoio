@@ -132,6 +132,37 @@ pub fn set_start_fullscreen(app: AppHandle, on: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn set_start_in_big_picture(app: AppHandle, on: bool) -> Result<(), String> {
+    let file = settings_path(&app)?;
+    let mut settings = Settings::load(&file);
+    settings.start_in_big_picture = on;
+    settings.save(&file)
+}
+
+/// Whether Big Picture is up, and whether a game is waiting behind it.
+#[tauri::command]
+pub fn big_picture(app: AppHandle) -> crate::big_picture::State {
+    crate::big_picture::state(&app)
+}
+
+#[tauri::command]
+pub fn set_big_picture(app: AppHandle, on: bool) -> Result<(), String> {
+    crate::big_picture::set(&app, on)
+}
+
+/// Puts the game waiting behind Big Picture back on the screen.
+#[tauri::command]
+pub fn resume_game(app: AppHandle) {
+    crate::big_picture::resume(&app);
+}
+
+/// The pads plugged in, so Big Picture names buttons as printed on them.
+#[tauri::command]
+pub fn pads_connected() -> Vec<crate::core::pad_layout::Pad> {
+    crate::pads::connected()
+}
+
+#[tauri::command]
 pub fn set_keep_sessions(app: AppHandle, keep: usize) -> Result<(), String> {
     let file = settings_path(&app)?;
     let mut settings = Settings::load(&file);
@@ -647,6 +678,8 @@ pub fn set_game_fullscreen(app: AppHandle, fullscreen: bool) {
     if let Some(window) = app.get_webview_window("main") {
         crate::session::place(&window, &session);
     }
+    // The button that asked took the keyboard from the game.
+    session.focus_game();
 }
 
 #[tauri::command]

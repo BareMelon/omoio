@@ -271,6 +271,8 @@ impl super::EmulatorBackend for Rpcs3 {
             compatibility: true,
             // RPCS3's portal window is Qt, which Omoio cannot drive yet.
             portal: false,
+            // Omoio switches RPCS3's background input off before each game.
+            quiet_behind: true,
         }
     }
 

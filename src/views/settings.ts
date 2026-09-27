@@ -18,6 +18,7 @@ import {
   setKeepSessions,
   setRegion,
   setStartFullscreen,
+  setStartInBigPicture,
   setCovers,
   setRawgKey,
   fetchCovers,
@@ -134,6 +135,14 @@ export async function renderSettings(): Promise<View> {
     toggle(settings.start_fullscreen, (next) => setStartFullscreen(next))
   );
 
+  const bigPicture = row(
+    "Open Omoio in Big Picture",
+    "For a PC under a TV. Big Picture fills the screen and works with a controller. View and Menu together bring it back during a game."
+  );
+  bigPicture.right.appendChild(
+    toggle(settings.start_in_big_picture, (next) => setStartInBigPicture(next))
+  );
+
   const games = row("Games folder", "Where archives are unpacked. Games imported as folders stay where they are.");
   const folderValue = value(places.games_folder ?? "Not chosen yet");
   folderValue.classList.add("path");
@@ -196,7 +205,7 @@ export async function renderSettings(): Promise<View> {
   regionRow.right.append(regionSaid, regionSelect);
 
   content.appendChild(section("Console", nameRow.row, regionRow.row));
-  content.appendChild(section("Playing", fullscreen.row, games.row));
+  content.appendChild(section("Playing", fullscreen.row, bigPicture.row, games.row));
 
   // ---- cover art ----
   const rawgRow = row(

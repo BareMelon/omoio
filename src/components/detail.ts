@@ -40,7 +40,7 @@ function row(label: string, value: string, tone = ""): string {
 function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   hero.innerHTML = game.cover
     ? `<img src="${convertFileSrc(game.cover)}" alt="">`
-    : `<div class="d-art-blank"></div>`;
+    : placeholderArt(game.title_id, game.title);
   if (game.cover_source === "rawg") hero.appendChild(rawgCredit());
 
   body.innerHTML = `
@@ -348,17 +348,12 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
 /// A game from the catalogue: maybe owned, maybe never seen, so everything
 /// here is about whether it is worth getting and what is known about it.
 function fillListing(body: HTMLElement, hero: HTMLElement, { listing }: CatalogueSelection): void {
-  // The tile is drawn to fill a portrait card by cropping. The hero is wide and
-  // short, where cropping leaves a sliver of the ring, so here it is shown whole.
   const cover = knownCover(listing.key);
   if (cover) {
     hero.innerHTML = `<img src="${convertFileSrc(cover)}" alt="">`;
     hero.appendChild(rawgCredit());
   } else {
-    hero.innerHTML = placeholderArt(listing.key, listing.name).replace(
-      "xMidYMid slice",
-      "xMidYMid meet"
-    );
+    hero.innerHTML = placeholderArt(listing.key, listing.name);
   }
   body.innerHTML = `
     <div class="d-title"></div>
@@ -505,9 +500,16 @@ export function renderDetail(): HTMLElement {
 
   let shownListing: string | null = null;
 
+  // The content makes room for the panel at once, and the panel slides over
+  // the gap, so the grid is laid out once rather than on every frame.
+  const show = (open: boolean) => {
+    detail.classList.toggle("hidden", !open);
+    detail.parentElement?.classList.toggle("with-detail", open);
+  };
+
   store.subscribe((state) => {
     if (!state.playing && state.view === "catalogue" && state.catalogueSelected) {
-      detail.classList.remove("hidden");
+      show(true);
       // Filled once per pick. Typing in the search box notifies too, and
       // refilling would ask for the same answers again on every letter.
       const picked = state.catalogueSelected.listing.key;
@@ -527,7 +529,7 @@ export function renderDetail(): HTMLElement {
       state.playing || state.view !== "library"
         ? undefined
         : state.games?.find((g) => g.title_id === state.selected);
-    detail.classList.toggle("hidden", !game);
+    show(Boolean(game));
     if (game) fill(body, hero, game);
   });
 

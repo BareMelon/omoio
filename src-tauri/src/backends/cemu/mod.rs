@@ -644,7 +644,10 @@ impl super::EmulatorBackend for Cemu {
     fn features(&self) -> Features {
         // Starting games, the Skylanders portal through Cemu's own window,
         // and Cemu's settings for a game. Nothing else is offered until it
-        // has been checked against Cemu the way RPCS3's was.
+        // has been checked against Cemu the way RPCS3's was. Cemu reads the
+        // pad whatever is in front: v2.6 stops only while its own input
+        // settings window has focus (`vpad.cpp`, `padscore.cpp`), and its SDL
+        // input allows background events. So it is not quiet behind Omoio.
         Features {
             portal: true,
             settings: true,

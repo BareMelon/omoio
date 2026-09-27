@@ -11,6 +11,9 @@ pub struct Settings {
     /// Start games filling the screen rather than sitting in the content area.
     #[serde(default)]
     pub start_fullscreen: bool,
+    /// Open Omoio in Big Picture, for a machine that lives under a TV.
+    #[serde(default)]
+    pub start_in_big_picture: bool,
     /// How many played sessions to keep logs for.
     #[serde(default = "default_keep_sessions")]
     pub keep_sessions: usize,
@@ -60,6 +63,7 @@ impl Default for Settings {
         Self {
             games_folder: None,
             start_fullscreen: false,
+            start_in_big_picture: false,
             keep_sessions: default_keep_sessions(),
             set_up: false,
             tuned: false,
@@ -108,6 +112,7 @@ mod tests {
         let settings = Settings {
             games_folder: Some(PathBuf::from("D:\\PS3")),
             start_fullscreen: true,
+            start_in_big_picture: true,
             keep_sessions: 5,
             set_up: true,
             tuned: true,
@@ -123,6 +128,7 @@ mod tests {
         let loaded = Settings::load(&path);
         assert_eq!(loaded.games_folder, Some(PathBuf::from("D:\\PS3")));
         assert!(loaded.start_fullscreen);
+        assert!(loaded.start_in_big_picture);
         assert_eq!(loaded.keep_sessions, 5);
         assert!(loaded.tuned);
         assert_eq!(loaded.tuned_scale, Some(200));
@@ -138,6 +144,7 @@ mod tests {
         let loaded = Settings::load(&path);
         assert_eq!(loaded.games_folder, Some(PathBuf::from("D:\\PS3")));
         assert!(!loaded.start_fullscreen);
+        assert!(!loaded.start_in_big_picture);
         assert_eq!(loaded.keep_sessions, 20, "missing values fall back to the default");
         let _ = std::fs::remove_file(&path);
     }

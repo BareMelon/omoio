@@ -15,16 +15,15 @@ function formatSize(bytes: number): string {
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
-function gameCard(game: Game, mixed: boolean): HTMLElement {
+function gameCard(game: Game, mixed: boolean, selected: boolean): HTMLElement {
   const card = document.createElement("button");
   card.title = game.title;
 
-  // A dump's ICON0 is 320x176, landscape, while the tile is portrait like the
-  // box art a metadata service would eventually give us. Cropping to fill cuts
-  // the logo in half, so the icon is shown whole over a blurred copy of itself.
+  // The pictures games have are wide: a dump's ICON0 is 320x176 and RAWG's
+  // art is landscape too. So the tile is wide and the picture fills it,
+  // where a portrait tile left a letterbox around every one of them.
   const art = game.cover
-    ? `<img class="art-back" src="${convertFileSrc(game.cover)}" alt="" aria-hidden="true">
-       <img class="art-fit" src="${convertFileSrc(game.cover)}" alt="" loading="lazy">`
+    ? `<img src="${convertFileSrc(game.cover)}" alt="" loading="lazy">`
     : placeholderArt(game.title_id, game.title);
 
   // Three states, and only one of them is a problem. A game with no files yet
@@ -37,21 +36,21 @@ function gameCard(game: Game, mixed: boolean): HTMLElement {
       : `<span class="badge warn">Offline</span>`;
 
   // Dimmed either way: neither can be played right now.
-  card.className = game.set_up && game.available ? "card" : "card ghost";
+  card.className = `card${game.set_up && game.available ? "" : " ghost"}${selected ? " on" : ""}`;
   card.innerHTML = `
     <div class="art">
       ${art}
       ${mark}
-      <span class="art-name"></span>
     </div>
+    <div class="card-name"></div>
     <div class="meta">
       <span class="id">${game.title_id}</span>
+      <span>${game.set_up ? formatSize(game.size_bytes) : "no files yet"}</span>
       ${mixed ? `<span class="region">${SHORT[game.console]}</span>` : ""}
-      <span>· ${game.set_up ? formatSize(game.size_bytes) : "no files yet"}</span>
     </div>
   `;
   // Set through textContent so a game's own title can never be markup.
-  card.querySelector<HTMLElement>(".art-name")!.textContent = game.title;
+  card.querySelector<HTMLElement>(".card-name")!.textContent = game.title;
 
   // Opens the game rather than starting it: what it is, whether it can run,
   // and a Play button live in the panel.
@@ -60,7 +59,7 @@ function gameCard(game: Game, mixed: boolean): HTMLElement {
 }
 
 export function renderLibrary(): View {
-  const { games, search, notice } = store.get();
+  const { games, search, notice, selected } = store.get();
 
   // The library has not been read yet. Showing "No games yet" here would tell
   // someone with a shelf full of games that they have none, for a moment, every
@@ -104,7 +103,7 @@ export function renderLibrary(): View {
     grid.className = "grid";
     // The console is only worth saying once there is more than one.
     const mixed = new Set(games.map((game) => game.console)).size > 1;
-    shown.forEach((game) => grid.appendChild(gameCard(game, mixed)));
+    shown.forEach((game) => grid.appendChild(gameCard(game, mixed, game.title_id === selected)));
     content.appendChild(grid);
     if (shown.some((game) => game.cover_source === "rawg")) content.appendChild(rawgCredit());
   }

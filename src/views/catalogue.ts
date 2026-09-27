@@ -26,11 +26,11 @@ function tag(className: string, text: string): HTMLElement {
   return span;
 }
 
-function card(listing: Listing, covers: boolean, region: string): HTMLElement {
+function card(listing: Listing, covers: boolean, region: string, selected: boolean): HTMLElement {
   // A div rather than a button: it holds the Add button, and a button cannot
   // hold another. Role and keys make it act like one.
   const card = document.createElement("div");
-  card.className = "card";
+  card.className = selected ? "card on" : "card";
   card.tabIndex = 0;
   card.setAttribute("role", "button");
   const open = () => store.setCatalogueSelected({ listing });
@@ -45,12 +45,12 @@ function card(listing: Listing, covers: boolean, region: string): HTMLElement {
   card.innerHTML = `
     <div class="art">
       ${placeholderArt(listing.key, listing.name)}
-      <span class="art-name"></span>
     </div>
+    <div class="card-name"></div>
     <div class="meta"></div>
   `;
   // A game's own name, so never through innerHTML.
-  card.querySelector<HTMLElement>(".art-name")!.textContent = listing.name;
+  card.querySelector<HTMLElement>(".card-name")!.textContent = listing.name;
 
   // One release is named by its id. A game released several times, or listed
   // without ids, by its console; every release is in the side panel.
@@ -70,16 +70,11 @@ function card(listing: Listing, covers: boolean, region: string): HTMLElement {
   }
 
   if (covers) {
-    // The same treatment as a library tile: the whole picture over a blurred
-    // copy of itself, since RAWG's art is wide and the tile is not.
+    // RAWG's art is wide, like the tile, so it fills it.
     const art = card.querySelector<HTMLElement>(".art")!;
     const show = (path: string) => {
       art.querySelector("svg")?.remove();
-      const src = convertFileSrc(path);
-      art.insertAdjacentHTML(
-        "afterbegin",
-        `<img class="art-back" src="${src}" alt="" aria-hidden="true"><img class="art-fit" src="${src}" alt="">`
-      );
+      art.insertAdjacentHTML("afterbegin", `<img src="${convertFileSrc(path)}" alt="">`);
     };
     const known = knownCover(listing.key);
     if (known) {
@@ -339,8 +334,9 @@ export async function renderCatalogue(): Promise<View> {
 
   const grid = document.createElement("div");
   grid.className = "grid";
+  const picked = store.get().catalogueSelected?.listing.key;
   for (const listing of view.shown) {
-    grid.appendChild(card(listing, covers, choice.region));
+    grid.appendChild(card(listing, covers, choice.region, listing.key === picked));
   }
   content.appendChild(grid);
 

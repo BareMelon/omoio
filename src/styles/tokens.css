@@ -10,6 +10,8 @@
   --dim: #5a6377;
   --brand: #126bfc;
   --brand-soft: rgba(18, 107, 252, 0.14);
+  /* The light a highlighted tile throws in Big Picture, seen from a sofa. */
+  --brand-glow: rgba(18, 107, 252, 0.5);
   --go: #2ed37e;
   --warn: #e3a33f;
   /* Loadable and Nothing. The palette had no red because nothing needed one
@@ -55,4 +57,11 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
   --r: 7px;
+
+  /* Motion. Things arriving start fast and settle; things moving on screen
+     speed up and slow down; drawers follow the curve iOS uses for sheets.
+     The built-in ease curves are too soft to feel like a response. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }

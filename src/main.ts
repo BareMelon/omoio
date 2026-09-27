@@ -2,15 +2,18 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 
 import {
+  bigPicture,
   fetchCovers,
   getFirmwareVersion,
   getRpcs3Version,
   listGames,
+  onBigPicture,
   onGameFullscreen,
   onGameStarted,
   onGameStopped,
   playingGame,
 } from "./api";
+import { renderBigPicture } from "./bigpicture/bigPicture";
 import { renderPlayingBar } from "./components/playingBar";
 import { openSetupIfNeeded } from "./components/setupSheet";
 import { updateEmulatorsInBackground } from "./components/emulatorUpdates";
@@ -85,7 +88,7 @@ const shell = document.createElement("div");
 shell.className = "shell";
 shell.append(renderSidebar(), main, renderDetail());
 
-app.append(renderTitlebar(), shell);
+app.append(renderTitlebar(), shell, renderBigPicture());
 
 const topbarNormal = [...topbar.children];
 
@@ -97,6 +100,14 @@ let searchingIn: ViewId | null = null;
 let barShowing: string | null = null;
 
 store.subscribe((state) => {
+  // Big Picture draws its own screens over all of this, so the desktop is
+  // left as it was and picked up again when Big Picture closes.
+  document.body.classList.toggle("bp-on", state.bigPicture);
+  if (state.bigPicture) {
+    renderToken++;
+    return;
+  }
+
   // While a game runs, its picture covers the content area, so the top bar
   // becomes the controls for it and the view underneath is left alone.
   if (state.playing) {
@@ -139,6 +150,8 @@ getRpcs3Version().then((version) => store.setRpcs3Version(version));
 getFirmwareVersion().then((version) => store.setFirmwareVersion(version));
 listGames().then((games) => store.setGames(games));
 playingGame().then((playing) => store.setPlaying(playing));
+bigPicture().then((state) => store.setBigPicture(state));
+void onBigPicture((state) => store.setBigPicture(state));
 
 // Covers for games that appeared since the last look, however they came in.
 // RAWG is asked about each game once, so looking again costs nothing for the
@@ -167,4 +180,6 @@ onGameFullscreen((on) => store.setGameFullscreen(on));
 onGameStopped(() => {
   store.setGameFullscreen(false);
   store.setPlaying(null);
+  // A game quit from behind Big Picture is no longer waiting there.
+  store.setBigPicture({ on: store.get().bigPicture, suspended: false });
 });

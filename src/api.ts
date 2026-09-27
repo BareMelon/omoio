@@ -84,6 +84,9 @@ export interface Game {
     compatibility: boolean;
     /// The toy portal of a Skylanders game, filled from the portal menu.
     portal: boolean;
+    /// The game stops reading the pad while Omoio is in front of it, so
+    /// Big Picture's presses never reach a game waiting behind it.
+    quiet_behind: boolean;
   };
 }
 
@@ -106,6 +109,7 @@ export function launchGame(titleId: string): Promise<void> {
 export interface Playing {
   title_id: string;
   title: string;
+  console: Console;
 }
 
 export function stopGame(): Promise<void> {
@@ -223,6 +227,8 @@ export function setGameSettings(titleId: string, chosen: ChosenSettings): Promis
 export interface Settings {
   games_folder: string | null;
   start_fullscreen: boolean;
+  /// Open Omoio in Big Picture, for a PC under a TV.
+  start_in_big_picture: boolean;
   keep_sessions: number;
   /// The resolution scale Omoio set for this machine, once it has.
   tuned_scale: number | null;
@@ -238,6 +244,34 @@ export function getSettings(): Promise<Settings> {
 
 export function setStartFullscreen(on: boolean): Promise<void> {
   return invoke("set_start_fullscreen", { on });
+}
+
+export function setStartInBigPicture(on: boolean): Promise<void> {
+  return invoke("set_start_in_big_picture", { on });
+}
+
+export interface BigPictureState {
+  on: boolean;
+  /// A game is running with its picture taken off the screen, waiting
+  /// behind Big Picture.
+  suspended: boolean;
+}
+
+export function bigPicture(): Promise<BigPictureState> {
+  return invoke("big_picture");
+}
+
+export function setBigPicture(on: boolean): Promise<void> {
+  return invoke("set_big_picture", { on });
+}
+
+/// Puts the game waiting behind Big Picture back on the screen.
+export function resumeGame(): Promise<void> {
+  return invoke("resume_game");
+}
+
+export function onBigPicture(handler: (state: BigPictureState) => void): Promise<UnlistenFn> {
+  return listen<BigPictureState>("big-picture", (event) => handler(event.payload));
 }
 
 export function setKeepSessions(keep: number): Promise<void> {
@@ -647,6 +681,11 @@ export function padInput(device: string): Promise<string[] | null> {
 /// Everything held on any pad plugged in.
 export function padsHeld(): Promise<string[]> {
   return invoke("pads_held");
+}
+
+/// The pads plugged in right now.
+export function padsConnected(): Promise<Pad[]> {
+  return invoke("pads_connected");
 }
 
 /// One of the user's figure files, kept in Omoio's figures folder.

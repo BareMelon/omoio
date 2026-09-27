@@ -13,9 +13,10 @@
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible, SetWindowLongPtrW,
-    SetWindowPos, GWLP_HWNDPARENT, GWL_STYLE, SWP_NOACTIVATE, SWP_NOZORDER, WS_CAPTION, WS_POPUP,
-    WS_SYSMENU, WS_THICKFRAME, WS_VISIBLE,
+    EnumWindows, GetForegroundWindow, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWLP_HWNDPARENT, GWL_STYLE,
+    SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNA, WS_CAPTION, WS_POPUP, WS_SYSMENU,
+    WS_THICKFRAME, WS_VISIBLE,
 };
 
 struct Search {
@@ -91,6 +92,48 @@ pub fn ours_has_focus(game: isize, host: isize) -> bool {
     let front = front.0 as isize;
     let root = root.0 as isize;
     front == game || front == host || root == game || root == host
+}
+
+/// Takes the game picture off the screen without touching the game. Hiding
+/// the window in front hands the keyboard to its owner, which is Omoio.
+pub fn hide(game: isize) {
+    unsafe {
+        let _ = ShowWindow(HWND(game as *mut _), SW_HIDE);
+    }
+}
+
+/// Puts the game picture back. With `activate` it takes the keyboard as
+/// well, which Omoio may hand over because its own window is the one in
+/// front at that moment.
+pub fn show(game: isize, activate: bool) {
+    unsafe {
+        let _ = ShowWindow(HWND(game as *mut _), if activate { SW_SHOW } else { SW_SHOWNA });
+    }
+    if activate {
+        focus(game);
+    }
+}
+
+/// Gives the game the keyboard, and with it the pad: RPCS3 reads the pad
+/// only while its window is the one in front. Windows allows this only from
+/// the program in front, so it is asked for only when that is Omoio.
+pub fn focus(game: isize) {
+    unsafe {
+        let _ = SetForegroundWindow(HWND(game as *mut _));
+    }
+}
+
+/// Whether the window in front belongs to one of these processes. Asked by
+/// process rather than by window, so the portal menu and the emulator's own
+/// dialogs count as Omoio's too.
+pub fn front_belongs_to(processes: &[u32]) -> bool {
+    let front = unsafe { GetForegroundWindow() };
+    if front.0.is_null() {
+        return false;
+    }
+    let mut owner = 0u32;
+    unsafe { GetWindowThreadProcessId(front, Some(&mut owner)) };
+    processes.contains(&owner)
 }
 
 pub fn place(game: isize, x: i32, y: i32, width: i32, height: i32) {

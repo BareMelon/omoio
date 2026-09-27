@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { setBigPicture } from "../api";
 
 export function renderTitlebar(): HTMLElement {
   const bar = document.createElement("div");
@@ -13,6 +14,10 @@ export function renderTitlebar(): HTMLElement {
       Omoio
     </div>
     <div class="tb-spacer"></div>
+    <button class="tb-big" id="tb-big-picture" title="Full screen, for a TV and a controller. View and Menu together open it too.">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.5"/><path d="M5.5 13.5h5"/></svg>
+      Big Picture
+    </button>
     <button class="tb-btn" id="tb-minimize" aria-label="Minimize">
       <svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.2"/></svg>
     </button>
@@ -25,6 +30,7 @@ export function renderTitlebar(): HTMLElement {
   `;
 
   const win = getCurrentWindow();
+  bar.querySelector<HTMLButtonElement>("#tb-big-picture")!.onclick = () => void setBigPicture(true);
   bar.querySelector<HTMLButtonElement>("#tb-minimize")!.onclick = () => win.minimize();
   bar.querySelector<HTMLButtonElement>("#tb-maximize")!.onclick = () => win.toggleMaximize();
   bar.querySelector<HTMLButtonElement>("#tb-close")!.onclick = () => win.close();

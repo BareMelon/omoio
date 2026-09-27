@@ -42,6 +42,9 @@ pub struct Features {
     pub compatibility: bool,
     /// The toy portal of a Skylanders game, filled from Omoio's portal menu.
     pub portal: bool,
+    /// The game stops reading the pad while Omoio's window is in front, so
+    /// presses in Big Picture never reach a game waiting behind it.
+    pub quiet_behind: bool,
 }
 
 #[cfg(test)]

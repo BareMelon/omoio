@@ -1,4 +1,4 @@
-import type { Console, Game, Listing, Playing } from "./api";
+import type { BigPictureState, Console, Game, Listing, Playing } from "./api";
 
 /// A catalogue title opened in the side panel.
 export interface CatalogueSelection {
@@ -53,6 +53,10 @@ interface AppState {
   playing: Playing | null;
   gameFullscreen: boolean;
   selected: string | null;
+  /// Omoio across the whole screen, drawn for a controller.
+  bigPicture: boolean;
+  /// The running game is off the screen, waiting behind Big Picture.
+  suspended: boolean;
 }
 
 type Listener = (state: AppState) => void;
@@ -83,6 +87,8 @@ class Store {
     playing: null,
     gameFullscreen: false,
     selected: null,
+    bigPicture: false,
+    suspended: false,
   };
   private listeners = new Set<Listener>();
 
@@ -169,6 +175,12 @@ class Store {
 
   setSelected(selected: string | null): void {
     this.state = { ...this.state, selected };
+    this.notify();
+  }
+
+  setBigPicture({ on, suspended }: BigPictureState): void {
+    if (on === this.state.bigPicture && suspended === this.state.suspended) return;
+    this.state = { ...this.state, bigPicture: on, suspended };
     this.notify();
   }
 

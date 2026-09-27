@@ -108,6 +108,27 @@ fn disable_welcome_screen(app: &AppHandle) -> Result<(), String> {
     std::fs::write(&file, with_welcome_disabled(&existing)).map_err(|e| e.to_string())
 }
 
+/// RPCS3 reads the pad even while its window is not the one in front:
+/// `IO / Background input enabled` ships on (`Emu/system_config.h`), and the
+/// pad thread only asks `is_input_allowed()`, which is that setting or the
+/// game window having focus (`Emu/RSX/GSFrameBase.cpp`). Switched off, a game
+/// waiting behind Big Picture doesn't take the presses meant for Omoio. A
+/// value chosen for one game in its own settings still wins over this one.
+fn keep_pad_to_the_game(app: &AppHandle) {
+    const KEY: &str = "Background input enabled";
+    let Ok(dir) = super::install_dir(app) else {
+        return;
+    };
+    let path = dir.join("config").join("config.yml");
+    let Ok(config) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let updated = super::account::replace_setting(&config, KEY, "false");
+    if updated != config {
+        let _ = std::fs::write(&path, updated);
+    }
+}
+
 pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
     let exe = super::exe_path(app)?;
     if !exe.exists() {
@@ -124,6 +145,7 @@ pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
 
     register(app, game)?;
     disable_welcome_screen(app)?;
+    keep_pad_to_the_game(app);
 
     // --no-gui keeps RPCS3's own window out of the way: the user asked to play
     // a game, not to meet the emulator. Spawned rather than waited on, so
