@@ -1507,6 +1507,10 @@ button {
   align-items: center;
   gap: 8px;
 }
+/* A heading inside a section, such as Advanced under Skylanders. */
+.sec-h.sec-sub {
+  margin-top: 16px;
+}
 .portal-key .row-k {
   flex: 1;
 }

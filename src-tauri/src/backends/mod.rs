@@ -79,6 +79,14 @@ pub trait EmulatorBackend: Sync {
         Err(NO_PORTAL.to_string())
     }
 
+    /// A copy of the game whose files Omoio can read, for the figures'
+    /// pictures: decrypted, as an archive or an unpacked folder. `title_of`
+    /// says which game such an archive holds, so another game's is never
+    /// taken. `None` when there is no such copy.
+    fn readable_copy(&self, _app: &AppHandle, _game: &Game, _title_of: &dyn Fn(&Path) -> Option<String>) -> Option<PathBuf> {
+        None
+    }
+
     /// What this console calls each place on a pad, for the Controller
     /// screen. A place the emulator cannot use is left out.
     fn button_names(&self) -> &'static [(&'static str, &'static str)];

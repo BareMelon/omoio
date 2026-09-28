@@ -351,6 +351,31 @@ fn title_id_for(app: &AppHandle, game: &Game) -> Option<String> {
     Some(id)
 }
 
+/// Cemu's own compressed archive of a title (.wua), which Cemu writes with
+/// the files decrypted.
+fn is_archive(name: &str) -> bool {
+    file_name(name).ends_with(".wua")
+}
+
+/// A decrypted copy of the game whose files Omoio can read: the game itself
+/// when it is unpacked, or else a .wua Cemu made of it, looked for beside the
+/// game and one folder up and known by its title id. A disc image's own
+/// files stay out of reach: they are encrypted, and Omoio never decrypts.
+fn readable_copy(app: &AppHandle, game: &Game, title_of: &dyn Fn(&Path) -> Option<String>) -> Option<PathBuf> {
+    if game.path.is_dir() {
+        return Some(game.path.clone());
+    }
+    let wanted = title_id_for(app, game)?;
+    let beside = game.path.parent()?;
+    [Some(beside), beside.parent()]
+        .into_iter()
+        .flatten()
+        .filter_map(|folder| std::fs::read_dir(folder).ok())
+        .flat_map(|entries| entries.flatten().map(|entry| entry.path()))
+        .filter(|path| is_archive(&path.to_string_lossy()))
+        .find(|path| title_of(path).as_deref() == Some(wanted.as_str()))
+}
+
 /// The title version Cemu writes to its log as a game loads, "TitleVersion:
 /// v16", in the same numbers meta.xml uses. A disc image's meta.xml is
 /// encrypted, so this is where Omoio learns its version: after the first play.
@@ -694,6 +719,10 @@ impl super::EmulatorBackend for Cemu {
 
     fn hush(&self, pid: u32, hushed: bool) -> Result<(), String> {
         portal::hush(pid, hushed)
+    }
+
+    fn readable_copy(&self, app: &AppHandle, game: &Game, title_of: &dyn Fn(&Path) -> Option<String>) -> Option<PathBuf> {
+        readable_copy(app, game, title_of)
     }
 
     fn game_settings(&self, app: &AppHandle, game: &Game) -> Result<crate::core::game_settings::GameSettings, String> {

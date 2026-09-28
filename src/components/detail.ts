@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   addToLibrary,
+  figurePictures,
   gameCompatibility,
   gamePatches,
   gameSaves,
@@ -11,8 +12,11 @@ import {
   padsHeld,
   portalButton,
   refreshCompatibility,
+  getFigurePictures,
+  onFigurePictures,
   removeGame,
   setPortalButton,
+  stopFigurePictures,
   type Game,
 } from "../api";
 import { placeholderArt } from "./art";
@@ -94,6 +98,16 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
         <button class="small-btn" id="detail-portal-button"></button>
       </div>
       <div class="note plain gone" id="detail-portal-about"></div>
+      <div class="sec-h sec-sub">Advanced</div>
+      <div class="portal-key">
+        <span class="row-k">Figure pictures</span>
+        <button class="small-btn" id="detail-pictures"></button>
+      </div>
+      <div class="progress-row gone" id="detail-pictures-bar">
+        <div class="progress-label"><span>Reading the pictures from your game…</span><span class="pct"></span></div>
+        <div class="progress"><div class="progress-fill" style="width:0%"></div></div>
+      </div>
+      <div class="note plain" id="detail-pictures-note"></div>
     </div>
     <div class="sec" id="sec-location">
       <div class="sec-h">Location</div>
@@ -194,6 +208,57 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       }
       keyButton.disabled = false;
       await showKey();
+    };
+
+    // Each figure's own picture, read out of the user's copy of the game by
+    // a small program Omoio fetches the first time. Under Advanced, since
+    // the menu works without them.
+    const pictures = body.querySelector<HTMLButtonElement>("#detail-pictures")!;
+    const picturesBar = body.querySelector<HTMLElement>("#detail-pictures-bar")!;
+    const picturesFill = picturesBar.querySelector<HTMLElement>(".progress-fill")!;
+    const picturesPct = picturesBar.querySelector<HTMLElement>(".pct")!;
+    const picturesNote = body.querySelector<HTMLElement>("#detail-pictures-note")!;
+    const showPictures = (count: number) => {
+      pictures.textContent = count > 0 ? "Get them again" : "Get pictures";
+      picturesNote.textContent =
+        count > 0
+          ? `${count} pictures from your copy of the game. The portal menu shows them.`
+          : "Show each figure's own picture in the portal menu, read from your copy of the game. Takes under a minute.";
+    };
+    const countPictures = () =>
+      figurePictures(game.title_id)
+        .then((found) => found.names.length)
+        .catch(() => 0);
+    void countPictures().then(showPictures);
+
+    let reading = false;
+    pictures.onclick = async () => {
+      if (reading) {
+        await stopFigurePictures();
+        return;
+      }
+      reading = true;
+      pictures.textContent = "Stop";
+      picturesNote.textContent = "";
+      picturesFill.style.width = "0%";
+      picturesPct.textContent = "";
+      picturesBar.classList.remove("gone");
+      const unlisten = onFigurePictures((progress) => {
+        if (progress.title_id !== game.title_id || progress.of === 0) return;
+        const done = Math.round((progress.done / progress.of) * 100);
+        picturesFill.style.width = `${done}%`;
+        picturesPct.textContent = `${done}%`;
+      });
+      try {
+        showPictures(await getFigurePictures(game.title_id));
+      } catch (err) {
+        showPictures(await countPictures());
+        picturesNote.textContent = typeof err === "string" ? err : "Couldn't read the pictures. Try again.";
+      } finally {
+        reading = false;
+        picturesBar.classList.add("gone");
+        void unlisten.then((stopListening) => stopListening());
+      }
     };
   }
   play.onclick = async () => {

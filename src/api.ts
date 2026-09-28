@@ -775,6 +775,34 @@ export function onPortalMenu(handler: (state: { open: boolean; family: string })
   return listen<{ open: boolean; family: string }>("portal-menu", (event) => handler(event.payload));
 }
 
+/// The figures' pictures a game has so far: where they are, and each one's
+/// name without `.png`, `<id>-<variant>` with the variant as four hex digits.
+export interface FigurePictures {
+  folder: string;
+  names: string[];
+}
+
+/// Without a title id, the running game's, which is how the portal menu asks.
+export function figurePictures(titleId?: string): Promise<FigurePictures> {
+  return invoke("figure_pictures", { titleId: titleId ?? null });
+}
+
+/// Reads the figures' pictures out of the user's own copy of the game.
+/// Resolves to how many were kept.
+export function getFigurePictures(titleId: string): Promise<number> {
+  return invoke("get_figure_pictures", { titleId });
+}
+
+export function stopFigurePictures(): Promise<void> {
+  return invoke("stop_figure_pictures");
+}
+
+export function onFigurePictures(
+  handler: (progress: { title_id: string; done: number; of: number }) => void
+): Promise<UnlistenFn> {
+  return listen<{ title_id: string; done: number; of: number }>("figure-pictures", (event) => handler(event.payload));
+}
+
 export function setCovers(on: boolean): Promise<void> {
   return invoke("set_covers", { on });
 }

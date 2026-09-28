@@ -1599,6 +1599,30 @@ pub async fn portal_clear(app: AppHandle, slot: usize) -> Result<Vec<String>, St
         .map_err(|e| e.to_string())?
 }
 
+/// The figures' pictures a game has so far: the running game's when no
+/// title id is given, which is how the portal menu asks.
+#[tauri::command]
+pub fn figure_pictures(app: AppHandle, title_id: Option<String>) -> Result<crate::figure_pictures::Pictures, String> {
+    let title_id = match title_id {
+        Some(id) => id,
+        None => app.state::<Session>().playing().ok_or("Start a game first.")?.title_id,
+    };
+    crate::figure_pictures::pictures(&app, &title_id)
+}
+
+/// Reads the figures' pictures out of the user's own copy of the game.
+/// Resolves to how many were kept.
+#[tauri::command]
+pub async fn get_figure_pictures(app: AppHandle, title_id: String) -> Result<usize, String> {
+    let (backend, game) = game_and_emulator(&app, &title_id)?;
+    crate::figure_pictures::get(app, backend, game).await
+}
+
+#[tauri::command]
+pub fn stop_figure_pictures() {
+    crate::figure_pictures::stop();
+}
+
 /// What is held on a pad right now, for lighting the drawing and recording a
 /// button. `None` when the pad does not answer, which is how it being
 /// switched on or off shows.

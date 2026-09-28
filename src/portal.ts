@@ -1,8 +1,10 @@
 import "./styles/tokens.css";
 import "./styles/portal.css";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   closePortalMenu,
   figureCharacters,
+  figurePictures,
   figures as listFigures,
   onPortalMenu,
   padsHeld,
@@ -149,6 +151,18 @@ let chip = 0;
 let status = "";
 /// The top half picked for a swapper, while waiting for its bottom.
 let pickedTop: { name: string; top: Offer } | null = null;
+/// The figures' pictures Omoio has read out of this game, by name.
+let pictures: { folder: string; names: Set<string> } | null = null;
+
+/// A figure's picture, or its plain version's when its variant has none of
+/// its own. `null` when Omoio has no picture of it.
+function pictureOf(id: number | null | undefined, variant: number | null | undefined): string | null {
+  if (!pictures || id == null) return null;
+  const four = (value: number) => value.toString(16).padStart(4, "0");
+  const known = pictures.names;
+  const name = [`${id}-${four(variant ?? 0)}`, `${id}-0000`].find((each) => known.has(each));
+  return name ? convertFileSrc(`${pictures.folder}\\${name}.png`) : null;
+}
 
 function placed(): { name: string; slot: number }[] {
   return onPortal.map((name, slot) => ({ name, slot })).filter((figure) => figure.name);
@@ -239,16 +253,35 @@ function drawing(element: FigureElement | null, kind: FigureKind | null): string
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKS[shape]}</svg>`;
 }
 
-function mark(element: FigureElement | null, kind: FigureKind | null): HTMLElement {
+function image(source: string): HTMLImageElement {
+  const made = node("img", "");
+  made.src = source;
+  made.alt = "";
+  made.decoding = "async";
+  return made;
+}
+
+function mark(element: FigureElement | null, kind: FigureKind | null, source: string | null): HTMLElement {
   const badge = node("span", `portal-mark tint-${element ?? "none"}`);
-  badge.innerHTML = drawing(element, kind);
+  if (source) badge.appendChild(image(source));
+  else badge.innerHTML = drawing(element, kind);
   return badge;
 }
 
-/// The picture spot at the top of a tile, with its corner badge.
+/// The picture spot at the top of a tile, with its corner badge: the
+/// figure's own picture from the game when Omoio has it, its element's
+/// drawing when not. A swapper is its bottom with a top laid over it: its
+/// own, or while a top is picked, that one, so each bottom shows the mix.
 function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
   const spot = node("span", `portal-art tint-${entry.element ?? "none"}`);
-  spot.innerHTML = drawing(entry.element, entry.kind);
+  const sources = entry.swap
+    ? [entry.swap.bottom, pickedTop?.top ?? entry.swap.top].map((half) => pictureOf(half.id, half.variant))
+    : [pictureOf(entry.offer?.id ?? entry.figure?.id, entry.offer?.variant ?? entry.figure?.variant)];
+  if (sources.every((source) => source)) {
+    for (const source of sources) spot.appendChild(image(source!));
+  } else {
+    spot.innerHTML = drawing(entry.element, entry.kind);
+  }
   if (badge) {
     const [words, shape] = BADGES[badge];
     const corner = node("span", `portal-badge ${badge}`);
@@ -281,7 +314,10 @@ function renderHead(): HTMLElement {
   on.forEach((figure, index) => {
     const known = offers.find((offer) => offer.name === figure.name);
     const button = node("button", zone === "portal" && index === chip ? "portal-chip sel" : "portal-chip");
-    button.append(mark(known?.element ?? null, known?.kind ?? null), node("span", "", figure.name));
+    button.append(
+      mark(known?.element ?? null, known?.kind ?? null, pictureOf(known?.id, known?.variant)),
+      node("span", "", figure.name)
+    );
     button.onclick = () => {
       zone = "portal";
       chip = index;
@@ -396,6 +432,8 @@ function showTab(index: number) {
   tab = (index + tabs.length) % tabs.length;
   at = 0;
   zone = "grid";
+  // Leaving a tab drops a picked top, and the line asking for its bottom.
+  if (pickedTop) status = "";
   pickedTop = null;
   render();
 }
@@ -652,6 +690,10 @@ async function show() {
   held = await readPads();
   zone = "grid";
   shown = true;
+  // Read again each time, since pictures can be got while the game runs.
+  pictures = await figurePictures()
+    .then((found) => ({ folder: found.folder, names: new Set(found.names) }))
+    .catch(() => null);
   await refresh();
   await loadOffers();
 }

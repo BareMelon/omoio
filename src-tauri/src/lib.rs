@@ -8,6 +8,7 @@ pub mod core;
 mod hardware;
 pub mod import;
 mod pads;
+mod figure_pictures;
 mod portal_menu;
 pub mod session;
 
@@ -106,6 +107,9 @@ pub fn run() {
             commands::portal_figures,
             commands::portal_load,
             commands::portal_clear,
+            commands::figure_pictures,
+            commands::get_figure_pictures,
+            commands::stop_figure_pictures,
             commands::figures,
             commands::add_figures,
             commands::close_portal_menu,
