@@ -292,6 +292,36 @@ body {
   height: 17px;
 }
 
+/* The game's own element symbol: a white shape from the game, painted in
+   the element's colour through it. */
+.portal-symbol {
+  display: inline-block;
+  flex: none;
+  background: var(--tint);
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.portal-kind .portal-symbol,
+.portal-tab .portal-symbol {
+  width: 18px;
+  height: 18px;
+}
+
+.portal-mark .portal-symbol {
+  width: 70%;
+  height: 70%;
+}
+
+.portal-art > .portal-symbol {
+  width: 52%;
+  height: 52%;
+}
+
 /* The series, small, where the figure's name doesn't give it. */
 .portal-series {
   margin-left: 4px;

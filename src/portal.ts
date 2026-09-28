@@ -84,10 +84,10 @@ const KIND_NAMES: Partial<Record<FigureKind, string>> = {
   trophy: "Trophy",
 };
 
-/// Omoio's own drawing for each element, and for the kinds that have none,
-/// shown large where a figure's picture goes. Omoio has no pictures of the
-/// figures, so a child who can't read yet goes by the element's shape and
-/// colour, which the games use too.
+/// Omoio's own drawing for each element, and for the kinds that have none.
+/// Used until Omoio has read the game's own symbols out of the game, and for
+/// an element that game doesn't have. A child who can't read yet goes by the
+/// element's shape and colour, which the games use too.
 const MARKS: Record<string, string> = {
   air: `<path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
   earth: `<path d="M2 20 9 8l4 6 3-4 6 10z" fill="currentColor"/>`,
@@ -261,10 +261,29 @@ function image(source: string): HTMLImageElement {
   return made;
 }
 
+/// The game's own symbol for an element, a white shape read out of the game,
+/// painted in the element's colour. `null` until Omoio has it.
+function symbol(element: FigureElement | null): HTMLElement | null {
+  if (!pictures || !element || !pictures.names.has(`element-${element}`)) return null;
+  const source = `url("${convertFileSrc(`${pictures.folder}\\element-${element}.png`)}")`;
+  const shape = node("span", `portal-symbol tint-${element}`);
+  shape.style.maskImage = source;
+  shape.style.webkitMaskImage = source;
+  return shape;
+}
+
+/// An element's shape: the game's own symbol when Omoio has it, its drawing
+/// when not, and the kind's drawing for a figure with no element.
+function emblem(into: HTMLElement, element: FigureElement | null, kind: FigureKind | null) {
+  const shape = symbol(element);
+  if (shape) into.appendChild(shape);
+  else into.insertAdjacentHTML("beforeend", drawing(element, kind));
+}
+
 function mark(element: FigureElement | null, kind: FigureKind | null, source: string | null): HTMLElement {
   const badge = node("span", `portal-mark tint-${element ?? "none"}`);
   if (source) badge.appendChild(image(source));
-  else badge.innerHTML = drawing(element, kind);
+  else emblem(badge, element, kind);
   return badge;
 }
 
@@ -280,7 +299,7 @@ function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
   if (sources.every((source) => source)) {
     for (const source of sources) spot.appendChild(image(source!));
   } else {
-    spot.innerHTML = drawing(entry.element, entry.kind);
+    emblem(spot, entry.element, entry.kind);
   }
   if (badge) {
     const [words, shape] = BADGES[badge];
@@ -298,7 +317,7 @@ function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
 function kindLine(entry: Entry): HTMLElement {
   const line = node("span", `portal-kind tint-${entry.element ?? "none"}`);
   if (entry.element) {
-    line.innerHTML = drawing(entry.element, null);
+    emblem(line, entry.element, null);
     line.append(ELEMENT_NAMES.get(entry.element) ?? "");
   } else if (entry.kind) {
     line.append(KIND_NAMES[entry.kind] ?? "");
@@ -340,7 +359,7 @@ function renderTabs(): HTMLElement {
     const button = node("button", index === tab ? "portal-tab sel" : "portal-tab");
     button.setAttribute("role", "tab");
     button.setAttribute("aria-selected", String(index === tab));
-    if (each.element) button.appendChild(node("span", `portal-dot tint-${each.element}`));
+    if (each.element) button.appendChild(symbol(each.element) ?? node("span", `portal-dot tint-${each.element}`));
     button.append(each.label);
     button.onclick = () => showTab(index);
     bar.appendChild(button);
