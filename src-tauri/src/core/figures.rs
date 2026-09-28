@@ -97,6 +97,15 @@ pub fn reads(game: Game, id: u16, variant: u16) -> bool {
     id_game(id) <= game && variant_game(variant) <= game
 }
 
+/// The series of a figure whose name doesn't say it. SWAP Force brought
+/// older Skylanders back in new poses under new names ("Blizzard Chill"),
+/// the third series, where the second series' names begin "Series 2". The
+/// variant says so: the SWAP Force year in its top four bits, and the bit
+/// for a new pose.
+pub fn series(variant: u16) -> Option<u8> {
+    (variant_game(variant) == Game::SwapForce && variant & 0x0800 != 0).then_some(3)
+}
+
 pub fn kind(id: u16) -> Kind {
     match id {
         210..=229 => Kind::Trap,
@@ -248,6 +257,7 @@ pub struct Offer {
     pub element: Option<Element>,
     pub kind: Kind,
     pub half: Option<Half>,
+    pub series: Option<u8>,
 }
 
 /// The characters `game` reads, each with its element and kind. Every one
@@ -260,6 +270,7 @@ pub fn offers(characters: Vec<Character>, game: Option<Game>) -> Vec<Offer> {
             element: element(character.id),
             kind: kind(character.id),
             half: half(character.id),
+            series: series(character.variant),
             character,
         })
         .collect()
@@ -344,6 +355,16 @@ mod tests {
         assert!(!reads(swap, 230, 0x3000)); // Hand of Fate
         assert!(!reads(Game::Giants, 3000, 0x2000));
         assert!(reads(Game::SuperChargers, 3400, 0x4100)); // Fiesta
+    }
+
+    #[test]
+    fn swap_force_reposes_are_the_third_series() {
+        assert_eq!(series(0x2805), Some(3)); // Blizzard Chill
+        assert_eq!(series(0x2c02), Some(3)); // Dark Mega Ram Spyro
+        assert_eq!(series(0x1801), None); // Series 2 Spyro says it already
+        assert_eq!(series(0x0000), None); // Spyro
+        assert_eq!(series(0x2402), None); // Dark Blast Zone, new in SWAP Force
+        assert_eq!(series(0x2206), None); // LightCore Smolderdash
     }
 
     #[test]

@@ -293,7 +293,8 @@ function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
 }
 
 /// The line under a tile's name: the element in its colour and shape, or
-/// the kind of figure when it has no element.
+/// the kind of figure when it has no element, and the series where the name
+/// doesn't give it.
 function kindLine(entry: Entry): HTMLElement {
   const line = node("span", `portal-kind tint-${entry.element ?? "none"}`);
   if (entry.element) {
@@ -302,6 +303,8 @@ function kindLine(entry: Entry): HTMLElement {
   } else if (entry.kind) {
     line.append(KIND_NAMES[entry.kind] ?? "");
   }
+  const series = entry.offer?.series ?? entry.figure?.series;
+  if (series) line.appendChild(node("span", "portal-series", `Series ${series}`));
   return line;
 }
 

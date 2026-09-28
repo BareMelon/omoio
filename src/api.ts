@@ -701,6 +701,9 @@ export interface Figure {
   variant: number | null;
   element: FigureElement | null;
   kind: FigureKind | null;
+  /// Set where the figure's name doesn't say its series, as with SWAP
+  /// Force's new poses of older Skylanders (series 3).
+  series: number | null;
 }
 
 export function figures(): Promise<Figure[]> {
@@ -749,6 +752,7 @@ export interface Offer extends Character {
   kind: FigureKind;
   /// A Swap Force swapper is two figures, a top and a bottom.
   half: "top" | "bottom" | null;
+  series: number | null;
 }
 
 export function figureCharacters(): Promise<Offer[]> {

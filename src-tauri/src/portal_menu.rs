@@ -56,6 +56,7 @@ pub struct Figure {
     pub variant: Option<u16>,
     pub element: Option<Element>,
     pub kind: Option<Kind>,
+    pub series: Option<u8>,
 }
 
 /// Which character each figure Omoio had made is, by file name.
@@ -109,6 +110,7 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
                         variant: character.map(|[_, variant]| variant),
                         element: character.and_then(|[id, _]| figures::element(id)),
                         kind: character.map(|[id, _]| figures::kind(id)),
+                        series: character.and_then(|[_, variant]| figures::series(variant)),
                     }
                 })
                 .collect()
