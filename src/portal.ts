@@ -16,10 +16,14 @@ import {
   type Figure,
   type FigureElement,
   type FigureKind,
+  type Movement,
   type Offer,
   type PadFamily,
 } from "./api";
 import { nameOf } from "./components/padNames";
+import adventureIcon from "./icons/adventures.svg";
+import itemIcon from "./icons/items.svg";
+import swapperIcon from "./icons/swappers.svg";
 
 /// The Skylanders menu, drawn by Omoio over the running game and used with
 /// the pad alone. The shoulder buttons go through the tabs: Saved, then one
@@ -84,10 +88,28 @@ const KIND_NAMES: Partial<Record<FigureKind, string>> = {
   trophy: "Trophy",
 };
 
-/// Omoio's own drawing for each element, and for the kinds that have none.
-/// Used until Omoio has read the game's own symbols out of the game, and for
-/// an element that game doesn't have. A child who can't read yet goes by the
-/// element's shape and colour, which the games use too.
+/// Omoio's own icons for the tabs without an element and for the figures of
+/// those kinds, drawn in the style of the game's element symbols: shapes,
+/// painted in the kind's colour as the symbols are in the element's.
+const ICONS = { item: itemIcon, adventure: adventureIcon, swapper: swapperIcon };
+
+type Icon = keyof typeof ICONS;
+
+const MOVEMENT_NAMES: Record<Movement, string> = {
+  bounce: "Bounce",
+  climb: "Climb",
+  dig: "Dig",
+  rocket: "Rocket",
+  sneak: "Sneak",
+  speed: "Speed",
+  spin: "Spin",
+  teleport: "Teleport",
+};
+
+/// Omoio's own drawing for each element, and for the kinds that have no
+/// icon. Used until Omoio has read the game's own symbols out of the game,
+/// and for an element that game doesn't have. A child who can't read yet
+/// goes by the element's shape and colour, which the games use too.
 const MARKS: Record<string, string> = {
   air: `<path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
   earth: `<path d="M2 20 9 8l4 6 3-4 6 10z" fill="currentColor"/>`,
@@ -99,8 +121,6 @@ const MARKS: Record<string, string> = {
   tech: `<circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>`,
   light: `<circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
   dark: `<path d="M15.5 3A9 9 0 1 0 21 17.5 7.5 7.5 0 0 1 15.5 3z" fill="currentColor"/>`,
-  item: `<path d="M3 10h18v10H3zM3 10l2-5h14l2 5M10 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`,
-  adventure: `<path d="M5 21V3M5 4h13l-3 4 3 4H5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`,
   vehicle: `<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/>`,
   trophy: `<path d="M7 3h10v5a5 5 0 0 1-10 0zM7 5H4a3 3 0 0 0 3.3 4M17 5h3a3 3 0 0 1-3.3 4M12 13v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`,
   figure: `<circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/>`,
@@ -129,6 +149,7 @@ interface Entry {
 interface Tab {
   label: string;
   element?: FigureElement;
+  icon?: Icon;
   entries: Entry[];
 }
 
@@ -157,11 +178,14 @@ let pictures: { folder: string; names: Set<string> } | null = null;
 /// A figure's picture, or its plain version's when its variant has none of
 /// its own. `null` when Omoio has no picture of it.
 function pictureOf(id: number | null | undefined, variant: number | null | undefined): string | null {
-  if (!pictures || id == null) return null;
+  if (id == null) return null;
   const four = (value: number) => value.toString(16).padStart(4, "0");
-  const known = pictures.names;
-  const name = [`${id}-${four(variant ?? 0)}`, `${id}-0000`].find((each) => known.has(each));
-  return name ? convertFileSrc(`${pictures.folder}\\${name}.png`) : null;
+  return fileOf(`${id}-${four(variant ?? 0)}`) ?? fileOf(`${id}-0000`);
+}
+
+/// One of the pictures Omoio read out of the game, by name, when it has it.
+function fileOf(name: string): string | null {
+  return pictures?.names.has(name) ? convertFileSrc(`${pictures.folder}\\${name}.png`) : null;
 }
 
 function placed(): { name: string; slot: number }[] {
@@ -222,10 +246,10 @@ function buildTabs() {
       return bottom ? [{ name: baseName(top.name), element: top.element, kind: top.kind, swap: { top, bottom } }] : [];
     })
     .sort(byName);
-  if (swappers.length > 0) next.push({ label: "Swappers", entries: swappers });
+  if (swappers.length > 0) next.push({ label: "Swappers", icon: "swapper", entries: swappers });
   for (const [kind, label] of KINDS) {
     const entries = offers.filter((offer) => offer.kind === kind).map(entry).sort(byName);
-    if (entries.length > 0) next.push({ label, entries });
+    if (entries.length > 0) next.push({ label, icon: kindIcon(kind) ?? undefined, entries });
   }
   tabs = next;
   const again = tabs.findIndex((each) => each.label === kept);
@@ -253,6 +277,16 @@ function drawing(element: FigureElement | null, kind: FigureKind | null): string
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKS[shape]}</svg>`;
 }
 
+/// The kinds of figure with an icon of their own.
+function kindIcon(kind: FigureKind | null): Icon | null {
+  return kind === "item" || kind === "adventure" ? kind : null;
+}
+
+/// The colour a figure is shown in: its element's, or its kind's icon's.
+function tintOf(element: FigureElement | null, kind: FigureKind | null): string {
+  return `tint-${element ?? kindIcon(kind) ?? "none"}`;
+}
+
 function image(source: string): HTMLImageElement {
   const made = node("img", "");
   made.src = source;
@@ -261,30 +295,51 @@ function image(source: string): HTMLImageElement {
   return made;
 }
 
-/// The game's own symbol for an element, a white shape read out of the game,
-/// painted in the element's colour. `null` until Omoio has it.
-function symbol(element: FigureElement | null): HTMLElement | null {
-  if (!pictures || !element || !pictures.names.has(`element-${element}`)) return null;
-  const source = `url("${convertFileSrc(`${pictures.folder}\\element-${element}.png`)}")`;
-  const shape = node("span", `portal-symbol tint-${element}`);
-  shape.style.maskImage = source;
-  shape.style.webkitMaskImage = source;
+/// A shape painted in a colour through it, as the game's element symbols
+/// and Omoio's own icons are.
+function painted(source: string, tint: string): HTMLElement {
+  const shape = node("span", `portal-symbol ${tint}`);
+  const mask = `url("${source}")`;
+  shape.style.maskImage = mask;
+  shape.style.webkitMaskImage = mask;
   return shape;
 }
 
+/// The game's own symbol for an element, a white shape read out of the
+/// game. `null` until Omoio has it.
+function symbol(element: FigureElement | null): HTMLElement | null {
+  const source = element && fileOf(`element-${element}`);
+  return source ? painted(source, `tint-${element}`) : null;
+}
+
+function icon(kind: Icon): HTMLElement {
+  return painted(ICONS[kind], `tint-${kind} portal-icon`);
+}
+
 /// An element's shape: the game's own symbol when Omoio has it, its drawing
-/// when not, and the kind's drawing for a figure with no element.
+/// when not. A figure with no element gets its kind's icon or drawing.
 function emblem(into: HTMLElement, element: FigureElement | null, kind: FigureKind | null) {
-  const shape = symbol(element);
+  const own = element ? null : kindIcon(kind);
+  const shape = own ? icon(own) : symbol(element);
   if (shape) into.appendChild(shape);
   else into.insertAdjacentHTML("beforeend", drawing(element, kind));
 }
 
 function mark(element: FigureElement | null, kind: FigureKind | null, source: string | null): HTMLElement {
-  const badge = node("span", `portal-mark tint-${element ?? "none"}`);
+  const badge = node("span", `portal-mark ${tintOf(element, kind)}`);
   if (source) badge.appendChild(image(source));
   else emblem(badge, element, kind);
   return badge;
+}
+
+/// How a swapper moves: the game's own Swap Zone badge when Omoio has it,
+/// with the word, which a badge alone doesn't give someone new to them.
+function movement(moves: Movement): HTMLElement {
+  const part = node("span", "portal-move");
+  const badge = fileOf(`movement-${moves}`);
+  if (badge) part.appendChild(image(badge));
+  part.append(MOVEMENT_NAMES[moves]);
+  return part;
 }
 
 /// The picture spot at the top of a tile, with its corner badge: the
@@ -292,7 +347,7 @@ function mark(element: FigureElement | null, kind: FigureKind | null, source: st
 /// drawing when not. A swapper is its bottom with a top laid over it: its
 /// own, or while a top is picked, that one, so each bottom shows the mix.
 function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
-  const spot = node("span", `portal-art tint-${entry.element ?? "none"}`);
+  const spot = node("span", `portal-art ${tintOf(entry.element, entry.kind)}`);
   const sources = entry.swap
     ? [entry.swap.bottom, pickedTop?.top ?? entry.swap.top].map((half) => pictureOf(half.id, half.variant))
     : [pictureOf(entry.offer?.id ?? entry.figure?.id, entry.offer?.variant ?? entry.figure?.variant)];
@@ -312,18 +367,22 @@ function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
 }
 
 /// The line under a tile's name: the element in its colour and shape, or
-/// the kind of figure when it has no element, and the series where the name
-/// doesn't give it.
+/// the kind of figure when it has no element, the series where the name
+/// doesn't give it, and how a swapper moves, which its bottom decides.
 function kindLine(entry: Entry): HTMLElement {
-  const line = node("span", `portal-kind tint-${entry.element ?? "none"}`);
+  const line = node("span", `portal-kind ${tintOf(entry.element, entry.kind)}`);
   if (entry.element) {
     emblem(line, entry.element, null);
     line.append(ELEMENT_NAMES.get(entry.element) ?? "");
   } else if (entry.kind) {
+    const own = kindIcon(entry.kind);
+    if (own) line.appendChild(icon(own));
     line.append(KIND_NAMES[entry.kind] ?? "");
   }
   const series = entry.offer?.series ?? entry.figure?.series;
   if (series) line.appendChild(node("span", "portal-series", `Series ${series}`));
+  const moves = entry.swap ? entry.swap.bottom.movement : (entry.offer?.movement ?? entry.figure?.movement);
+  if (moves) line.appendChild(movement(moves));
   return line;
 }
 
@@ -360,6 +419,7 @@ function renderTabs(): HTMLElement {
     button.setAttribute("role", "tab");
     button.setAttribute("aria-selected", String(index === tab));
     if (each.element) button.appendChild(symbol(each.element) ?? node("span", `portal-dot tint-${each.element}`));
+    else if (each.icon) button.appendChild(icon(each.icon));
     button.append(each.label);
     button.onclick = () => showTab(index);
     bar.appendChild(button);

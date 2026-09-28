@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
+ <title>Items</title>
+ <path fill="#e7b846" d="M91 187 250 105l159 82v196H91V187Zm48 46v100h222V233H139Z"/>
+ <path fill="#e7b846" d="M100 189h300v48H100zM222 221h56v93h-56z"/>
+ <path fill="#e7b846" d="m250 58 17 27 31 8-23 23 2 31-27-16-27 16 2-31-23-23 31-8 17-27Z"/>
+ <path fill="#e7b846" d="M114 360h272v40H114z"/>
+</svg>

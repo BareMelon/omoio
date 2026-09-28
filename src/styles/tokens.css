@@ -52,6 +52,11 @@
   --el-tech: #f0b43c;
   --el-light: #f5e9a6;
   --el-dark: #8f86c4;
+  /* Omoio's own icons for the menu's tabs without an element, in the
+     colours they were drawn in. */
+  --kind-item: #e7b846;
+  --kind-adventure: #9b8ad2;
+  --kind-swapper: #a8e2f4;
 
   --ui: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;

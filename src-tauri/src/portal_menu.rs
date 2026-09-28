@@ -9,7 +9,7 @@
 
 use crate::backends::EmulatorBackend;
 use crate::core::console::Console;
-use crate::core::figures::{self, Character, Element, Kind};
+use crate::core::figures::{self, Character, Element, Kind, Movement};
 use crate::core::settings::Settings;
 use crate::session::Session;
 use std::collections::BTreeMap;
@@ -57,6 +57,8 @@ pub struct Figure {
     pub element: Option<Element>,
     pub kind: Option<Kind>,
     pub series: Option<u8>,
+    /// How a swapper's bottom half moves.
+    pub movement: Option<Movement>,
 }
 
 /// Which character each figure Omoio had made is, by file name.
@@ -111,6 +113,7 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
                         element: character.and_then(|[id, _]| figures::element(id)),
                         kind: character.map(|[id, _]| figures::kind(id)),
                         series: character.and_then(|[_, variant]| figures::series(variant)),
+                        movement: character.and_then(|[id, _]| figures::movement(id)),
                     }
                 })
                 .collect()

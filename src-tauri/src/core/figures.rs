@@ -205,6 +205,27 @@ pub fn element(id: u16) -> Option<Element> {
     })
 }
 
+/// The characters Windows-1252 has for the bytes 0x80 to 0x9F. The rest of
+/// its top half is the same as Unicode's.
+const WINDOWS_1252: [char; 32] = [
+    '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž', '\u{8f}', '\u{90}', '‘',
+    '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}', 'ž', 'Ÿ',
+];
+
+/// A name as Cemu meant it. Cemu's figure list has a few names whose UTF-8
+/// was read as Windows-1252, such as "Dragonâ€™s Peak": turned back into
+/// those bytes, they read as the name. Any other name is left as it is.
+pub fn repaired(name: &str) -> String {
+    let bytes: Option<Vec<u8>> = name
+        .chars()
+        .map(|c| match u32::from(c) {
+            0..=0x7f | 0xa0..=0xff => Some(c as u8),
+            _ => WINDOWS_1252.iter().position(|&known| known == c).map(|at| 0x80 + at as u8),
+        })
+        .collect();
+    bytes.and_then(|bytes| String::from_utf8(bytes).ok()).unwrap_or_else(|| name.to_string())
+}
+
 /// A character an emulator can make a figure of: the name it shows, and the
 /// id and variant the figure carries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -249,6 +270,36 @@ pub fn half(id: u16) -> Option<Half> {
     }
 }
 
+/// How a swapper gets about, which its bottom half decides. Each of Swap
+/// Force's Swap Zones lets in one of the eight, and two swappers have each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Movement {
+    Bounce,
+    Climb,
+    Dig,
+    Rocket,
+    Sneak,
+    Speed,
+    Spin,
+    Teleport,
+}
+
+/// The movement a bottom half gives its swapper; `None` for every other
+/// figure. Checked against Activision's fact sheet for the game and the
+/// Skylanders wiki.
+pub fn movement(id: u16) -> Option<Movement> {
+    use Movement::*;
+    // The bottoms from 1000 in order: Boom Jet, Free Ranger, Rubble Rouser,
+    // Doom Stone, Blast Zone, Fire Kraken, Stink Bomb, Grilla Drilla, Hoot
+    // Loop, Trap Shadow, Magna Charge, Spy Rise, Night Shift, Rattle Shake,
+    // Freeze Blade, Wash Buckler.
+    const BOTTOMS: [Movement; 16] = [
+        Rocket, Spin, Dig, Spin, Rocket, Bounce, Sneak, Dig, Teleport, Sneak, Speed, Climb, Teleport, Bounce, Speed, Climb,
+    ];
+    BOTTOMS.get(usize::from(id.checked_sub(1000)?)).copied()
+}
+
 /// A character as the menu lists it, with where it belongs.
 #[derive(Debug, Clone, Serialize)]
 pub struct Offer {
@@ -258,6 +309,7 @@ pub struct Offer {
     pub kind: Kind,
     pub half: Option<Half>,
     pub series: Option<u8>,
+    pub movement: Option<Movement>,
 }
 
 /// The characters `game` reads, each with its element and kind. Every one
@@ -271,7 +323,11 @@ pub fn offers(characters: Vec<Character>, game: Option<Game>) -> Vec<Offer> {
             kind: kind(character.id),
             half: half(character.id),
             series: series(character.variant),
-            character,
+            movement: movement(character.id),
+            character: Character {
+                name: repaired(&character.name),
+                ..character
+            },
         })
         .collect()
 }
@@ -358,6 +414,14 @@ mod tests {
     }
 
     #[test]
+    fn a_name_cemu_garbled_is_put_back() {
+        assert_eq!(repaired("Dragonâ€™s Peak"), "Dragon’s Peak");
+        assert_eq!(repaired("Spyro"), "Spyro");
+        assert_eq!(repaired("Pokémon"), "Pokémon");
+        assert_eq!(repaired("Eon's Elite Spyro"), "Eon's Elite Spyro");
+    }
+
+    #[test]
     fn swap_force_reposes_are_the_third_series() {
         assert_eq!(series(0x2805), Some(3)); // Blizzard Chill
         assert_eq!(series(0x2c02), Some(3)); // Dark Mega Ram Spyro
@@ -384,6 +448,22 @@ mod tests {
         assert_eq!(half(2015), Some(Half::Top)); // Wash Buckler (Top)
         assert_eq!(half(3000), None); // Scratch, a whole figure
         assert_eq!(half(16), None); // Spyro
+    }
+
+    #[test]
+    fn a_swapper_moves_as_its_bottom_half_does() {
+        assert_eq!(movement(1000), Some(Movement::Rocket)); // Boom Jet (Bottom)
+        assert_eq!(movement(1003), Some(Movement::Spin)); // Doom Stone (Bottom)
+        assert_eq!(movement(1005), Some(Movement::Bounce)); // Fire Kraken (Bottom)
+        assert_eq!(movement(1010), Some(Movement::Speed)); // Magna Charge (Bottom)
+        assert_eq!(movement(1015), Some(Movement::Climb)); // Wash Buckler (Bottom)
+        assert_eq!(movement(2000), None); // Boom Jet (Top)
+        assert_eq!(movement(1016), None);
+        assert_eq!(movement(16), None); // Spyro
+        use Movement::*;
+        for each in [Bounce, Climb, Dig, Rocket, Sneak, Speed, Spin, Teleport] {
+            assert_eq!((1000..1016).filter(|&id| movement(id) == Some(each)).count(), 2, "{each:?}");
+        }
     }
 
     #[test]

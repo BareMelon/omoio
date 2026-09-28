@@ -693,6 +693,9 @@ export type FigureElement = "air" | "earth" | "fire" | "water" | "life" | "undea
 
 export type FigureKind = "character" | "item" | "trap" | "adventure" | "vehicle" | "trophy";
 
+/// How a Swap Force swapper gets about, which its bottom half decides.
+export type Movement = "bounce" | "climb" | "dig" | "rocket" | "sneak" | "speed" | "spin" | "teleport";
+
 export interface Figure {
   name: string;
   path: string;
@@ -704,6 +707,7 @@ export interface Figure {
   /// Set where the figure's name doesn't say its series, as with SWAP
   /// Force's new poses of older Skylanders (series 3).
   series: number | null;
+  movement: Movement | null;
 }
 
 export function figures(): Promise<Figure[]> {
@@ -753,6 +757,8 @@ export interface Offer extends Character {
   /// A Swap Force swapper is two figures, a top and a bottom.
   half: "top" | "bottom" | null;
   series: number | null;
+  /// Set on a bottom half.
+  movement: Movement | null;
 }
 
 export function figureCharacters(): Promise<Offer[]> {
@@ -781,6 +787,8 @@ export function onPortalMenu(handler: (state: { open: boolean; family: string })
 
 /// The figures' pictures a game has so far: where they are, and each one's
 /// name without `.png`, `<id>-<variant>` with the variant as four hex digits.
+/// The game's element symbols are `element-<element>` and its Swap Zone
+/// badges `movement-<movement>`.
 export interface FigurePictures {
   folder: string;
   names: string[];

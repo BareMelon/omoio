@@ -11,7 +11,7 @@
 //! The same way, through Cemu's input settings window, it keeps the game from
 //! hearing the pad while the portal menu or Big Picture is over it.
 
-use crate::core::figures::Character;
+use crate::core::figures::{self, Character};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -345,7 +345,8 @@ fn read(window: HWND) -> Vec<String> {
             if name == "None" {
                 String::new()
             } else {
-                name
+                // Named as the menu lists the character.
+                figures::repaired(&name)
             }
         })
         .collect()

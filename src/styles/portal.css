@@ -322,6 +322,34 @@ body {
   height: 52%;
 }
 
+/* Omoio's own icons leave more room around their shapes than the game's
+   symbols do, so they are drawn a little larger to match. */
+.portal-kind .portal-icon,
+.portal-tab .portal-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.portal-art > .portal-icon {
+  width: 62%;
+  height: 62%;
+}
+
+/* How a swapper moves: the game's Swap Zone badge and its name, apart from
+   the element and not in its colour. */
+.portal-move {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  color: var(--ink);
+}
+
+.portal-move img {
+  width: auto;
+  height: 24px;
+}
+
 /* The series, small, where the figure's name doesn't give it. */
 .portal-series {
   margin-left: 4px;
@@ -409,7 +437,7 @@ body {
 }
 
 /* Each element's colour, for its drawing, its name under a figure's and
-   its tab. */
+   its tab, and the same for the kinds with an icon of their own. */
 .tint-air { --tint: var(--el-air); }
 .tint-earth { --tint: var(--el-earth); }
 .tint-fire { --tint: var(--el-fire); }
@@ -420,4 +448,7 @@ body {
 .tint-tech { --tint: var(--el-tech); }
 .tint-light { --tint: var(--el-light); }
 .tint-dark { --tint: var(--el-dark); }
+.tint-item { --tint: var(--kind-item); }
+.tint-adventure { --tint: var(--kind-adventure); }
+.tint-swapper { --tint: var(--kind-swapper); }
 .tint-none { --tint: var(--mute); }

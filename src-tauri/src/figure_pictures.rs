@@ -15,7 +15,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
 const READER_URL: &str = "https://github.com/Bertrram/omoio-portraits/releases/download/v0.1.0/omoio-portraits.exe";
-const READER_SHA256: &str = "6d7bf0a4ff156741fa015a3527ed220bdce3c8831f07d9dacae8d18d3ca401ab";
+const READER_SHA256: &str = "5e8d126fca7f34ea0e28cb2643fb8e0dd73c89d93aa2bed835cccfb8b4584a29";
 const READER: &str = "omoio-portraits.exe";
 
 const NO_COPY: &str = "Omoio reads the pictures from a copy of the game that Cemu makes, and there isn't one yet. In Cemu's Title Manager, right-click the game, choose Convert to compressed Wii U archive, and save it in the game's folder.";
