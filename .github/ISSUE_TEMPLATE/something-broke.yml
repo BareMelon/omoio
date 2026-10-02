@@ -1,0 +1,37 @@
+name: Something broke
+description: A game that won't start, a screen that looks wrong, or anything else that doesn't work.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what Omoio did that you didn't expect.
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: Its name, and its title id if you have it, such as BLES01614.
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - PS3
+        - Wii U
+        - Not about one game
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Omoio version
+      description: The number in the installer's name, such as 0.1.0.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: From the Logs screen, the play session where it went wrong. Paste it here, or attach the file.
+      render: text

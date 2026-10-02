@@ -1,0 +1,16 @@
+name: An idea
+description: Something Omoio could do, or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What you'd like Omoio to do, and when you'd use it.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: If it's about one system, which one.
