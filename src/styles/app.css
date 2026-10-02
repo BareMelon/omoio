@@ -1243,13 +1243,161 @@ button {
 .row-v.warn {
   color: var(--warn);
 }
-.d-path {
-  font-family: var(--mono);
-  font-size: 10.5px;
+/* The name, and how well it runs beside it. */
+.d-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.d-name {
+  min-width: 0;
+}
+.d-head .status {
+  flex: none;
+  margin-top: 2px;
+}
+/* Everything a game offers, one row each, with where it stands on the right.
+   The hairlines are the list showing through the gaps, so a row left out
+   never leaves a doubled line or a stray one at the end. */
+.d-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 14px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.d-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 11px 12px;
+  background: var(--raise);
+  color: var(--ink);
+  font-size: 12.5px;
+  text-align: left;
+  transition: background-color 0.12s ease;
+}
+.d-row:hover {
+  background: var(--raise2);
+}
+/* At once on press, and eased only on the way back. */
+.d-row:active {
+  background: var(--line);
+  transition: none;
+}
+.d-row:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.d-row[disabled] {
   color: var(--dim);
-  line-height: 1.5;
-  word-break: break-all;
-  margin-bottom: 8px;
+  pointer-events: none;
+}
+.d-ico {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--mute);
+}
+.d-row-k {
+  flex: 1;
+  min-width: 0;
+}
+.d-row-v {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--mute);
+  white-space: nowrap;
+}
+.d-row-v.mono,
+.d-row-v .pct {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+/* Something the row would do rather than something it reports. */
+.d-row-v.ask {
+  color: var(--brand-text);
+}
+.d-chev {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  margin-left: -4px;
+  color: var(--dim);
+}
+/* A button or an action, drawn as a key on the right of its row. */
+.d-key {
+  padding: 3px 8px;
+  background: var(--raise2);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  color: var(--ink);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.d-key.on {
+  border-color: var(--brand);
+  color: var(--brand-text);
+}
+/* Progress along the foot of the row doing the work. */
+.d-row-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--raise2);
+}
+.d-row-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--brand);
+  transition: width 0.2s linear;
+}
+.d-group-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+.d-group-h .sec-h {
+  flex: 1;
+  margin: 0;
+}
+.d-group-h ~ .d-list {
+  margin-top: 8px;
+}
+#detail-compat .link-btn {
+  margin-left: 6px;
+}
+.d-foot {
+  display: flex;
+  align-items: center;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.d-foot .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+}
+.d-foot .link-btn svg {
+  width: 13px;
+  height: 13px;
+}
+#detail-remove {
+  margin-left: auto;
 }
 
 /* A second way in, kept quieter than the two main choices. */
@@ -1500,20 +1648,8 @@ button {
   color: var(--dim);
 }
 
-/* The Skylanders row in a game's panel: its label, a small question mark
-   that opens the explanation, and the button that records a key. */
-.portal-key {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-/* A heading inside a section, such as Advanced under Skylanders. */
-.sec-h.sec-sub {
-  margin-top: 16px;
-}
-.portal-key .row-k {
-  flex: 1;
-}
+/* The small question mark that opens an explanation, such as the portal
+   menu's in a game's panel. */
 .help-dot {
   display: inline-grid;
   place-items: center;

@@ -529,6 +529,9 @@ export function pendingUpdates(): Promise<[boolean, PendingUpdate[]]> {
 
 export type Console = "ps3" | "wiiu";
 
+/// Each console as it is usually shortened, where room is short.
+export const CONSOLE_SHORT: Record<Console, string> = { ps3: "PS3", wiiu: "Wii U" };
+
 export interface Release {
   title_id: string;
   region: string;

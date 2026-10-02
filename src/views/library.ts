@@ -1,13 +1,10 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { Game } from "../api";
+import { CONSOLE_SHORT, type Game } from "../api";
 import { placeholderArt } from "../components/art";
 import { rawgCredit } from "../components/rawgCredit";
 import { openImportSheet } from "../components/importSheet";
 import { store } from "../state";
 import { emptyState, type View } from "./view";
-
-/// How a console is written on a tile.
-const SHORT: Record<Game["console"], string> = { ps3: "PS3", wiiu: "Wii U" };
 
 function formatSize(bytes: number): string {
   if (bytes <= 0) return "";
@@ -46,7 +43,7 @@ function gameCard(game: Game, mixed: boolean, selected: boolean): HTMLElement {
     <div class="meta">
       <span class="id">${game.title_id}</span>
       <span>${game.set_up ? formatSize(game.size_bytes) : "no files yet"}</span>
-      ${mixed ? `<span class="region">${SHORT[game.console]}</span>` : ""}
+      ${mixed ? `<span class="region">${CONSOLE_SHORT[game.console]}</span>` : ""}
     </div>
   `;
   // Set through textContent so a game's own title can never be markup.

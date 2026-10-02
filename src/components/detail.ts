@@ -15,8 +15,10 @@ import {
   getFigurePictures,
   onFigurePictures,
   removeGame,
+  revealFolder,
   setPortalButton,
   stopFigurePictures,
+  CONSOLE_SHORT,
   type Game,
 } from "../api";
 import { placeholderArt } from "./art";
@@ -41,6 +43,28 @@ function row(label: string, value: string, tone = ""): string {
   return `<div class="row"><span class="row-k">${label}</span><span class="row-v ${tone}">${value}</span></div>`;
 }
 
+/// Line icons for the panel's rows, on the sidebar's 16-unit grid.
+const ICON = {
+  version: '<path d="M13.5 8a5.5 5.5 0 1 1-1.9-4.2M13 2v3.5h-3.5"/>',
+  saves: '<path d="M3 2.5h7.8l2.7 2.7v8.3H3z"/><path d="M5.5 2.5v3h4.5v-3M5.3 13.5V9.5h5.4v4"/>',
+  settings:
+    '<path d="M2.5 4.5h1.4M7.1 4.5h6.4M2.5 8h5.9M11.6 8h1.9M2.5 11.5h2.4M8.1 11.5h5.4"/><circle cx="5.5" cy="4.5" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="6.5" cy="11.5" r="1.6"/>',
+  patches: '<rect x="1.6" y="5.7" width="12.8" height="4.6" rx="2.3" transform="rotate(-45 8 8)"/><path d="M6.6 6.6l2.8 2.8"/>',
+  portal: '<ellipse cx="8" cy="6.5" rx="5.5" ry="2.3"/><path d="M2.5 6.5v3c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3v-3"/>',
+  pictures: '<rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="6" cy="6.5" r="1.2"/><path d="M2.5 12l3.5-3.5 2.5 2.5 2-2 3 3"/>',
+  folder: '<path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>',
+  chevron: '<path d="M6 3.5L10.5 8 6 12.5"/>',
+};
+
+function icon(paths: string, className = "d-ico"): string {
+  return `<svg class="${className}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+}
+
+/// A row that opens a sheet, with where things stand on its right.
+function listRow(id: string, paths: string, label: string): string {
+  return `<button class="d-row" id="detail-${id}">${icon(paths)}<span class="d-row-k">${label}</span><span class="d-row-v"></span>${icon(ICON.chevron, "d-chev")}</button>`;
+}
+
 function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   hero.innerHTML = game.cover
     ? `<img src="${convertFileSrc(game.cover)}" alt="">`
@@ -48,83 +72,80 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   if (game.cover_source === "rawg") hero.appendChild(rawgCredit());
 
   body.innerHTML = `
-    <div class="d-title"></div>
-    <div class="d-sub"></div>
+    <div class="d-head">
+      <div class="d-name"><div class="d-title"></div><div class="d-sub"></div></div>
+      <span class="status gone" id="detail-compat-badge"></span>
+    </div>
     <button class="play" id="detail-play">
       <svg viewBox="0 0 12 14" fill="currentColor"><path d="M1 1l10 6-10 6z"/></svg>Play
     </button>
     <div class="note" id="detail-note"></div>
-    <div class="sec" id="sec-details">
-      <div class="sec-h">Details</div>
-      ${row("Version", game.version ?? (game.console === "wiiu" ? "Known after first play" : "unknown"))}
-      ${row("Size on disk", formatSize(game.size_bytes))}
-      ${row(
-        "Files",
-        game.available ? "Available" : "Not found",
-        game.available ? "" : "warn"
-      )}
+    <div class="d-list" id="detail-list">
+      ${listRow("update", ICON.version, "Game version")}
+      ${listRow("saves", ICON.saves, "Saved games")}
+      ${listRow("settings", ICON.settings, "Settings")}
+      ${listRow("patches", ICON.patches, "Patches")}
     </div>
-    <div class="sec" id="sec-version">
-      <div class="sec-h">Game version</div>
-      <button class="small-btn wide" id="detail-update">Check for updates</button>
-      <div class="note plain" id="detail-update-note"></div>
-      <button class="link-btn gone" id="detail-update-more">Choose another version</button>
+    <div class="note plain" id="detail-list-note"></div>
+    <div class="note plain gone" id="detail-compat">
+      <span id="detail-compat-note"></span>
+      <button class="link-btn gone" id="detail-compat-get"></button>
     </div>
-    <div class="sec" id="sec-saves">
-      <div class="sec-h">Saved games</div>
-      <button class="small-btn wide" id="detail-saves">Back up and restore</button>
-      <div class="note plain" id="detail-saves-note"></div>
-    </div>
-    <div class="sec" id="sec-compat">
-      <div class="sec-h">How well it runs</div>
-      <div class="compat" id="detail-compat">
-        <span class="status" id="detail-compat-badge"></span>
-        <button class="link-btn" id="detail-compat-get"></button>
-      </div>
-      <div class="note plain" id="detail-compat-note"></div>
-    </div>
-    <div class="sec" id="sec-emulator">
-      <div class="sec-h">Emulator</div>
-      <button class="small-btn wide" id="detail-settings">Change settings</button>
-      <div class="note plain" id="detail-settings-note"></div>
-      <button class="small-btn wide" id="detail-patches">Patches</button>
-      <div class="note plain" id="detail-patches-note"></div>
-    </div>
-    <div class="sec gone" id="sec-portal">
-      <div class="sec-h">Skylanders</div>
-      <div class="portal-key">
-        <span class="row-k">Keybind Skylander emulator</span>
-        <button class="help-dot" id="detail-portal-help" aria-label="How the Skylander emulator works" aria-expanded="false">?</button>
-        <button class="small-btn" id="detail-portal-button"></button>
+    <div class="gone" id="detail-portal">
+      <div class="d-group-h">
+        <span class="sec-h">Skylanders</span>
+        <button class="help-dot" id="detail-portal-help" aria-label="How the portal menu works" aria-expanded="false">?</button>
       </div>
       <div class="note plain gone" id="detail-portal-about"></div>
-      <div class="sec-h sec-sub">Advanced</div>
-      <div class="portal-key">
-        <span class="row-k">Figure pictures</span>
-        <button class="small-btn" id="detail-pictures"></button>
-      </div>
-      <div class="progress-row gone" id="detail-pictures-bar">
-        <div class="progress-label"><span>Reading the pictures from your game…</span><span class="pct"></span></div>
-        <div class="progress"><div class="progress-fill" style="width:0%"></div></div>
+      <div class="d-list">
+        <button class="d-row" id="detail-portal-button">
+          ${icon(ICON.portal)}<span class="d-row-k">Portal menu button</span><span class="d-key"></span>
+        </button>
+        <button class="d-row" id="detail-pictures">
+          ${icon(ICON.pictures)}<span class="d-row-k">Figure pictures</span><span class="d-row-v"></span>
+          <span class="d-row-bar gone"><span class="d-row-fill"></span></span>
+        </button>
       </div>
       <div class="note plain" id="detail-pictures-note"></div>
     </div>
-    <div class="sec" id="sec-location">
-      <div class="sec-h">Location</div>
-      <div class="d-path"></div>
+    <div class="d-foot">
+      <button class="link-btn" id="detail-reveal">${icon(ICON.folder, "")}Show files</button>
       <button class="link-btn" id="detail-remove">Remove from library</button>
     </div>
   `;
-  // Set through textContent so a game's own name or path is never treated as markup.
+  // Set through textContent so a game's own name is never treated as markup.
   body.querySelector<HTMLElement>(".d-title")!.textContent = game.title;
-  body.querySelector<HTMLElement>(".d-sub")!.textContent = game.version
-    ? `${game.title_id} · version ${game.version}`
-    : game.title_id;
-  body.querySelector<HTMLElement>(".d-path")!.textContent = game.path;
+  const offers = game.features;
+  body.querySelector<HTMLElement>(".d-sub")!.textContent = [
+    CONSOLE_SHORT[game.console],
+    game.title_id,
+    game.size_bytes > 0 ? formatSize(game.size_bytes) : "",
+    // A game without an update list has its version nowhere else.
+    !offers.updates && game.version ? `version ${game.version}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const note = body.querySelector<HTMLElement>("#detail-note")!;
   const play = body.querySelector<HTMLButtonElement>("#detail-play")!;
+  const list = body.querySelector<HTMLElement>("#detail-list")!;
+  const listNote = body.querySelector<HTMLElement>("#detail-list-note")!;
+  const reveal = body.querySelector<HTMLButtonElement>("#detail-reveal")!;
+  const valueOf = (id: string) => body.querySelector<HTMLElement>(`#detail-${id} .d-row-v`)!;
   play.disabled = !game.available;
+
+  // Only what this game's emulator can do. A row with nothing behind it is
+  // left out rather than shown as a button that does nothing.
+  for (const [on, id] of [
+    [offers.updates, "update"],
+    [offers.saves, "saves"],
+    [offers.settings, "settings"],
+    [offers.patches, "patches"],
+  ] as const) {
+    if (!on) body.querySelector(`#detail-${id}`)?.classList.add("gone");
+  }
+  if (!offers.updates && !offers.saves && !offers.settings && !offers.patches) list.classList.add("gone");
+
   if (!game.set_up) {
     // Noted from the catalogue and never imported. It says what to do and
     // gives you the way to do it, rather than reporting a fault.
@@ -135,43 +156,34 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     importIt.onclick = openImportSheet;
     note.after(importIt);
 
-    // Nothing about a size, a version, saves or the emulator means anything
-    // until the files are here. How well it runs still does: it says whether
-    // this is worth setting up at all. Location keeps its Remove button, since
-    // taking the note back off the list has to stay possible.
-    for (const id of ["details", "version", "saves", "emulator"]) {
-      body.querySelector(`#sec-${id}`)?.classList.add("gone");
-    }
-    body.querySelector(".d-path")!.classList.add("gone");
-  }
-  // Only what this game's emulator can do. A section with nothing behind it
-  // is left out rather than shown as a button that does nothing.
-  const offers = game.features;
-  if (!offers.updates) body.querySelector("#sec-version")?.classList.add("gone");
-  if (!offers.saves) body.querySelector("#sec-saves")?.classList.add("gone");
-  if (!offers.compatibility) body.querySelector("#sec-compat")?.classList.add("gone");
-  for (const [on, id] of [
-    [offers.settings, "settings"],
-    [offers.patches, "patches"],
-  ] as const) {
-    if (!on) {
-      body.querySelector(`#detail-${id}`)?.classList.add("gone");
-      body.querySelector(`#detail-${id}-note`)?.classList.add("gone");
-    }
-  }
-  if (!offers.settings && !offers.patches) body.querySelector("#sec-emulator")?.classList.add("gone");
-
-  if (game.set_up && !game.available) {
+    // Nothing about a version, saves or the emulator means anything until
+    // the files are here. How well it runs still does: it says whether this
+    // is worth setting up at all. Remove stays, since taking the note back
+    // off the list has to stay possible.
+    list.classList.add("gone");
+    reveal.classList.add("gone");
+  } else if (!game.available) {
     note.textContent = "Reconnect the drive this game is on to play it.";
+    reveal.classList.add("gone");
   }
+
+  reveal.onclick = async () => {
+    try {
+      await revealFolder(game.path);
+    } catch {
+      listNote.textContent = "Couldn't open the game's folder.";
+    }
+  };
 
   // The button that opens the portal menu over a Skylanders game, shown only
   // where the game's emulator lets Omoio fill the portal.
   if (offers.portal && game.set_up && /skylanders/i.test(game.title)) {
-    body.querySelector("#sec-portal")!.classList.remove("gone");
-    const keyButton = body.querySelector<HTMLButtonElement>("#detail-portal-button")!;
+    body.querySelector("#detail-portal")!.classList.remove("gone");
+    const keyRow = body.querySelector<HTMLButtonElement>("#detail-portal-button")!;
+    const key = keyRow.querySelector<HTMLElement>(".d-key")!;
     const help = body.querySelector<HTMLButtonElement>("#detail-portal-help")!;
     const about = body.querySelector<HTMLElement>("#detail-portal-about")!;
+    const picturesNote = body.querySelector<HTMLElement>("#detail-pictures-note")!;
     about.textContent =
       "Skylanders games need a toy portal, and the emulator pretends one is plugged in. While playing, press this button to open the portal menu over the game. Pick any character under its element, or an item or adventure pack, and it goes on the portal and is saved with its progress. Several can be on at once. It all works with the pad. The home button is the best choice, since games don't use it. If Windows' Game Bar opens instead, switch off its controller button in Windows Settings, under Gaming, Xbox Game Bar.";
     help.onclick = () => {
@@ -181,15 +193,18 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
 
     const label = (place: string) => (place === "Guide" ? "Home button" : nameOf("generic", place));
     const showKey = async () => {
-      keyButton.textContent = label(await portalButton());
+      key.textContent = label(await portalButton());
     };
     void showKey();
 
     // Waits a few seconds for a press on any pad. A stick pushed a little
     // is not a press, so a pad resting off centre never records.
-    keyButton.onclick = async () => {
-      keyButton.disabled = true;
-      keyButton.textContent = "Press a button…";
+    let recording = false;
+    keyRow.onclick = async () => {
+      if (recording) return;
+      recording = true;
+      key.classList.add("on");
+      key.textContent = "Press a button…";
       const down = new Set(await padsHeld());
       const until = Date.now() + 6000;
       let pressed: string | undefined;
@@ -203,27 +218,29 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
         try {
           await setPortalButton(pressed);
         } catch (err) {
-          note.textContent = typeof err === "string" ? err : "Couldn't save that button.";
+          picturesNote.textContent = typeof err === "string" ? err : "Couldn't save that button.";
         }
       }
-      keyButton.disabled = false;
+      recording = false;
+      key.classList.remove("on");
       await showKey();
     };
 
     // Each figure's own picture, read out of the user's copy of the game by
-    // a small program Omoio fetches the first time. Under Advanced, since
-    // the menu works without them.
+    // a small program Omoio fetches the first time. The menu works without
+    // them, so the row only offers.
     const pictures = body.querySelector<HTMLButtonElement>("#detail-pictures")!;
-    const picturesBar = body.querySelector<HTMLElement>("#detail-pictures-bar")!;
-    const picturesFill = picturesBar.querySelector<HTMLElement>(".progress-fill")!;
-    const picturesPct = picturesBar.querySelector<HTMLElement>(".pct")!;
-    const picturesNote = body.querySelector<HTMLElement>("#detail-pictures-note")!;
+    const picturesValue = pictures.querySelector<HTMLElement>(".d-row-v")!;
+    const picturesBar = pictures.querySelector<HTMLElement>(".d-row-bar")!;
+    const picturesFill = pictures.querySelector<HTMLElement>(".d-row-fill")!;
     const showPictures = (count: number) => {
-      pictures.textContent = count > 0 ? "Get them again" : "Get pictures";
+      picturesValue.className = count > 0 ? "d-row-v" : "d-row-v ask";
+      picturesValue.textContent = count > 0 ? `${count} pictures` : "Get pictures";
+      pictures.title = count > 0 ? "Read them again" : "";
       picturesNote.textContent =
         count > 0
-          ? `${count} pictures from your copy of the game. The portal menu shows them.`
-          : "Show each figure's own picture in the portal menu, read from your copy of the game. Takes under a minute.";
+          ? ""
+          : "Shows each figure's own picture in the portal menu, read from your copy of the game. Takes under a minute.";
     };
     const countPictures = () =>
       figurePictures(game.title_id)
@@ -238,16 +255,17 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
         return;
       }
       reading = true;
-      pictures.textContent = "Stop";
-      picturesNote.textContent = "";
+      picturesValue.className = "d-row-v";
+      picturesValue.innerHTML = `<span class="pct"></span><span class="d-key">Stop</span>`;
+      const pct = picturesValue.querySelector<HTMLElement>(".pct")!;
+      picturesNote.textContent = "Reading the pictures from your game…";
       picturesFill.style.width = "0%";
-      picturesPct.textContent = "";
       picturesBar.classList.remove("gone");
       const unlisten = onFigurePictures((progress) => {
         if (progress.title_id !== game.title_id || progress.of === 0) return;
         const done = Math.round((progress.done / progress.of) * 100);
         picturesFill.style.width = `${done}%`;
-        picturesPct.textContent = `${done}%`;
+        pct.textContent = `${done}%`;
       });
       try {
         showPictures(await getFigurePictures(game.title_id));
@@ -273,82 +291,49 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     }
   };
 
+  // The sheet asks Sony when it opens. Opening a game should not quietly
+  // make that request, so the row only shows the version it runs.
   const running = game.update_version ?? game.version;
-  const updateButton = body.querySelector<HTMLButtonElement>("#detail-update")!;
-  const updateNote = body.querySelector<HTMLElement>("#detail-update-note")!;
-  const moreVersions = body.querySelector<HTMLButtonElement>("#detail-update-more")!;
-
+  const updateValue = valueOf("update");
+  updateValue.classList.add("mono");
+  updateValue.textContent = running ?? "unknown";
   const reload = async () => store.setGames(await listGames());
-  const openList = () =>
+  body.querySelector<HTMLButtonElement>("#detail-update")!.onclick = () =>
     openUpdates(game.title_id, game.title, running, () => {
       void reload();
       void showPatchCount();
     });
 
-  updateNote.textContent = game.update_version
-    ? `Running version ${game.update_version}, updated by Omoio.`
-    : `Running version ${game.version ?? "unknown"}, as the game shipped.`;
-
-  // Checked on demand rather than on every selection: it is a request to
-  // Sony, and opening a game should not quietly make one.
-  updateButton.onclick = async () => {
-    updateButton.disabled = true;
-    updateButton.textContent = "Checking…";
-    try {
-      const updates = await gameUpdates(game.title_id);
-      const newest = updates[0];
-      if (!newest) {
-        updateNote.textContent = "Sony never published an update for this game.";
-      } else if (newest.version === running) {
-        updateNote.textContent = `Version ${newest.version} is the newest there is.`;
-        moreVersions.classList.remove("gone");
-      } else {
-        updateButton.textContent = `Update to ${newest.version}`;
-        updateButton.onclick = openList;
-        updateNote.textContent = `Version ${newest.version} is available.`;
-        moreVersions.classList.remove("gone");
-      }
-    } catch (err) {
-      updateNote.textContent =
-        typeof err === "string" ? err : "Couldn't reach Sony's update service.";
-    } finally {
-      updateButton.disabled = false;
-      if (updateButton.textContent === "Checking…") {
-        updateButton.textContent = "Check for updates";
-      }
-    }
-  };
-  moreVersions.onclick = openList;
-
-  const savesNote = body.querySelector<HTMLElement>("#detail-saves-note")!;
   const showSaves = async () => {
     const [hasSaves, backups] = await gameSaves(game.title_id);
-    savesNote.textContent = !hasSaves
-      ? "Nothing saved yet."
+    valueOf("saves").textContent = !hasSaves
+      ? "None yet"
       : backups.length === 0
-        ? "No copies kept yet."
+        ? "Not backed up"
         : backups.length === 1
-          ? "1 copy kept."
-          : `${backups.length} copies kept.`;
+          ? "1 copy"
+          : `${backups.length} copies`;
   };
-  if (offers.saves) showSaves();
+  if (offers.saves && game.set_up) void showSaves();
   body.querySelector<HTMLButtonElement>("#detail-saves")!.onclick = () =>
     openSaves(game.title_id, game.title, showSaves);
 
+  const compat = body.querySelector<HTMLElement>("#detail-compat")!;
   const badge = body.querySelector<HTMLElement>("#detail-compat-badge")!;
   const compatNote = body.querySelector<HTMLElement>("#detail-compat-note")!;
   const getList = body.querySelector<HTMLButtonElement>("#detail-compat-get")!;
   const showCompat = async () => {
-    const compat = await gameCompatibility(game.title_id);
-    badge.textContent = compat.label;
-    badge.className = `status ${compat.tone}`;
-    compatNote.textContent = compat.checked
-      ? `${compat.explanation} Last reported ${compat.checked}.`
-      : compat.explanation;
+    const result = await gameCompatibility(game.title_id);
+    badge.textContent = result.label;
+    badge.className = `status ${result.tone}`;
+    compat.classList.remove("gone");
+    compatNote.textContent = result.checked
+      ? `${result.explanation} Last reported ${result.checked}.`
+      : result.explanation;
     // Only offered when it would do something: the list is missing, or old
     // enough that a game's result may have moved on.
-    getList.classList.toggle("gone", !compat.stale);
-    getList.textContent = compat.have_list ? "Check for newer results" : "Get the list";
+    getList.classList.toggle("gone", !result.stale);
+    getList.textContent = result.have_list ? "Check for newer results" : "Get the list";
   };
   getList.onclick = async () => {
     getList.disabled = true;
@@ -363,45 +348,41 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       getList.disabled = false;
     }
   };
-  if (offers.compatibility) showCompat();
+  if (offers.compatibility) void showCompat();
 
-  const patchesNote = body.querySelector<HTMLElement>("#detail-patches-note")!;
   const showPatchCount = async () => {
     const { have_list, patches } = await gamePatches(game.title_id);
     const fits = patches.filter((p) => p.applies);
     const on = fits.filter((p) => p.enabled).length;
-    patchesNote.textContent = !have_list
-      ? "No patch list yet."
+    valueOf("patches").textContent = !have_list
+      ? "No list yet"
       : fits.length === 0
-        ? "None published for this game."
+        ? "None"
         : on === 0
-          ? `${fits.length} available, none on.`
-          : `${on} of ${fits.length} on.`;
+          ? `${fits.length} available`
+          : `${on} of ${fits.length} on`;
   };
-  if (offers.patches) showPatchCount();
+  if (offers.patches && game.set_up) void showPatchCount();
   body.querySelector<HTMLButtonElement>("#detail-patches")!.onclick = () =>
     openPatches(game.title_id, game.title, showPatchCount);
 
-  const settingsNote = body.querySelector<HTMLElement>("#detail-settings-note")!;
-  const settingsButton = body.querySelector<HTMLButtonElement>("#detail-settings")!;
+  const settingsRow = body.querySelector<HTMLButtonElement>("#detail-settings")!;
   const showSettingsCount = async () => {
     try {
-      const { emulator, chosen } = await gameSettings(game.title_id);
+      const { chosen } = await gameSettings(game.title_id);
       const changed = Object.keys(chosen).length;
-      settingsButton.disabled = false;
-      settingsNote.textContent =
-        changed === 0
-          ? `Running with ${emulator}'s own settings.`
-          : `${changed} setting${changed === 1 ? "" : "s"} changed for this game.`;
+      settingsRow.disabled = false;
+      valueOf("settings").textContent = changed === 0 ? "Default" : `${changed} changed`;
     } catch (err) {
       // A Wii U disc image's settings are filed under an id only known once
       // the game has run, which the message says.
-      settingsButton.disabled = true;
-      settingsNote.textContent = typeof err === "string" ? err : "Couldn't read this game's settings.";
+      settingsRow.disabled = true;
+      valueOf("settings").textContent = "";
+      listNote.textContent = typeof err === "string" ? err : "Couldn't read this game's settings.";
     }
   };
-  if (offers.settings) showSettingsCount();
-  settingsButton.onclick = () => openGameSettings(game.title_id, game.title, showSettingsCount);
+  if (offers.settings && game.set_up) void showSettingsCount();
+  settingsRow.onclick = () => openGameSettings(game.title_id, game.title, showSettingsCount);
 
   body.querySelector<HTMLButtonElement>("#detail-remove")!.onclick = async () => {
     await removeGame(game.title_id);

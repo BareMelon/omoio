@@ -13,6 +13,7 @@ import {
   setBigPicture,
   setStartInBigPicture,
   stopGame,
+  CONSOLE_SHORT,
   type Compatibility,
   type Console,
   type Game,
@@ -45,8 +46,6 @@ interface Modal {
   /// Recording a button: every press belongs to it.
   capture?: boolean;
 }
-
-const SHORT: Record<Console, string> = { ps3: "PS3", wiiu: "Wii U" };
 
 const MARK = `<svg viewBox="0 0 1254 1254" fill="currentColor" fill-rule="evenodd" aria-hidden="true">
   <path d="M342 222l-60 26-40 27-16 27-6 24v610l6 24 16 27 40 27 61 26-14-24-9-30-1-30V282l1-30 9-30z"/>
@@ -757,7 +756,7 @@ function tile(game: Game, group: string, withMeta: boolean): HTMLButtonElement {
   if (badge) art.append(h("span", `bp-badge ${badge[1]}`, badge[0]));
   card.append(art, h("span", "bp-tile-name", game.title));
   if (withMeta) {
-    const meta = [SHORT[game.console], game.set_up ? formatSize(game.size_bytes) : ""].filter(Boolean).join(" · ");
+    const meta = [CONSOLE_SHORT[game.console], game.set_up ? formatSize(game.size_bytes) : ""].filter(Boolean).join(" · ");
     card.append(h("span", "bp-tile-meta", meta));
   }
   return card;
@@ -798,7 +797,7 @@ function spotlight(titleId: string): void {
   if (!spot || !game || spot.dataset.game === titleId) return;
   spot.dataset.game = titleId;
   const meta = h("div", "bp-spot-meta");
-  meta.append(h("span", "", SHORT[game.console]));
+  meta.append(h("span", "", CONSOLE_SHORT[game.console]));
   const when = lastPlayed.get(titleId);
   if (when) meta.append(h("span", "", lastPlayedText(when)));
   spot.replaceChildren(h("div", "bp-spot-title", game.title), meta);
@@ -933,7 +932,7 @@ function library(): Screen {
         const tabs = h("div", "bp-tabs");
         tabs.innerHTML = keycap("LB", family, source) ?? "";
         for (const kind of ["", ...kinds] as (Console | "")[]) {
-          const tab = h("button", `bp-tab${kind === libraryConsole ? " on" : ""}`, kind ? SHORT[kind] : "All");
+          const tab = h("button", `bp-tab${kind === libraryConsole ? " on" : ""}`, kind ? CONSOLE_SHORT[kind] : "All");
           tab.tabIndex = -1;
           tab.onclick = () => {
             libraryConsole = kind;
@@ -995,7 +994,7 @@ function gamePage(titleId: string, section: Section): Screen {
 
       const info = h("div", "bp-page-info");
       const meta = h("div", "bp-page-meta");
-      meta.append(h("span", "", SHORT[game.console]), h("span", "bp-mono", game.title_id));
+      meta.append(h("span", "", CONSOLE_SHORT[game.console]), h("span", "bp-mono", game.title_id));
       const version = game.update_version ?? game.version;
       if (version) meta.append(h("span", "bp-mono", `v${version}`));
       if (game.set_up && game.size_bytes > 0) meta.append(h("span", "bp-mono", formatSize(game.size_bytes)));
