@@ -19,7 +19,8 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 
@@ -48,12 +49,43 @@ fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(install_dir(app)?.join("rpcs3.exe"))
 }
 
+/// The version `rpcs3.exe --version` last gave, with the size and time of the
+/// file that gave it. Asking means starting RPCS3, which holds its files open
+/// while it runs, and an update that met one of those files part way through
+/// stopped half done (2 October 2026). So RPCS3 is asked again only when its
+/// program has changed, and never while an update is replacing it.
+static KNOWN: Mutex<Option<(u64, SystemTime, String)>> = Mutex::new(None);
+
+/// Set while `install` replaces RPCS3's files.
+static INSTALLING: AtomicBool = AtomicBool::new(false);
+
+/// Clears `INSTALLING` however `install` ends, an error included.
+struct Installing;
+
+impl Drop for Installing {
+    fn drop(&mut self) {
+        INSTALLING.store(false, Ordering::Relaxed);
+    }
+}
+
 pub fn detect_version(app: &AppHandle) -> Option<String> {
     let exe = exe_path(app).ok()?;
-    if !exe.exists() {
+    let meta = std::fs::metadata(&exe).ok()?;
+    let stamp = (meta.len(), meta.modified().ok()?);
+    // Held while RPCS3 answers, so screens asking at once start it once.
+    let mut known = KNOWN.lock().unwrap();
+    let installing = INSTALLING.load(Ordering::Relaxed);
+    if let Some((len, time, version)) = known.as_ref() {
+        if installing || (*len, *time) == stamp {
+            return Some(version.clone());
+        }
+    }
+    if installing {
         return None;
     }
-    read_version(&exe)
+    let version = read_version(&exe)?;
+    *known = Some((stamp.0, stamp.1, version.clone()));
+    Some(version)
 }
 
 pub fn open_in_explorer(folder: &Path) -> Result<(), String> {
@@ -144,6 +176,7 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
 
     let dest_dir = install_dir(&app)?;
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    remove_old_archives(&dest_dir);
     let archive_path = dest_dir.join(&archive.name);
 
     download(&client, &archive.browser_download_url, &archive_path, &app, &cancel).await?;
@@ -171,16 +204,17 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
     }
 
     emit(&app, "extracting", 0, 1);
+    INSTALLING.store(true, Ordering::Relaxed);
+    let _installing = Installing;
     let extract_dir = dest_dir.clone();
     let archive_path_clone = archive_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let unpacked = tauri::async_runtime::spawn_blocking(move || {
         sevenz_rust2::decompress_file(&archive_path_clone, &extract_dir)
     })
     .await
-    .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
-
     let _ = std::fs::remove_file(&archive_path);
+    unpacked.map_err(|e| e.to_string())?;
 
     let exe = exe_path(&app)?;
     let version = read_version(&exe).ok_or("RPCS3 installed but did not report a version")?;
@@ -217,6 +251,20 @@ async fn download(
     }
 
     Ok(())
+}
+
+/// Archives an earlier update left behind when it stopped part way. Each is
+/// as big as RPCS3 itself.
+fn remove_old_archives(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        if version_from_archive(name).is_some() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 fn emit(app: &AppHandle, stage: &str, bytes: u64, total: u64) {
@@ -394,5 +442,20 @@ mod tests {
             Some("0.0.42-19985-6ba56a52")
         );
         assert_eq!(version_from_archive("rpcs3-v0.0.42-19985-6ba56a52_win64_msvc.7z.sha256"), None);
+    }
+
+    #[test]
+    fn an_old_updates_archive_is_cleared_and_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("omoio-rpcs3-archives-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["rpcs3-v0.0.43-20160-0850e0ff_win64_msvc.7z", "rpcs3.exe", "notes.7z"] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        remove_old_archives(&dir);
+        assert!(!dir.join("rpcs3-v0.0.43-20160-0850e0ff_win64_msvc.7z").exists());
+        assert!(dir.join("rpcs3.exe").exists());
+        assert!(dir.join("notes.7z").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
