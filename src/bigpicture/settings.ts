@@ -60,7 +60,7 @@ const CATEGORIES: [Category, string][] = [
 ];
 
 /// Which emulator runs which console, for the System list.
-const EMULATOR_NAMES: Record<EmulatorVersion["console"], string> = { ps3: "RPCS3", wiiu: "Cemu" };
+const EMULATOR_NAMES: Record<EmulatorVersion["console"], string> = { ps3: "RPCS3", wiiu: "Cemu", ps4: "shadPS4" };
 
 interface General {
   settings: Settings;

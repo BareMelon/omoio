@@ -7,11 +7,13 @@ import {
   getFirmwareVersion,
   getRpcs3Version,
   installCemu,
+  installShadps4,
   installFirmware,
   installRpcs3,
   listRegions,
   needsSetup,
   onCemuInstallProgress,
+  onShadps4InstallProgress,
   onRpcs3InstallProgress,
   setRegion,
   setUsername,
@@ -46,6 +48,7 @@ type Emulator = {
 const EMULATORS: Emulator[] = [
   { console: "ps3", games: "PS3 games", name: "RPCS3", install: installRpcs3, progress: onRpcs3InstallProgress },
   { console: "wiiu", games: "Wii U games", name: "Cemu", install: installCemu, progress: onCemuInstallProgress },
+  { console: "ps4", games: "PS4 games", name: "shadPS4", install: installShadps4, progress: onShadps4InstallProgress },
 ];
 
 /// Asked once, on the first run.

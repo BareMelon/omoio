@@ -13,6 +13,7 @@ pub enum Console {
     #[default]
     Ps3,
     WiiU,
+    Ps4,
 }
 
 impl Console {
@@ -21,6 +22,7 @@ impl Console {
         match self {
             Self::Ps3 => "PS3",
             Self::WiiU => "Wii U",
+            Self::Ps4 => "PS4",
         }
     }
 }
@@ -56,6 +58,7 @@ mod tests {
         assert_eq!(serde_json::to_string(&Console::Ps3).unwrap(), "\"ps3\"");
         assert_eq!(serde_json::to_string(&Console::WiiU).unwrap(), "\"wiiu\"");
         assert_eq!(serde_json::from_str::<Console>("\"wiiu\"").unwrap(), Console::WiiU);
+        assert_eq!(serde_json::to_string(&Console::Ps4).unwrap(), "\"ps4\"");
     }
 
     #[test]

@@ -209,11 +209,6 @@ pub fn used(app: &AppHandle, figure: &str) {
     let _ = settings.save(&file);
 }
 
-/// Skylanders games are the ones with a portal to fill.
-fn wants_portal(title: &str) -> bool {
-    title.to_lowercase().contains("skylanders")
-}
-
 #[derive(Clone, serde::Serialize)]
 struct MenuState {
     open: bool,
@@ -330,7 +325,7 @@ pub fn watch(app: AppHandle, pid: u32) {
             let Some(playing) = session.playing() else {
                 continue;
             };
-            if !wants_portal(&playing.title) {
+            if !figures::is_skylanders(&playing.title) {
                 return;
             }
             let pressing = crate::pads::connected()
@@ -367,11 +362,5 @@ mod tests {
         assert!(is_figure(Path::new("x.dump")));
         assert!(!is_figure(Path::new("notes.txt")));
         assert!(!is_figure(Path::new("no extension")));
-    }
-
-    #[test]
-    fn only_skylanders_games_open_the_menu() {
-        assert!(wants_portal("Skylanders SWAP Force"));
-        assert!(!wants_portal("LittleBigPlanet 3"));
     }
 }

@@ -514,12 +514,6 @@ const FIRST_SETTINGS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 \x20   </Graphic>\n\
 </content>\n";
 
-/// The Wii U's Skylanders games, by name: each needs the portal, and nothing
-/// else uses it.
-fn is_skylanders(title: &str) -> bool {
-    title.to_lowercase().contains("skylanders")
-}
-
 /// Where the inside of the element nested as `parents` sits in settings.xml,
 /// found one level at a time from the top. `Err` gives where the first
 /// missing parent would go and how many of the parents were found.
@@ -710,7 +704,7 @@ impl super::EmulatorBackend for Cemu {
         }
         let portable = dir.join("portable");
         let _ = write_first_settings(&portable);
-        let _ = tune_settings(&portable.join("settings.xml"), is_skylanders(&game.title));
+        let _ = tune_settings(&portable.join("settings.xml"), crate::core::figures::is_skylanders(&game.title));
     }
 
     fn tidy_window(&self, pid: u32) {
@@ -1058,13 +1052,6 @@ Deluxe");
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("<TVDevice>default</TVDevice>"), "an empty one is filled in");
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn only_skylanders_games_get_the_portal() {
-        assert!(is_skylanders("Skylanders SWAP Force"));
-        assert!(is_skylanders("Skylanders Imaginators"));
-        assert!(!is_skylanders("Mario Kart 8"));
     }
 
     #[test]

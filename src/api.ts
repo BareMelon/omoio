@@ -74,7 +74,7 @@ export interface Game {
   /// Where the cover came from: the dump's own icon, or RAWG.
   cover_source: "dump" | "rawg" | null;
   /// Which console the game is for, and so which emulator runs it.
-  console: "ps3" | "wiiu";
+  console: "ps3" | "wiiu" | "ps4";
   /// What its emulator can do beyond starting it.
   features: {
     updates: boolean;
@@ -146,7 +146,7 @@ export interface Machine {
 
 export interface PlaySession {
   /// Which console it ran on. Sessions kept before this was recorded were PS3.
-  console?: "ps3" | "wiiu";
+  console?: "ps3" | "wiiu" | "ps4";
   title_id: string;
   title: string;
   started: string;
@@ -527,7 +527,7 @@ export function pendingUpdates(): Promise<[boolean, PendingUpdate[]]> {
   return invoke("pending_updates");
 }
 
-export type Console = "ps3" | "wiiu";
+export type Console = "ps3" | "wiiu" | "ps4";
 
 export interface Release {
   title_id: string;
@@ -835,7 +835,7 @@ export function catalogueCover(key: string, name: string, console: Console): Pro
 }
 
 export interface EmulatorVersion {
-  console: "ps3" | "wiiu";
+  console: "ps3" | "wiiu" | "ps4";
   /// Null when it is not installed.
   version: string | null;
 }
@@ -864,6 +864,18 @@ export function addCemuKeys(path: string): Promise<number> {
 
 export function onCemuInstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
   return listen<InstallProgress>("cemu-install-progress", (event) => handler(event.payload));
+}
+
+export function installShadps4(): Promise<string> {
+  return invoke("install_shadps4");
+}
+
+export function cancelShadps4Install(): Promise<void> {
+  return invoke("cancel_shadps4_install");
+}
+
+export function onShadps4InstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
+  return listen<InstallProgress>("shadps4-install-progress", (event) => handler(event.payload));
 }
 
 /// An installed emulator with a newer official release.

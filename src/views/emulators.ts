@@ -2,10 +2,14 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   addCemuKeys,
   cancelCemuInstall,
+  cancelShadps4Install,
   cemuKeys,
   emulatorVersions,
   installCemu,
+  installShadps4,
   onCemuInstallProgress,
+  onShadps4InstallProgress,
+  type Console,
   type InstallProgress,
 } from "../api";
 import { store } from "../state";
@@ -21,7 +25,7 @@ type Emulator = {
   hue: number;
   needs?: string;
   /// The console Omoio runs it for, when Omoio can install it.
-  runs?: "ps3" | "wiiu";
+  runs?: Console;
 };
 
 const SONY_HOME = 222;
@@ -37,7 +41,7 @@ const NINTENDO_HANDHELD = 268;
 /// after legal action, and they cannot run anything without decryption keys,
 /// which Omoio never handles.
 const EMULATORS: Emulator[] = [
-  { name: "shadPS4", console: "PlayStation 4", badge: "PS4", hue: SONY_HOME },
+  { name: "shadPS4", console: "PlayStation 4", badge: "PS4", hue: SONY_HOME, runs: "ps4" },
   { name: "RPCS3", console: "PlayStation 3", badge: "PS3", hue: SONY_HOME, runs: "ps3" },
   { name: "PCSX2", console: "PlayStation 2", badge: "PS2", hue: SONY_HOME, needs: "Your own BIOS" },
   { name: "Dolphin", console: "GameCube and Wii", badge: "Wii", hue: NINTENDO_HOME },
@@ -89,7 +93,20 @@ function text(emulator: Emulator): HTMLElement {
 }
 
 /// Installs Cemu where the button was, with progress and a way to stop.
-function cemuInstaller(box: HTMLElement): HTMLButtonElement {
+/// How Omoio installs each emulator it downloads straight from this screen.
+const INSTALLERS: Partial<Record<Console, Installer>> = {
+  wiiu: { name: "Cemu", install: installCemu, progress: onCemuInstallProgress, cancel: cancelCemuInstall },
+  ps4: { name: "shadPS4", install: installShadps4, progress: onShadps4InstallProgress, cancel: cancelShadps4Install },
+};
+
+type Installer = {
+  name: string;
+  install: () => Promise<string>;
+  progress: (handler: (progress: InstallProgress) => void) => Promise<() => void>;
+  cancel: () => Promise<void>;
+};
+
+function installer(box: HTMLElement, emulator: Installer): HTMLButtonElement {
   const install = document.createElement("button");
   install.className = "small-btn";
   install.textContent = "Install to Omoio";
@@ -107,12 +124,12 @@ function cemuInstaller(box: HTMLElement): HTMLButtonElement {
     const stop = document.createElement("button");
     stop.className = "link-btn";
     stop.textContent = "Cancel";
-    stop.onclick = () => void cancelCemuInstall();
+    stop.onclick = () => void emulator.cancel();
     box.querySelector(".note")?.remove();
     install.replaceWith(bar);
     bar.after(stop);
 
-    const unlisten = await onCemuInstallProgress((progress) => {
+    const unlisten = await emulator.progress((progress) => {
       stage.textContent = STAGE[progress.stage];
       if (progress.stage === "downloading" && progress.total > 0) {
         const done = Math.min(100, Math.round((progress.bytes / progress.total) * 100));
@@ -123,7 +140,7 @@ function cemuInstaller(box: HTMLElement): HTMLButtonElement {
       }
     });
     try {
-      await installCemu();
+      await emulator.install();
       store.redraw();
     } catch (err) {
       bar.remove();
@@ -135,7 +152,7 @@ function cemuInstaller(box: HTMLElement): HTMLButtonElement {
           ? "Stopped. Nothing was installed."
           : typeof err === "string"
             ? err
-            : "Couldn't install Cemu.";
+            : `Couldn't install ${emulator.name}.`;
       box.append(install, note);
     } finally {
       unlisten();
@@ -232,8 +249,9 @@ export async function renderEmulators(): Promise<View> {
     card.className = "emu-card";
     const words = text(emulator);
     card.append(badge(emulator, "small"), words);
-    if (emulator.runs === "wiiu") {
-      words.appendChild(cemuInstaller(words));
+    const own = emulator.runs && INSTALLERS[emulator.runs];
+    if (own) {
+      words.appendChild(installer(words, own));
     } else if (emulator.runs === "ps3") {
       // RPCS3's installer sits with its firmware on the System screen.
       const install = document.createElement("button");
