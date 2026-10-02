@@ -191,26 +191,25 @@ fn read_u32(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
 }
 
-/// Also used by other modules' tests to make a PARAM.SFO.
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
-    pub(crate) struct Entry {
+    struct Entry {
         key: &'static str,
         fmt: u16,
         data: Vec<u8>,
         max: usize,
     }
 
-    pub(crate) fn text(key: &'static str, value: &str) -> Entry {
+    fn text(key: &'static str, value: &str) -> Entry {
         let mut data = value.as_bytes().to_vec();
         data.push(0);
         let max = data.len();
         Entry { key, fmt: FMT_UTF8_NUL, data, max }
     }
 
-    pub(crate) fn build(entries: &[Entry]) -> Vec<u8> {
+    fn build(entries: &[Entry]) -> Vec<u8> {
         let (mut keys, mut data, mut index) = (Vec::new(), Vec::new(), Vec::new());
         for e in entries {
             let key_offset = keys.len();

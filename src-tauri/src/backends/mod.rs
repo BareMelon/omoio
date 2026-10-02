@@ -6,7 +6,6 @@
 
 pub mod cemu;
 pub mod rpcs3;
-pub mod shadps4;
 
 use crate::core::console::{Console, Features};
 use crate::core::game_settings::{Chosen, GameSettings};
@@ -181,7 +180,7 @@ const NO_PORTAL: &str = "Omoio can't reach this emulator's portal yet.";
 
 /// Every emulator Omoio can run, one per console.
 pub fn all() -> &'static [&'static dyn EmulatorBackend] {
-    &[&rpcs3::Rpcs3, &cemu::Cemu, &shadps4::ShadPs4]
+    &[&rpcs3::Rpcs3, &cemu::Cemu]
 }
 
 pub fn for_console(console: Console) -> Option<&'static dyn EmulatorBackend> {
@@ -265,6 +264,5 @@ mod tests {
         }
         assert!(for_console(Console::Ps3).is_some());
         assert!(for_console(Console::WiiU).is_some());
-        assert!(for_console(Console::Ps4).is_some());
     }
 }

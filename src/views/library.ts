@@ -7,7 +7,7 @@ import { store } from "../state";
 import { emptyState, type View } from "./view";
 
 /// How a console is written on a tile.
-const SHORT: Record<Game["console"], string> = { ps3: "PS3", wiiu: "Wii U", ps4: "PS4" };
+const SHORT: Record<Game["console"], string> = { ps3: "PS3", wiiu: "Wii U" };
 
 function formatSize(bytes: number): string {
   if (bytes <= 0) return "";

@@ -46,7 +46,7 @@ interface Modal {
   capture?: boolean;
 }
 
-const SHORT: Record<Console, string> = { ps3: "PS3", wiiu: "Wii U", ps4: "PS4" };
+const SHORT: Record<Console, string> = { ps3: "PS3", wiiu: "Wii U" };
 
 const MARK = `<svg viewBox="0 0 1254 1254" fill="currentColor" fill-rule="evenodd" aria-hidden="true">
   <path d="M342 222l-60 26-40 27-16 27-6 24v610l6 24 16 27 40 27 61 26-14-24-9-30-1-30V282l1-30 9-30z"/>

@@ -25,7 +25,6 @@ pub struct InstallState {
     cancel_update: Arc<AtomicBool>,
     cancel_compat: Arc<AtomicBool>,
     cancel_cemu: Arc<AtomicBool>,
-    cancel_shadps4: Arc<AtomicBool>,
     /// Emulators whose files are being replaced right now.
     installing: std::sync::Mutex<Vec<Console>>,
 }
@@ -399,17 +398,11 @@ pub fn catalogue(
     let mut missing = Vec::new();
     let mut sources = Vec::new();
     for backend in crate::backends::all() {
-        let list = backend.catalogue(&app);
-        // A console with no list of its own yet stays out of the catalogue,
-        // rather than showing as a console with no games.
-        if list.as_ref().is_some_and(Vec::is_empty) {
-            continue;
-        }
         consoles.push(CatalogueConsole {
             console: backend.console(),
             name: backend.console().short(),
         });
-        match list {
+        match backend.catalogue(&app) {
             Some(found) => {
                 entries.extend(found);
                 let (label, url) = backend.catalogue_source();
@@ -1474,20 +1467,6 @@ pub fn add_cemu_keys(app: AppHandle, path: String) -> Result<usize, String> {
 #[tauri::command]
 pub fn cancel_cemu_install(state: State<'_, InstallState>) {
     state.cancel_cemu.store(true, Ordering::Relaxed);
-}
-
-#[tauri::command]
-pub async fn install_shadps4(app: AppHandle, state: State<'_, InstallState>) -> Result<String, String> {
-    refuse_while_playing(&app, Console::Ps4)?;
-    let _installing = state.begin_install(Console::Ps4)?;
-    state.cancel_shadps4.store(false, Ordering::Relaxed);
-    let cancel = state.cancel_shadps4.clone();
-    crate::backends::shadps4::install(app, cancel).await
-}
-
-#[tauri::command]
-pub fn cancel_shadps4_install(state: State<'_, InstallState>) {
-    state.cancel_shadps4.store(true, Ordering::Relaxed);
 }
 
 /// The emulator running the game right now, and its process.

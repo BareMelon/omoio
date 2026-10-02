@@ -2,14 +2,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   addCemuKeys,
   cancelCemuInstall,
-  cancelShadps4Install,
   cemuKeys,
   emulatorVersions,
   installCemu,
-  installShadps4,
   onCemuInstallProgress,
-  onShadps4InstallProgress,
-  type Console,
   type InstallProgress,
 } from "../api";
 import { store } from "../state";
@@ -25,7 +21,7 @@ type Emulator = {
   hue: number;
   needs?: string;
   /// The console Omoio runs it for, when Omoio can install it.
-  runs?: Console;
+  runs?: "ps3" | "wiiu";
 };
 
 const SONY_HOME = 222;
@@ -33,15 +29,16 @@ const SONY_HANDHELD = 190;
 const NINTENDO_HOME = 352;
 const NINTENDO_HANDHELD = 268;
 
-/// The ten most starred emulators on GitHub, counted on 11 September 2026.
+/// The most starred emulators on GitHub, counted on 11 September 2026.
 /// Stars are the one measure of popularity anyone can check, which is why they
 /// decide the order rather than a list of favourites.
 ///
 /// Switch and 3DS emulators are absent on purpose. The big ones were shut down
 /// after legal action, and they cannot run anything without decryption keys,
-/// which Omoio never handles.
+/// which Omoio never handles. shadPS4, the PS4's, is left out too: it runs only
+/// games already decrypted, and a PS4 game someone bought is locked to Sony's
+/// keys (Bertram dropped it, 2 October 2026).
 const EMULATORS: Emulator[] = [
-  { name: "shadPS4", console: "PlayStation 4", badge: "PS4", hue: SONY_HOME, runs: "ps4" },
   { name: "RPCS3", console: "PlayStation 3", badge: "PS3", hue: SONY_HOME, runs: "ps3" },
   { name: "PCSX2", console: "PlayStation 2", badge: "PS2", hue: SONY_HOME, needs: "Your own BIOS" },
   { name: "Dolphin", console: "GameCube and Wii", badge: "Wii", hue: NINTENDO_HOME },
@@ -93,20 +90,7 @@ function text(emulator: Emulator): HTMLElement {
 }
 
 /// Installs Cemu where the button was, with progress and a way to stop.
-/// How Omoio installs each emulator it downloads straight from this screen.
-const INSTALLERS: Partial<Record<Console, Installer>> = {
-  wiiu: { name: "Cemu", install: installCemu, progress: onCemuInstallProgress, cancel: cancelCemuInstall },
-  ps4: { name: "shadPS4", install: installShadps4, progress: onShadps4InstallProgress, cancel: cancelShadps4Install },
-};
-
-type Installer = {
-  name: string;
-  install: () => Promise<string>;
-  progress: (handler: (progress: InstallProgress) => void) => Promise<() => void>;
-  cancel: () => Promise<void>;
-};
-
-function installer(box: HTMLElement, emulator: Installer): HTMLButtonElement {
+function cemuInstaller(box: HTMLElement): HTMLButtonElement {
   const install = document.createElement("button");
   install.className = "small-btn";
   install.textContent = "Install to Omoio";
@@ -124,12 +108,12 @@ function installer(box: HTMLElement, emulator: Installer): HTMLButtonElement {
     const stop = document.createElement("button");
     stop.className = "link-btn";
     stop.textContent = "Cancel";
-    stop.onclick = () => void emulator.cancel();
+    stop.onclick = () => void cancelCemuInstall();
     box.querySelector(".note")?.remove();
     install.replaceWith(bar);
     bar.after(stop);
 
-    const unlisten = await emulator.progress((progress) => {
+    const unlisten = await onCemuInstallProgress((progress) => {
       stage.textContent = STAGE[progress.stage];
       if (progress.stage === "downloading" && progress.total > 0) {
         const done = Math.min(100, Math.round((progress.bytes / progress.total) * 100));
@@ -140,7 +124,7 @@ function installer(box: HTMLElement, emulator: Installer): HTMLButtonElement {
       }
     });
     try {
-      await emulator.install();
+      await installCemu();
       store.redraw();
     } catch (err) {
       bar.remove();
@@ -152,7 +136,7 @@ function installer(box: HTMLElement, emulator: Installer): HTMLButtonElement {
           ? "Stopped. Nothing was installed."
           : typeof err === "string"
             ? err
-            : `Couldn't install ${emulator.name}.`;
+            : "Couldn't install Cemu.";
       box.append(install, note);
     } finally {
       unlisten();
@@ -249,9 +233,8 @@ export async function renderEmulators(): Promise<View> {
     card.className = "emu-card";
     const words = text(emulator);
     card.append(badge(emulator, "small"), words);
-    const own = emulator.runs && INSTALLERS[emulator.runs];
-    if (own) {
-      words.appendChild(installer(words, own));
+    if (emulator.runs === "wiiu") {
+      words.appendChild(cemuInstaller(words));
     } else if (emulator.runs === "ps3") {
       // RPCS3's installer sits with its firmware on the System screen.
       const install = document.createElement("button");

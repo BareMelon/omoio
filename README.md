@@ -85,10 +85,12 @@ or help you find them.
 <br>
 
 PS3 through RPCS3 and Wii U through Cemu. The Emulators screen lists what comes
-next: PS4, PS2, GameCube and Wii, PSP, PS1, Game Boy Advance, PS Vita and DS.
-Each one is added once its download and its licence have been checked.
+next: PS2, GameCube and Wii, PSP, PS1, Game Boy Advance, PS Vita and DS. Each
+one is added once its download and its licence have been checked. PS4 isn't
+among them: its emulator runs only games that are already decrypted, and a PS4
+game you bought is locked to Sony's keys.
 
-![The Emulators screen, with RPCS3 and Cemu installed and eight more coming](design/screenshots/emulators.png)
+![The Emulators screen, with RPCS3 and Cemu installed and seven more coming](design/screenshots/emulators.png)
 
 </details>
 

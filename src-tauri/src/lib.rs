@@ -100,8 +100,6 @@ pub fn run() {
             commands::emulator_versions,
             commands::install_cemu,
             commands::cancel_cemu_install,
-            commands::install_shadps4,
-            commands::cancel_shadps4_install,
             commands::cemu_keys,
             commands::add_cemu_keys,
             commands::emulator_updates,

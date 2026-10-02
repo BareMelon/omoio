@@ -1,14 +1,11 @@
 import {
   cancelCemuInstall,
   cancelRpcs3Install,
-  cancelShadps4Install,
   emulatorUpdates,
   installCemu,
   installRpcs3,
-  installShadps4,
   onCemuInstallProgress,
   onRpcs3InstallProgress,
-  onShadps4InstallProgress,
   type Console,
   type EmulatorUpdate,
   type InstallProgress,
@@ -27,7 +24,6 @@ const INSTALL: Record<
 > = {
   ps3: { install: installRpcs3, progress: onRpcs3InstallProgress, cancel: cancelRpcs3Install },
   wiiu: { install: installCemu, progress: onCemuInstallProgress, cancel: cancelCemuInstall },
-  ps4: { install: installShadps4, progress: onShadps4InstallProgress, cancel: cancelShadps4Install },
 };
 
 const STAGE: Record<InstallProgress["stage"], string> = {

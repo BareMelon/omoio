@@ -226,11 +226,6 @@ pub fn repaired(name: &str) -> String {
     bytes.and_then(|bytes| String::from_utf8(bytes).ok()).unwrap_or_else(|| name.to_string())
 }
 
-/// Skylanders games are the ones with a portal to fill, on every console.
-pub fn is_skylanders(title: &str) -> bool {
-    title.to_lowercase().contains("skylanders")
-}
-
 /// A character an emulator can make a figure of: the name it shows, and the
 /// id and variant the figure carries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -416,13 +411,6 @@ mod tests {
         assert!(!reads(swap, 230, 0x3000)); // Hand of Fate
         assert!(!reads(Game::Giants, 3000, 0x2000));
         assert!(reads(Game::SuperChargers, 3400, 0x4100)); // Fiesta
-    }
-
-    #[test]
-    fn only_skylanders_games_have_a_portal() {
-        assert!(is_skylanders("Skylanders SWAP Force"));
-        assert!(is_skylanders("Skylanders™ SuperChargers"));
-        assert!(!is_skylanders("LittleBigPlanet 3"));
     }
 
     #[test]
