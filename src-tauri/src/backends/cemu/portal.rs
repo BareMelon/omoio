@@ -65,6 +65,41 @@ const OPEN_BUTTON: i32 = 1;
 const WAIT: Duration = Duration::from_secs(5);
 const SAVE_WAIT: Duration = Duration::from_secs(15);
 const MAKER_WAIT: Duration = Duration::from_secs(20);
+/// How long Cemu may take to show its menu bar or open one of its windows.
+/// In the first minute of a game it is still loading and building shaders,
+/// and a window took longer than five seconds: a figure failed twice and
+/// went on at the third try (2 October 2026).
+const START_WAIT: Duration = Duration::from_secs(20);
+
+/// A command from Cemu's menu bar, waiting for the bar to be read if Cemu
+/// hasn't shown it yet.
+fn command_when_ready(pid: u32, label: &str) -> Option<u32> {
+    let until = Instant::now() + START_WAIT;
+    loop {
+        tidy(pid);
+        if let Some(found) = command(pid, label) {
+            return Some(found);
+        }
+        if Instant::now() >= until {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Waits for Cemu's window titled `title` and puts it out of sight. Looked
+/// for often, so it is gone before it can be seen over the game.
+fn arrives(pid: u32, title: &str) -> Option<HWND> {
+    let until = Instant::now() + START_WAIT;
+    while Instant::now() < until {
+        if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == title) {
+            out_of_sight(window);
+            return Some(window);
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    None
+}
 
 fn text(window: HWND) -> String {
     let mut buffer = [0u16; 512];
@@ -180,10 +215,6 @@ fn windows_of(pid: u32) -> Vec<HWND> {
         .collect()
 }
 
-fn wait_for(pid: u32, found: impl Fn(HWND) -> bool) -> Option<HWND> {
-    wait_up_to(WAIT, pid, found)
-}
-
 fn wait_up_to(limit: Duration, pid: u32, found: impl Fn(HWND) -> bool) -> Option<HWND> {
     let until = Instant::now() + limit;
     while Instant::now() < until {
@@ -293,20 +324,12 @@ pub fn hush(pid: u32, hushed: bool) -> Result<(), String> {
         out_of_sight(window);
         return Ok(());
     }
-    tidy(pid);
     let main = main_window(pid).ok_or("Cemu isn't answering.")?;
-    let input = command(pid, INPUT_SETTINGS).ok_or("Cemu isn't ready yet.")?;
+    let input = command_when_ready(pid, INPUT_SETTINGS).ok_or("Cemu isn't ready yet.")?;
     let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(input as usize), LPARAM(0)) };
-    // Looked for often, so it is out of sight before it can be seen.
-    let until = Instant::now() + WAIT;
-    while Instant::now() < until {
-        if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == INPUT_SETTINGS) {
-            out_of_sight(window);
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    Err("Cemu's input settings didn't open.".to_string())
+    arrives(pid, INPUT_SETTINGS)
+        .map(|_| ())
+        .ok_or("Cemu's input settings didn't open.".to_string())
 }
 
 /// The Emulated USB Devices window, opened if it is not already, and put out
@@ -316,13 +339,10 @@ fn open(pid: u32) -> Result<HWND, String> {
         out_of_sight(window);
         return Ok(window);
     }
-    tidy(pid);
     let main = main_window(pid).ok_or("Cemu isn't answering. Try again once the game has started.")?;
-    let devices = command(pid, WINDOW).ok_or("Cemu's portal isn't ready yet. Try again in a moment.")?;
+    let devices = command_when_ready(pid, WINDOW).ok_or("Cemu's portal isn't ready yet. Try again in a moment.")?;
     let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(devices as usize), LPARAM(0)) };
-    let window = wait_for(pid, |w| text(w) == WINDOW).ok_or("Cemu's portal didn't open. Try again.")?;
-    out_of_sight(window);
-    Ok(window)
+    arrives(pid, WINDOW).ok_or("Cemu's portal didn't open. Try again.".to_string())
 }
 
 /// Controls of one class and text, in the order Cemu made them. The
