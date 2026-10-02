@@ -16,6 +16,7 @@
 //! without being asked, once, with the reason shown. Every other patch waits
 //! for the user.
 
+use crate::core::community::Pack;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -60,6 +61,38 @@ pub struct Patch {
     /// Why Omoio switches it on, when it is one of Omoio's own fixes.
     #[serde(default)]
     pub fix: Option<String>,
+}
+
+/// How a patch is known to the interface: its serial, the executable's hash
+/// and its name, which together pick out one patch.
+pub fn pack_id(patch: &Patch) -> String {
+    format!("{}|{}|{}", patch.serial, patch.hash, patch.name)
+}
+
+/// A patch in the shape every emulator's community packs share.
+pub fn as_pack(patch: Patch) -> Pack {
+    let by = [
+        (!patch.author.is_empty()).then(|| format!("by {}", patch.author)),
+        (!patch.version.is_empty()).then(|| format!("v{}", patch.version)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ");
+    Pack {
+        id: pack_id(&patch),
+        kind: "Patches".to_string(),
+        about: patch.notes.clone(),
+        by,
+        on: patch.enabled,
+        applies: patch.applies,
+        // A patch written for another release of the game would not be
+        // applied, so it says which one it wants.
+        needs: (!patch.applies).then(|| format!("Written for version {}.", patch.versions.join(", "))),
+        on_because: patch.fix.as_ref().map(|why| format!("Omoio turns this on for this game. {why}")),
+        choices: Vec::new(),
+        name: patch.name,
+    }
 }
 
 pub fn catalogue_path(app: &AppHandle) -> Result<PathBuf, String> {

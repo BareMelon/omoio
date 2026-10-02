@@ -313,7 +313,7 @@ impl super::EmulatorBackend for Rpcs3 {
     fn features(&self) -> crate::core::console::Features {
         crate::core::console::Features {
             updates: true,
-            patches: true,
+            packs: true,
             settings: true,
             saves: true,
             compatibility: true,
@@ -428,6 +428,45 @@ impl super::EmulatorBackend for Rpcs3 {
     ) -> Vec<&'static str> {
         let version = game.running_version().unwrap_or_default();
         fixes::apply(app, &game.title_id, version, applied)
+    }
+
+    /// RPCS3's community patches, matched against the version that runs, so
+    /// a game with an official update sees the patches written for it.
+    fn community_packs(
+        &self,
+        app: &AppHandle,
+        title_id: &str,
+        game: Option<&crate::core::library::Game>,
+    ) -> crate::core::community::Packs {
+        let version = game.and_then(|g| g.running_version()).unwrap_or_default();
+        crate::core::community::Packs {
+            have_list: patches::have_catalogue(app),
+            source: "the RPCS3 community".to_string(),
+            waiting: None,
+            packs: patches::for_title(app, title_id, version).into_iter().map(patches::as_pack).collect(),
+        }
+    }
+
+    fn set_community_pack(
+        &self,
+        app: &AppHandle,
+        game: &crate::core::library::Game,
+        change: &crate::core::community::PackChange,
+    ) -> Result<(), String> {
+        let version = game.running_version().unwrap_or_default();
+        let patch = patches::for_title(app, &game.title_id, version)
+            .into_iter()
+            .find(|patch| patches::pack_id(patch) == change.id)
+            .ok_or("That patch isn't in the list any more. Download the latest patches.")?;
+        patches::set_enabled(app, &patch, &game.title_id, version, change.on)
+    }
+
+    fn refresh_community<'a>(
+        &'a self,
+        app: &'a AppHandle,
+        _cancel: &'a std::sync::atomic::AtomicBool,
+    ) -> futures_util::future::BoxFuture<'a, Result<usize, String>> {
+        Box::pin(patches::refresh(app))
     }
 }
 

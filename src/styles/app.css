@@ -763,6 +763,43 @@ button {
   color: var(--warn);
 }
 
+/* ---------- community packs ---------- */
+.pack {
+  align-items: flex-start;
+}
+.pack .row-actions {
+  padding-top: 2px;
+}
+.pack-words {
+  min-width: 0;
+}
+.pack-kind {
+  margin: 18px 0 2px;
+}
+.pack-kind:first-child {
+  margin-top: 10px;
+}
+/* A pack's own choices sit under its name while it is on. */
+.pack-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 10px;
+}
+.pack-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--mute);
+}
+.pack-choice .select {
+  max-width: 220px;
+}
+.pack-progress {
+  margin: 6px 0 4px;
+}
+
 /* ---------- compatibility ---------- */
 .compat {
   display: flex;

@@ -4,7 +4,7 @@ import {
   controllerView,
   emulatorVersions,
   fetchCovers,
-  gamePatches,
+  communityPacks,
   gameSaves,
   gameSettings,
   getAccount,
@@ -13,11 +13,13 @@ import {
   listGames,
   listRegions,
   portalButton,
-  refreshPatches,
+  cancelCommunity,
+  onCommunityProgress,
+  refreshCommunity,
   restoreSaves,
   setCovers,
   setGameSettings,
-  setPatchEnabled,
+  setCommunityPack,
   setPortalButton,
   setRegion,
   setStartInBigPicture,
@@ -28,7 +30,7 @@ import {
   type GameOption,
   type GameSettings,
   type HardwareInfo,
-  type PatchList,
+  type Packs,
   type RegionChoice,
   type SaveBackup,
   type Settings,
@@ -445,19 +447,20 @@ export function gameOptionsScreen(kit: Kit, game: Game, section: Section): Scree
 
 // ---- patches ----
 
-export function patchesScreen(kit: Kit, game: Game, section: Section): Screen {
-  let found: PatchList | null = null;
+export function packsScreen(kit: Kit, game: Game, section: Section): Screen {
+  let found: Packs | null = null;
   let asked = false;
-  let getting = false;
+  /// What the download is doing, while it runs.
+  let getting: string | null = null;
 
   const screen: Screen = {
     section,
     first: () => {
-      const first = found?.patches.find((patch) => patch.applies);
-      return first ? `patch:${first.hash}` : "patch:get";
+      const first = found?.packs.find((pack) => pack.applies);
+      return first ? `pack:${first.id}` : "pack:get";
     },
     draw() {
-      const { page, list } = listPage(game.title, "Patches");
+      const { page, list } = listPage(game.title, "Community packs");
       if (!found) {
         if (!asked) {
           asked = true;
@@ -466,73 +469,112 @@ export function patchesScreen(kit: Kit, game: Game, section: Section): Screen {
         list.append(h("div", "bp-quiet", "Reading…"));
         return page;
       }
-      const { have_list, patches } = found;
+      const { have_list, waiting, packs, source } = found;
       list.append(
         h(
           "p",
           "bp-list-note",
-          "Written by the RPCS3 community. Omoio turns on a fix it knows this game needs and says why. The rest stay off until you turn them on."
+          `Made by ${source || "the emulator's community"}. A pack that is on without being asked says why; the rest stay off until you turn them on.`
         )
       );
       if (!have_list) {
-        list.append(row("patch:none", "No patch list yet", "", undefined, "Get it to see what has been written for this game."));
-      } else if (patches.length === 0) {
-        list.append(row("patch:none", "No patches for this game", "", undefined, "Nobody has published one."));
+        list.append(row("pack:none", "Not downloaded yet", "", undefined, "Download them to see what has been made for this game."));
+      } else if (waiting) {
+        list.append(row("pack:none", waiting, ""));
+      } else if (packs.length === 0) {
+        list.append(row("pack:none", "No packs for this game", "", undefined, "Nobody has made one yet."));
       }
-      for (const patch of patches) {
-        const by = [patch.author && `by ${patch.author}`, patch.version && `v${patch.version}`].filter(Boolean).join(" · ");
-        if (!patch.applies) {
-          const line = row(`patch:${patch.hash}`, patch.name, "Other version", undefined, `Written for version ${patch.versions.join(", ")}.`);
-          line.classList.add("spare");
-          list.append(line);
-          continue;
-        }
-        const hint = patch.fix ? `Omoio turns this on for this game. ${patch.fix}` : patch.notes || by || undefined;
-        list.append(
-          switchRow(
-            `patch:${patch.hash}`,
-            patch.name,
-            patch.enabled,
-            async (next) => {
+      const kinds = [...new Set(packs.map((pack) => pack.kind))];
+      for (const kind of kinds) {
+        if (kinds.length > 1) list.append(heading(kind));
+        for (const pack of packs.filter((each) => each.kind === kind)) {
+          if (!pack.applies) {
+            const line = row(`pack:${pack.id}`, pack.name, "Other version", undefined, pack.needs ?? undefined);
+            line.classList.add("spare");
+            list.append(line);
+            continue;
+          }
+          const picked = Object.fromEntries(pack.choices.map((choice) => [choice.name, choice.chosen]));
+          list.append(
+            switchRow(
+              `pack:${pack.id}`,
+              pack.name,
+              pack.on,
+              async (next) => {
+                try {
+                  await setCommunityPack(game.title_id, { id: pack.id, on: next, choices: picked });
+                } catch (err) {
+                  kit.say(problem(err, "Couldn't change that pack."));
+                  throw err;
+                }
+                await read();
+              },
+              pack.on_because ?? (pack.about || pack.by || undefined)
+            )
+          );
+          // A pack's own choices, such as its frame rate, while it is on.
+          if (!pack.on) continue;
+          for (const choice of pack.choices) {
+            const name = choice.name.replace(/:$/, "") || "Preset";
+            const line = row(`pack:${pack.id}:${choice.name}`, name, choice.chosen, async () => {
+              const options: Choice[] = choice.options.map((option) => ({ value: option, label: option }));
+              const next = await kit.pick(`${pack.name}: ${name}`, options, choice.chosen);
+              if (next === null || next === choice.chosen) return;
               try {
-                await setPatchEnabled(patch, game.title_id, next);
-                patch.enabled = next;
+                await setCommunityPack(game.title_id, { id: pack.id, on: true, choices: { ...picked, [choice.name]: next } });
               } catch (err) {
-                kit.say(problem(err, "Couldn't change that patch."));
-                throw err;
+                kit.say(problem(err, "Couldn't change that pack."));
               }
-            },
-            hint
-          )
-        );
+              await read();
+            });
+            line.classList.add("sub");
+            list.append(line);
+          }
+        }
       }
-      list.append(
-        row("patch:get", have_list ? "Get the latest patches" : "Get patches", getting ? "Getting…" : "", async () => {
-          if (getting) return;
-          getting = true;
+      // Pressed again while it runs, it stops.
+      const get = row(
+        "pack:get",
+        have_list ? "Check for new packs" : "Download packs",
+        getting ?? "",
+        async () => {
+          if (getting) {
+            await cancelCommunity();
+            return;
+          }
+          getting = "Starting…";
           kit.redraw(screen);
+          const unlisten = onCommunityProgress((progress) => {
+            getting =
+              progress.stage === "downloading" && progress.total > 0
+                ? `${Math.min(100, Math.round((progress.bytes / progress.total) * 100))}%`
+                : progress.stage === "verifying"
+                  ? "Checking…"
+                  : progress.stage === "extracting"
+                    ? "Unpacking…"
+                    : "Starting…";
+            kit.redraw(screen);
+          });
           try {
-            await refreshPatches();
+            await refreshCommunity(game.console);
             await read();
           } catch (err) {
-            kit.say(problem(err, "Couldn't get the patch list."));
+            if (err !== "cancelled") kit.say(problem(err, "Couldn't download the packs."));
           } finally {
-            getting = false;
+            getting = null;
+            void unlisten.then((stop) => stop());
             kit.redraw(screen);
           }
-        })
+        },
+        getting ? "Press again to stop." : undefined
       );
+      list.append(get);
       return page;
     },
   };
 
   async function read(): Promise<void> {
-    try {
-      found = await gamePatches(game.title_id);
-    } catch (err) {
-      kit.say(problem(err, "Couldn't read the patches."));
-      found = { have_list: false, patches: [] };
-    }
+    found = await communityPacks(game.title_id);
     kit.redraw(screen);
   }
 

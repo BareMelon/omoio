@@ -27,7 +27,7 @@ import { focusables, nearest, remember, revealInColumn, revealInRow } from "./fo
 import { listen, untilLetGo, type Action, type Source } from "./input";
 import { keycap } from "./keys";
 import { h, navButton, type Choice, type Kit, type Question, type Screen, type Section } from "./kit";
-import { gameOptionsScreen, patchesScreen, savesScreen, settingsScreen, type Category } from "./settings";
+import { gameOptionsScreen, packsScreen, savesScreen, settingsScreen, type Category } from "./settings";
 
 /// Big Picture: Omoio for the sofa. The whole screen, big type, and every
 /// part of it reachable with the d-pad or left stick: the bottom face button
@@ -1028,7 +1028,7 @@ function gamePage(titleId: string, section: Section): Screen {
       const extras = h("div", "bp-page-actions bp-page-extras");
       const offers: [boolean, string, string, () => Screen][] = [
         [game.features.settings, "settings", "Settings", () => gameOptionsScreen(kit, game, section)],
-        [game.features.patches, "patches", "Patches", () => patchesScreen(kit, game, section)],
+        [game.features.packs, "packs", "Community packs", () => packsScreen(kit, game, section)],
         [game.features.saves, "saves", "Saved games", () => savesScreen(kit, game, section)],
       ];
       for (const [offered, id, label, make] of offers) {

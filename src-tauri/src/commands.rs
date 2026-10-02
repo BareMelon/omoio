@@ -25,6 +25,7 @@ pub struct InstallState {
     cancel_update: Arc<AtomicBool>,
     cancel_compat: Arc<AtomicBool>,
     cancel_cemu: Arc<AtomicBool>,
+    cancel_community: Arc<AtomicBool>,
     /// Emulators whose files are being replaced right now.
     installing: std::sync::Mutex<Vec<Console>>,
 }
@@ -788,54 +789,43 @@ pub fn cancel_compatibility(state: State<'_, InstallState>) {
     state.cancel_compat.store(true, Ordering::Relaxed);
 }
 
-#[derive(serde::Serialize)]
-pub struct PatchView {
-    pub have_list: bool,
-    pub patches: Vec<rpcs3::patches::Patch>,
-}
-
-/// The version that actually runs: the official update when one is installed,
-/// otherwise what the dump reports.
-fn running_version(app: &AppHandle, title_id: &str) -> String {
-    library_path(app)
-        .map(|file| Library::load(&file))
+/// What the community publishes for a game, from the emulator its console
+/// uses. A game from the catalogue isn't in the library, so it names its
+/// console.
+#[tauri::command]
+pub fn community_packs(app: AppHandle, title_id: String, console: Option<Console>) -> crate::core::community::Packs {
+    let game = library_path(&app)
         .ok()
-        .and_then(|library| {
-            library
-                .games()
-                .iter()
-                .find(|g| g.title_id == title_id)
-                .and_then(|g| g.running_version().map(str::to_string))
-        })
-        .unwrap_or_default()
-}
-
-/// Patches are matched against the version that actually runs, so a game with
-/// an official update installed sees the patches written for it rather than
-/// the ones for the version its disc shipped with.
-#[tauri::command]
-pub fn game_patches(app: AppHandle, title_id: String) -> PatchView {
-    let version = running_version(&app, &title_id);
-    PatchView {
-        have_list: rpcs3::patches::have_catalogue(&app),
-        patches: rpcs3::patches::for_title(&app, &title_id, &version),
-    }
+        .and_then(|file| Library::load(&file).games().iter().find(|g| g.title_id == title_id).cloned());
+    let Some(backend) = game.as_ref().map(|g| g.console).or(console).and_then(crate::backends::for_console) else {
+        return crate::core::community::Packs::default();
+    };
+    backend.community_packs(&app, &title_id, game.as_ref())
 }
 
 #[tauri::command]
-pub fn set_patch_enabled(
+pub fn set_community_pack(
     app: AppHandle,
-    patch: rpcs3::patches::Patch,
     title_id: String,
-    enabled: bool,
+    change: crate::core::community::PackChange,
 ) -> Result<(), String> {
-    let version = running_version(&app, &title_id);
-    rpcs3::patches::set_enabled(&app, &patch, &title_id, &version, enabled)
+    let (backend, game) = game_and_emulator(&app, &title_id)?;
+    backend.set_community_pack(&app, &game, &change)
+}
+
+/// Downloads the newest packs for one console's emulator, with progress, and
+/// can be stopped.
+#[tauri::command]
+pub async fn refresh_community(app: AppHandle, state: State<'_, InstallState>, console: Console) -> Result<usize, String> {
+    state.cancel_community.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_community.clone();
+    let backend = crate::backends::for_console(console).ok_or("There are no community packs for this console.")?;
+    backend.refresh_community(&app, &cancel).await
 }
 
 #[tauri::command]
-pub async fn refresh_patches(app: AppHandle) -> Result<usize, String> {
-    rpcs3::patches::refresh(&app).await
+pub fn cancel_community(state: State<'_, InstallState>) {
+    state.cancel_community.store(true, Ordering::Relaxed);
 }
 
 #[derive(serde::Serialize, Clone)]

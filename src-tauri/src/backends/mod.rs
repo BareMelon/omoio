@@ -7,12 +7,14 @@
 pub mod cemu;
 pub mod rpcs3;
 
+use crate::core::community::{PackChange, Packs};
 use crate::core::console::{Console, Features};
 use crate::core::game_settings::{Chosen, GameSettings};
 use crate::core::library::Game;
 use crate::core::figures::Character;
 use crate::core::pad_layout::Player;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use tauri::AppHandle;
 
 pub trait EmulatorBackend: Sync {
@@ -174,9 +176,32 @@ pub trait EmulatorBackend: Sync {
     fn apply_fixes(&self, _app: &AppHandle, _game: &Game, _applied: &[String]) -> Vec<&'static str> {
         Vec::new()
     }
+
+    /// What the emulator's community publishes for a game, such as patches
+    /// or graphic packs, and which are on. `game` is the library's copy when
+    /// the game is in the library; one from the catalogue has only its id.
+    fn community_packs(&self, _app: &AppHandle, _title_id: &str, _game: Option<&Game>) -> Packs {
+        Packs::default()
+    }
+
+    /// Switches one pack on or off, with the choices made in it.
+    fn set_community_pack(&self, _app: &AppHandle, _game: &Game, _change: &PackChange) -> Result<(), String> {
+        Err(NO_PACKS.to_string())
+    }
+
+    /// Downloads the newest packs and returns how many there are. Boxed for
+    /// the same reason as `refresh_catalogue`.
+    fn refresh_community<'a>(
+        &'a self,
+        _app: &'a AppHandle,
+        _cancel: &'a AtomicBool,
+    ) -> futures_util::future::BoxFuture<'a, Result<usize, String>> {
+        Box::pin(async { Err(NO_PACKS.to_string()) })
+    }
 }
 
 const NO_PORTAL: &str = "Omoio can't reach this emulator's portal yet.";
+const NO_PACKS: &str = "There are no community packs for this emulator.";
 
 /// Every emulator Omoio can run, one per console.
 pub fn all() -> &'static [&'static dyn EmulatorBackend] {

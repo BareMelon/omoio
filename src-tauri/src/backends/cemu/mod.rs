@@ -7,6 +7,7 @@ pub mod compat;
 pub mod controllers;
 pub mod game_profile;
 pub mod keys;
+pub mod packs;
 pub mod portal;
 
 use crate::core::console::{Console, Features};
@@ -351,6 +352,18 @@ fn title_id_for(app: &AppHandle, game: &Game) -> Option<String> {
     Some(id)
 }
 
+/// The title id Cemu knows a game by: the library game's, or a catalogue
+/// entry's own id, which is already Cemu's.
+fn cemu_title(app: &AppHandle, title_id: &str, game: Option<&Game>) -> Option<String> {
+    match game {
+        Some(game) => title_id_for(app, game),
+        None => {
+            let id = title_id.to_ascii_lowercase();
+            (id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit())).then_some(id)
+        }
+    }
+}
+
 /// Cemu's own compressed archive of a title (.wua), which Cemu writes with
 /// the files decrypted.
 fn is_archive(name: &str) -> bool {
@@ -668,13 +681,15 @@ impl super::EmulatorBackend for Cemu {
 
     fn features(&self) -> Features {
         // Starting games, the Skylanders portal through Cemu's own window,
-        // and Cemu's settings for a game. Nothing else is offered until it
-        // has been checked against Cemu the way RPCS3's was. Cemu reads the
+        // Cemu's settings for a game and its community's graphic packs.
+        // Nothing else is offered until it has been checked against Cemu the
+        // way RPCS3's was. Cemu reads the
         // pad whatever is in front, so Omoio keeps its input settings window
         // open while a menu is over the game, which stops that (`hush`).
         Features {
             portal: true,
             settings: true,
+            packs: true,
             quiet_behind: true,
             ..Features::default()
         }
@@ -711,6 +726,7 @@ impl super::EmulatorBackend for Cemu {
         let portable = dir.join("portable");
         let _ = write_first_settings(&portable);
         let _ = tune_settings(&portable.join("settings.xml"), is_skylanders(&game.title));
+        packs::apply(app);
     }
 
     fn tidy_window(&self, pid: u32) {
@@ -834,6 +850,27 @@ impl super::EmulatorBackend for Cemu {
         cancel: &'a AtomicBool,
     ) -> futures_util::future::BoxFuture<'a, Result<usize, String>> {
         Box::pin(compat::refresh(app, cancel))
+    }
+
+    fn community_packs(&self, app: &AppHandle, title_id: &str, game: Option<&Game>) -> crate::core::community::Packs {
+        packs::view(app, cemu_title(app, title_id, game).as_deref())
+    }
+
+    fn set_community_pack(
+        &self,
+        app: &AppHandle,
+        game: &Game,
+        change: &crate::core::community::PackChange,
+    ) -> Result<(), String> {
+        packs::set(app, title_id_for(app, game).as_deref(), change)
+    }
+
+    fn refresh_community<'a>(
+        &'a self,
+        app: &'a AppHandle,
+        cancel: &'a AtomicBool,
+    ) -> futures_util::future::BoxFuture<'a, Result<usize, String>> {
+        Box::pin(packs::download(app, cancel))
     }
 
     fn catalogue_source(&self) -> (&'static str, &'static str) {

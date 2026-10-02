@@ -78,7 +78,8 @@ export interface Game {
   /// What its emulator can do beyond starting it.
   features: {
     updates: boolean;
-    patches: boolean;
+    /// Community packs: patches, graphic packs.
+    packs: boolean;
     settings: boolean;
     saves: boolean;
     compatibility: boolean;
@@ -359,42 +360,70 @@ export function onCompatProgress(
   return listen<CompatProgress>("compat-progress", (event) => handler(event.payload));
 }
 
-export interface Patch {
-  hash: string;
+/// One thing an emulator's community publishes for a game: a patch, a
+/// graphic pack.
+export interface Pack {
+  /// The emulator's own key for it, handed back unchanged to switch it.
+  id: string;
   name: string;
-  game: string;
-  /// The serial the patch list files it under: the game's own title id, or
-  /// "All" for a patch written for every game.
-  serial: string;
-  author: string;
-  notes: string;
-  version: string;
-  versions: string[];
+  /// Graphics, Mods, Fixes and so on, for grouping.
+  kind: string;
+  about: string;
+  /// Who made it, and its version.
+  by: string;
+  on: boolean;
   applies: boolean;
-  enabled: boolean;
-  /// Why Omoio switches it on, when it is one of Omoio's own fixes.
-  fix: string | null;
+  /// Why it can't be switched on, when it can't.
+  needs: string | null;
+  /// Why it is on without being asked, when it is.
+  on_because: string | null;
+  choices: PackChoice[];
 }
 
-export interface PatchList {
+export interface PackChoice {
+  /// Empty when the pack gives the choice no name.
+  name: string;
+  options: string[];
+  chosen: string;
+}
+
+export interface Packs {
+  /// False until the packs have been downloaded.
   have_list: boolean;
-  patches: Patch[];
+  /// Who makes them: "the Cemu community".
+  source: string;
+  /// Why none can be shown yet, when there is a reason.
+  waiting: string | null;
+  packs: Pack[];
 }
 
-export function gamePatches(titleId: string): Promise<PatchList> {
-  return invoke("game_patches", { titleId });
+export interface PackChange {
+  id: string;
+  on: boolean;
+  choices: Record<string, string>;
 }
 
-export function setPatchEnabled(
-  patch: Patch,
-  titleId: string,
-  enabled: boolean
-): Promise<void> {
-  return invoke("set_patch_enabled", { patch, titleId, enabled });
+/// A game from the catalogue isn't in the library, so it names its console.
+export function communityPacks(titleId: string, console?: Console): Promise<Packs> {
+  return invoke("community_packs", { titleId, console: console ?? null });
 }
 
-export function refreshPatches(): Promise<number> {
-  return invoke("refresh_patches");
+export function setCommunityPack(titleId: string, change: PackChange): Promise<void> {
+  return invoke("set_community_pack", { titleId, change });
+}
+
+/// Downloads the newest packs for a console's emulator. Returns how many
+/// there are.
+export function refreshCommunity(console: Console): Promise<number> {
+  return invoke("refresh_community", { console });
+}
+
+export function cancelCommunity(): Promise<void> {
+  return invoke("cancel_community");
+}
+
+export function onCommunityProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
+  return listen<InstallProgress>("community-progress", (event) => handler(event.payload));
 }
 
 export interface ScanProgress {

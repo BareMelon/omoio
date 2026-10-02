@@ -32,8 +32,9 @@ impl Console {
 pub struct Features {
     /// Official updates from the console's maker.
     pub updates: bool,
-    /// Community patches.
-    pub patches: bool,
+    /// Community packs: what the emulator's community publishes for a game,
+    /// such as patches or graphic packs.
+    pub packs: bool,
     /// Per-game emulator settings.
     pub settings: bool,
     /// Backing saves up and putting them back.

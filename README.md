@@ -25,8 +25,11 @@ really appreciated, so open an issue.
 - RPCS3 and Cemu installed for you and kept up to date.
 - One controller layout for every emulator, set by pressing the buttons, for up
   to four players.
-- For PS3 games, official updates, community patches, save backups and RPCS3's
-  settings for each game. Homebrew installs from a .pkg you already have.
+- Community packs for every game, downloaded with one press: RPCS3's patches
+  for PS3 games and Cemu's graphic packs for Wii U games, like 60 fps for
+  Skylanders SWAP Force.
+- For PS3 games, official updates, save backups and RPCS3's settings for each
+  game. Homebrew installs from a .pkg you already have.
 - For Wii U games, Cemu's settings for each game, and disc images read with your
   own keys.
 - A catalogue of PS3 and Wii U games that tells you how well each one runs.
@@ -38,7 +41,7 @@ really appreciated, so open an issue.
 ![Big Picture with Skylanders SWAP Force picked](design/screenshots/big-picture.jpg)
 
 Big Picture fills the screen and is made for a TV and a controller, with each
-game's settings, patches and saves inside it. Press View and Menu together
+game's settings, community packs and saves inside it. Press View and Menu together
 during a game to come back to Big Picture while the game keeps running. The same
 two buttons take you back into the game.
 

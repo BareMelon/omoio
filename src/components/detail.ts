@@ -3,7 +3,7 @@ import {
   addToLibrary,
   figurePictures,
   gameCompatibility,
-  gamePatches,
+  communityPacks,
   gameSaves,
   gameSettings,
   gameUpdates,
@@ -28,7 +28,7 @@ import { openGameSettings } from "./gameSettingsSheet";
 import { openImportSheet } from "./importSheet";
 import { rawgCredit } from "./rawgCredit";
 import { knownCover } from "./catalogueCovers";
-import { openPatches } from "./patchesSheet";
+import { openPacks, packCount } from "./packsSheet";
 import { openSaves } from "./savesSheet";
 import { openUpdates } from "./updatesSheet";
 import { store } from "../state";
@@ -49,7 +49,7 @@ const ICON = {
   saves: '<path d="M3 2.5h7.8l2.7 2.7v8.3H3z"/><path d="M5.5 2.5v3h4.5v-3M5.3 13.5V9.5h5.4v4"/>',
   settings:
     '<path d="M2.5 4.5h1.4M7.1 4.5h6.4M2.5 8h5.9M11.6 8h1.9M2.5 11.5h2.4M8.1 11.5h5.4"/><circle cx="5.5" cy="4.5" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="6.5" cy="11.5" r="1.6"/>',
-  patches: '<rect x="1.6" y="5.7" width="12.8" height="4.6" rx="2.3" transform="rotate(-45 8 8)"/><path d="M6.6 6.6l2.8 2.8"/>',
+  packs: '<rect x="1.6" y="5.7" width="12.8" height="4.6" rx="2.3" transform="rotate(-45 8 8)"/><path d="M6.6 6.6l2.8 2.8"/>',
   portal: '<ellipse cx="8" cy="6.5" rx="5.5" ry="2.3"/><path d="M2.5 6.5v3c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3v-3"/>',
   pictures: '<rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="6" cy="6.5" r="1.2"/><path d="M2.5 12l3.5-3.5 2.5 2.5 2-2 3 3"/>',
   folder: '<path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>',
@@ -84,7 +84,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       ${listRow("update", ICON.version, "Game version")}
       ${listRow("saves", ICON.saves, "Saved games")}
       ${listRow("settings", ICON.settings, "Settings")}
-      ${listRow("patches", ICON.patches, "Patches")}
+      ${listRow("packs", ICON.packs, "Community packs")}
     </div>
     <div class="note plain" id="detail-list-note"></div>
     <div class="note plain gone" id="detail-compat">
@@ -140,11 +140,11 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     [offers.updates, "update"],
     [offers.saves, "saves"],
     [offers.settings, "settings"],
-    [offers.patches, "patches"],
+    [offers.packs, "packs"],
   ] as const) {
     if (!on) body.querySelector(`#detail-${id}`)?.classList.add("gone");
   }
-  if (!offers.updates && !offers.saves && !offers.settings && !offers.patches) list.classList.add("gone");
+  if (!offers.updates && !offers.saves && !offers.settings && !offers.packs) list.classList.add("gone");
 
   if (!game.set_up) {
     // Noted from the catalogue and never imported. It says what to do and
@@ -301,7 +301,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   body.querySelector<HTMLButtonElement>("#detail-update")!.onclick = () =>
     openUpdates(game.title_id, game.title, running, () => {
       void reload();
-      void showPatchCount();
+      void showPackCount();
     });
 
   const showSaves = async () => {
@@ -350,21 +350,16 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   };
   if (offers.compatibility) void showCompat();
 
-  const showPatchCount = async () => {
-    const { have_list, patches } = await gamePatches(game.title_id);
-    const fits = patches.filter((p) => p.applies);
-    const on = fits.filter((p) => p.enabled).length;
-    valueOf("patches").textContent = !have_list
-      ? "No list yet"
-      : fits.length === 0
-        ? "None"
-        : on === 0
-          ? `${fits.length} available`
-          : `${on} of ${fits.length} on`;
+  const showPackCount = async () => {
+    const packs = await communityPacks(game.title_id);
+    const value = valueOf("packs");
+    // Not downloaded yet, the row offers it rather than reporting a lack.
+    value.classList.toggle("ask", !packs.have_list);
+    value.textContent = packs.have_list ? packCount(packs) : "Download";
   };
-  if (offers.patches && game.set_up) void showPatchCount();
-  body.querySelector<HTMLButtonElement>("#detail-patches")!.onclick = () =>
-    openPatches(game.title_id, game.title, showPatchCount);
+  if (offers.packs && game.set_up) void showPackCount();
+  body.querySelector<HTMLButtonElement>("#detail-packs")!.onclick = () =>
+    openPacks(game.title_id, game.title, game.console, showPackCount);
 
   const settingsRow = body.querySelector<HTMLButtonElement>("#detail-settings")!;
   const showSettingsCount = async () => {
@@ -416,9 +411,9 @@ function fillListing(body: HTMLElement, hero: HTMLElement, { listing }: Catalogu
       <button class="small-btn wide" id="listing-updates">Check for updates</button>
       <div class="note plain" id="listing-updates-note"></div>
     </div>
-    <div class="sec gone" id="listing-patches-sec">
-      <div class="sec-h">Community patches</div>
-      <div class="note plain" id="listing-patches"></div>
+    <div class="sec gone" id="listing-packs-sec">
+      <div class="sec-h">Community packs</div>
+      <div class="note plain" id="listing-packs"></div>
     </div>
     <div class="sec gone" id="listing-releases">
       <div class="sec-h">Releases</div>
@@ -503,17 +498,19 @@ function fillListing(body: HTMLElement, hero: HTMLElement, { listing }: Catalogu
     };
   }
 
-  if (release && listing.features.patches) {
-    body.querySelector("#listing-patches-sec")!.classList.remove("gone");
-    const patchesNote = body.querySelector<HTMLElement>("#listing-patches")!;
-    void gamePatches(release.title_id).then(({ have_list, patches }) => {
-      patchesNote.textContent = !have_list
-        ? "No patch list yet."
-        : patches.length === 0
-          ? "None published for this game."
-          : patches.length === 1
-            ? "One published for this game."
-            : `${patches.length} published for this game.`;
+  if (release && listing.features.packs) {
+    body.querySelector("#listing-packs-sec")!.classList.remove("gone");
+    const packsNote = body.querySelector<HTMLElement>("#listing-packs")!;
+    void communityPacks(release.title_id, listing.console).then(({ have_list, waiting, packs }) => {
+      packsNote.textContent = !have_list
+        ? "Not downloaded yet. Open the game from your library to get them."
+        : waiting
+          ? waiting
+          : packs.length === 0
+            ? "Nobody has made one for this game yet."
+            : packs.length === 1
+              ? "One made for this game."
+              : `${packs.length} made for this game.`;
     });
   }
 

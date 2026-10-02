@@ -1134,6 +1134,12 @@ body.bp-on .bp {
 .bp-row.spare .bp-row-label {
   color: var(--mute);
 }
+/* A choice within the row above, such as a pack's frame rate. */
+.bp-row.sub {
+  width: calc(100% - 2.2em);
+  min-height: 3em;
+  margin-left: 2.2em;
+}
 .bp-caps {
   display: inline-flex;
   align-items: center;
