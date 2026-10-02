@@ -702,7 +702,9 @@ async function putSwapper(top: Offer, bottom: Offer) {
   const same = baseName(top.name) === baseName(bottom.name);
   notify({
     kind: "done",
-    title: `${same ? baseName(top.name) : `${baseName(top.name)} and ${baseName(bottom.name)}`} is on the portal`,
+    title: same
+      ? `${baseName(top.name)} is on the portal`
+      : `${baseName(top.name)} and ${baseName(bottom.name)} are on the portal`,
     picture: [bottom, top].map((half) => pictureOf(half.id, half.variant)),
   });
 }
