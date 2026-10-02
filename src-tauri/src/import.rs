@@ -40,6 +40,11 @@ impl std::fmt::Display for Error {
 /// Where a dump keeps its PARAM.SFO. A disc dump puts it under PS3_GAME; an
 /// installed PSN title keeps it at the top.
 fn sfo_path(root: &Path) -> Option<PathBuf> {
+    // A PS4 game keeps a param.sfo in sce_sys, which Windows also finds as
+    // PARAM.SFO. No PS3 dump has that folder.
+    if root.file_name().is_some_and(|name| name.eq_ignore_ascii_case("sce_sys")) {
+        return None;
+    }
     let disc = root.join("PS3_GAME").join("PARAM.SFO");
     if disc.is_file() {
         return Some(disc);
@@ -355,6 +360,15 @@ mod tests {
         let dir = TempDir::new("bad-sfo");
         dir.write("PARAM.SFO", b"this is not a PARAM.SFO");
         assert_eq!(identify(&dir.0).unwrap_err(), Error::UnreadableMetadata);
+    }
+
+    #[test]
+    fn a_ps4_game_is_not_taken_for_a_ps3_dump() {
+        let dir = TempDir::new("ps4");
+        dir.write("eboot.bin", b"x");
+        dir.write("sce_sys/param.sfo", &sfo(&[("TITLE_ID", "CUSA02180"), ("CATEGORY", "gd")]));
+        assert!(!recognises(&dir.0));
+        assert!(!recognises(&dir.0.join("sce_sys")));
     }
 }
 
