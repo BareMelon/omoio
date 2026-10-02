@@ -36,6 +36,7 @@ import {
 import { GROUP_TITLES } from "../components/gameSettingsSheet";
 import { store } from "../state";
 import { h, heading, listPage, navButton, row, switchRow, type Choice, type Kit, type Screen, type Section } from "./kit";
+import { padScreen } from "./pad";
 
 /// Settings in Big Picture: the ones a controller can change. Anything that
 /// needs typing, a folder or a file stays on the desktop, and says so rather
@@ -214,7 +215,20 @@ export function settingsScreen(kit: Kit, cap: (input: string) => string, start: 
     const rows: HTMLElement[] = [heading("Players")];
     view.players.forEach((player, at) => {
       const state = h("span", `bp-row-value${player.connected ? " live" : ""}`, player.connected ? player.pad.name : "Not plugged in");
-      rows.push(row(`pad:${at}`, `Player ${at + 1}`, state, undefined, player.connected ? undefined : player.pad.name));
+      const line = row(
+        `pad:${at}`,
+        `Player ${at + 1}`,
+        state,
+        // Read again on the way back, since the pad screen may change it.
+        () => {
+          controllers = null;
+          asked.delete("controllers");
+          kit.open(padScreen(kit, cap, at));
+        },
+        player.connected ? "Buttons and pad" : `${player.pad.name}, buttons and pad`
+      );
+      line.dataset.hint = "Open";
+      rows.push(line);
     });
 
     rows.push(heading("Buttons"));
@@ -244,7 +258,7 @@ export function settingsScreen(kit: Kit, cap: (input: string) => string, start: 
         }, "The button that opens it while playing.")
       );
     }
-    rows.push(row("pad:layouts", "Button layouts", "On the desktop", undefined, "Changed on the Controller screen, one player at a time."));
+    rows.push(row("pad:games", "A game's own layout", "On the desktop", undefined, "Set on the Controller screen, under Layout for."));
     return rows;
   }
 

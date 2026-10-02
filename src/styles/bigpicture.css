@@ -1346,3 +1346,134 @@ body.bp-on .bp {
     transform: none;
   }
 }
+
+/* ---------- a player's pad ---------- */
+
+.bp-padpage {
+  padding: 0.4em var(--gutter) 2em;
+}
+.bp-padpage-head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6em 1.2em;
+}
+.bp-padpage-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  margin-top: 1.2em;
+}
+.bp-pad-dot {
+  flex: none;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.5em;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.bp-pad-dot.on {
+  background: var(--go);
+}
+.bp-btn .bp-pad-dot {
+  margin-right: 0;
+}
+.bp-padpage .pad-stage {
+  grid-template-columns: minmax(11em, 1fr) minmax(16em, 1.5fr) minmax(11em, 1fr);
+  gap: 1.4em 3em;
+  max-width: 92em;
+  margin: 1.2em 0 0;
+}
+.bp-padpage .pad-art-holder {
+  max-width: 30em;
+}
+.bp-padpage .pad-col {
+  gap: 0.5em;
+}
+.bp-padpage .pad-callout {
+  gap: 0.3em;
+}
+/* On the sofa the rows stand alone, the way Big Picture's lists do, rather
+   than in a box. */
+.bp-padpage .pad-callout.box {
+  padding: 0;
+  background: none;
+  border: none;
+}
+.bp-padpage .pad-place,
+.bp-padpage .pad-group {
+  gap: 0.7em;
+  padding: 0.45em 0.9em 0.45em 0.5em;
+  border-radius: var(--bp-r);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  font-size: 1em;
+  font-weight: 600;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 160ms var(--ease-out);
+}
+.bp-padpage .pad-callout.left > * {
+  padding: 0.45em 0.5em 0.45em 0.9em;
+}
+.bp-padpage .pad-place.focused,
+.bp-padpage .pad-group.focused {
+  background: var(--ink);
+  color: var(--void);
+}
+.bp-padpage .pad-place.focused.pressed,
+.bp-padpage .pad-group.focused.pressed {
+  transform: scale(0.97);
+}
+.bp-padpage .pad-console {
+  font-size: 0.78em;
+  font-weight: 500;
+  color: var(--mute);
+}
+.bp-padpage .focused .pad-console {
+  color: color-mix(in srgb, var(--void) 62%, transparent);
+}
+.bp .cap {
+  min-width: 1.9em;
+  height: 1.75em;
+  padding: 0 0.5em;
+  border-radius: 0.45em;
+  font-size: 0.85em;
+}
+.bp .cap svg {
+  width: 1em;
+  height: 1em;
+}
+.bp-padpage .focused > .cap,
+.bp-row.focused .cap {
+  background: color-mix(in srgb, var(--void) 12%, transparent);
+  border-color: color-mix(in srgb, var(--void) 30%, transparent);
+  color: var(--void);
+}
+/* The highlight in Big Picture is light rather than blue, and the line to
+   what it points at goes light with it. */
+.bp-padpage .pad-lead {
+  stroke: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+.bp-padpage .pad-lead-dot {
+  fill: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+.bp-padpage .pad-lead.lit {
+  stroke: var(--ink);
+}
+.bp-padpage .pad-lead-dot.lit {
+  fill: var(--ink);
+}
+.bp-padpage .pad-art [data-part].hot {
+  fill: color-mix(in srgb, var(--ink) 18%, transparent);
+  stroke: var(--ink);
+}
+.bp-padpage-note {
+  margin: 1.2em 0 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bp-padpage .pad-place.focused.pressed,
+  .bp-padpage .pad-group.focused.pressed {
+    transform: none;
+  }
+}

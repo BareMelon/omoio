@@ -1502,93 +1502,437 @@ button {
 }
 
 /* ---------- controller ---------- */
-.pad-head {
+.pad-top {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
 }
 .pad-status {
   font-size: 13px;
 }
-.pads {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.pad-chip {
+.pad-scope {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  gap: 8px;
   font-size: 11.5px;
   color: var(--mute);
 }
-.pad-chip .dot {
+.pad-scope .select {
+  max-width: 220px;
+}
+
+/* The four players as tabs, each saying whose pad it is and whether that
+   pad is in. */
+.player-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+.player-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 12px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  text-align: left;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+.player-tab:hover {
+  border-color: var(--line2);
+}
+.player-tab:active {
+  background: var(--raise2);
+  transition: none;
+}
+.player-tab.on {
+  background: var(--raise2);
+  border-color: var(--brand);
+}
+.player-tab:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.player-num {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.player-tab-words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.player-tab-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.player-tab-pad {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--mute);
+}
+.player-tab-pad-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-tab .dot,
+.pad-board-state .dot {
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
+  background: var(--dim);
+}
+.player-tab .dot.on,
+.pad-board-state .dot.on {
   background: var(--go);
 }
-.pad-map {
-  display: grid;
-  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
-  gap: 28px;
-  margin-top: 12px;
-  align-items: start;
-}
-@media (max-width: 1100px) {
-  .pad-map {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-.pad-stage {
-  position: sticky;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 18px 18px 14px;
+
+/* The chosen player: their pad in the middle, what each button does around
+   it, and the pad they have above. */
+.pad-board {
+  margin-top: 10px;
+  padding: 14px 18px 16px;
   background: var(--raise);
   border: 1px solid var(--line);
   border-radius: var(--r);
 }
-@media (max-width: 1100px) {
-  .pad-stage {
-    position: static;
-    max-width: 460px;
-  }
+.pad-board-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
-.pad-test {
+.pad-board-title {
+  font-size: 13px;
+  font-weight: 650;
+}
+.pad-board-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
   font-size: 11.5px;
   color: var(--mute);
-  text-align: center;
 }
-.pad-art {
+.pad-board-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--mute);
+}
+.pad-board-foot .link-btn {
+  flex: none;
+  font-size: 11.5px;
+}
+
+/* The drawing in the middle, labels in a column either side and a row
+   below. The page lays the labels out; the lines are drawn from where they
+   land. */
+.pad-stage {
+  position: relative;
+  display: grid;
+  /* The drawing gives way before the labels do. */
+  grid-template-columns: minmax(150px, 1fr) minmax(220px, 1.6fr) minmax(150px, 1fr);
+  grid-template-areas:
+    "left art right"
+    ". below .";
+  gap: 26px 44px;
+  margin: 14px 0 6px;
+}
+/* Spread down the height of the drawing, so each line runs about level. */
+.pad-col {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 10px;
+}
+.pad-col.left {
+  grid-area: left;
+  align-items: flex-end;
+}
+.pad-col.right {
+  grid-area: right;
+  align-items: flex-start;
+}
+.pad-art-holder {
+  grid-area: art;
+  align-self: center;
+  justify-self: center;
   width: 100%;
-  height: auto;
+  max-width: 500px;
 }
-.pad-art .pad-body {
-  fill: var(--panel);
+.pad-below {
+  position: relative;
+  z-index: 1;
+  grid-area: below;
+  justify-self: center;
+}
+.pad-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.pad-lead {
+  fill: none;
   stroke: var(--line2);
+  stroke-width: 1;
+  transition: stroke 0.12s ease;
+}
+.pad-lead-dot {
+  fill: var(--line2);
+  transition: fill 0.12s ease;
+}
+.pad-lead.lit {
+  stroke: var(--brand);
+}
+.pad-lead-dot.lit {
+  fill: var(--brand);
+}
+
+.pad-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* Buttons that sit together on the pad are labelled together. */
+.pad-callout.box {
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.pad-place,
+.pad-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 7px 4px 5px;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  transition: background-color 0.12s ease;
+}
+/* On the left the key sits next to the line, so it comes last. */
+.pad-callout.left > * {
+  flex-direction: row-reverse;
+  padding: 4px 5px 4px 7px;
+  text-align: right;
+}
+.pad-place:hover,
+.pad-group:hover {
+  background: var(--raise2);
+}
+.pad-place:active,
+.pad-group:active {
+  background: var(--line);
+  transition: none;
+}
+.pad-place:focus-visible,
+.pad-group:focus-visible,
+.pad-dir:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.pad-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 10px;
+  min-width: 0;
+}
+.pad-callout.left .pad-words {
+  justify-content: flex-end;
+}
+.pad-callout.below .pad-place {
+  min-width: 0;
+}
+.pad-word {
+  white-space: nowrap;
+}
+.pad-console {
+  margin-right: 1px;
+  color: var(--dim);
+  font-size: 10.5px;
+}
+.pad-group .pad-console {
+  margin: 0;
+}
+.pad-asking {
+  color: var(--brand-text);
+}
+
+/* A button of the pad in hand, as it is printed on it. */
+.cap {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  background: var(--raise2);
+  border: 1px solid var(--line2);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    background-color 0.08s ease,
+    border-color 0.08s ease;
+}
+.cap svg {
+  width: 12px;
+  height: 12px;
+}
+.cap-shape {
+  fill: none;
+  stroke: currentColor;
   stroke-width: 1.5;
 }
-.pad-art .pad-plain {
-  fill: var(--raise);
+.flash > .cap {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
+  transition: none;
 }
-.pad-art .pad-glyph {
+.listening > .cap {
+  border-color: var(--brand);
+  color: var(--brand-text);
+}
+.pad-choose {
+  max-width: 150px;
+}
+
+/* The directions, opened from the d-pad's or a stick's label. */
+.pad-dirs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 28px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pad-dir {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 6px;
+  border-radius: 6px;
+  color: var(--mute);
+  font-size: 12px;
+  text-align: left;
+  transition: background-color 0.12s ease;
+}
+.pad-dir:hover {
+  background: var(--raise2);
+}
+.pad-dir:active {
+  background: var(--line);
+  transition: none;
+}
+.pad-dir .cap {
+  order: 2;
+}
+
+.pad-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+/* Lit from above: the top of the body a step lighter than its grips. */
+.pad-art .pad-shade-top {
+  stop-color: var(--raise2);
+}
+.pad-art .pad-shade-foot {
+  stop-color: var(--panel);
+}
+.pad-art .pad-body {
+  stroke: var(--line2);
+  stroke-width: 1.4;
+}
+.pad-art .pad-plate {
+  fill: var(--raise);
+  stroke: var(--line2);
+  stroke-width: 1.2;
+}
+.pad-art .pad-well {
+  fill: var(--void);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.pad-art .pad-ring {
+  fill: none;
+  stroke: var(--line2);
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+.pad-art .pad-glyph,
+.pad-art .pad-mark {
   fill: none;
   stroke: var(--mute);
   stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.pad-art .pad-mark {
+  stroke-width: 1.2;
+}
+.pad-art .pad-arrow {
+  fill: var(--dim);
   pointer-events: none;
 }
 .pad-art [data-part] {
   fill: var(--raise);
   stroke: var(--line2);
   stroke-width: 1.2;
-  transition: fill 0.08s, stroke 0.08s;
+  transition:
+    fill 0.08s ease,
+    stroke 0.08s ease;
+}
+.pad-art .pad-stick {
+  fill: var(--raise2);
+}
+/* The d-pad's arms are drawn by the plate under them, and only show when
+   lit. */
+.pad-art .pad-arm {
+  fill: transparent;
+  stroke: none;
 }
 .pad-art [data-part].hot {
   fill: var(--brand-soft);
@@ -1597,57 +1941,27 @@ button {
 .pad-art [data-part].down {
   fill: var(--brand);
   stroke: var(--brand);
+  transition: none;
+}
+.pad-art .pad-arm.hot {
+  stroke: none;
 }
 .pad-art text {
   text-anchor: middle;
   pointer-events: none;
+  font-family: var(--ui);
 }
+/* Ink reads both on the trigger and on the trigger lit up. */
 .pad-art .pad-label {
-  fill: var(--dim);
-  font-size: 9px;
-  font-weight: 600;
+  fill: var(--ink);
+  font-size: 10px;
+  font-weight: 650;
 }
 .pad-art .pad-face {
-  fill: var(--mute);
-  font-size: 11px;
+  fill: var(--ink);
+  font-size: 12px;
   font-weight: 700;
 }
-.bind-cols {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 28px;
-}
-.bind-group {
-  margin-bottom: 16px;
-}
-.bind-group .sec-h {
-  margin-bottom: 4px;
-}
-.bind-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 3px 0;
-  border-bottom: 1px solid var(--line);
-}
-.bind-row:last-child {
-  border-bottom: none;
-}
-.bind-k {
-  font-size: 12.5px;
-  color: var(--mute);
-  transition: color 0.08s;
-}
-.bind-row.flash .bind-k {
-  color: var(--ink);
-}
-.bind-sub {
-  margin-top: 1px;
-  font-size: 10.5px;
-  color: var(--dim);
-}
-
 /* The small question mark that opens an explanation, such as the portal
    menu's in a game's panel. */
 .help-dot {
@@ -1675,127 +1989,6 @@ button {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
-.bind-v {
-  min-width: 132px;
-  padding: 4px 10px;
-  background: var(--raise);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  color: var(--ink);
-  font: inherit;
-  font-size: 11.5px;
-  text-align: center;
-  cursor: pointer;
-}
-.bind-v:hover {
-  border-color: var(--line2);
-}
-.bind-v:active {
-  transform: scale(0.97);
-}
-.bind-v:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
-}
-.bind-v.listening {
-  border-color: var(--brand);
-  color: var(--brand-text);
-}
-@media (prefers-reduced-motion: reduce) {
-  .bind-v:active {
-    transform: none;
-  }
-}
-.players {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 14px;
-}
-@media (max-width: 900px) {
-  .players {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-.player-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  background: var(--raise);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
-}
-.player-card:hover {
-  border-color: var(--line2);
-}
-.player-card.on {
-  background: var(--raise2);
-  border-color: var(--brand);
-}
-.player-card:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-.player-top {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.player-num {
-  display: inline-grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--brand-soft);
-  color: var(--brand-text);
-  font-size: 13px;
-  font-weight: 700;
-}
-.player-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-}
-.player-pad {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--ink);
-}
-.player-pad-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.player-pad .dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--dim);
-}
-.player-pad .dot.on {
-  background: var(--go);
-}
-.player-state {
-  font-size: 11px;
-  color: var(--mute);
-}
-.player-select {
-  width: 100%;
-}
-.map-title {
-  margin-top: 22px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
 /* ---------- emulators ---------- */
 .emu {
   max-width: 980px;

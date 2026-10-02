@@ -8,6 +8,7 @@ import {
   listSessions,
   onGameStopped,
   padsConnected,
+  padInput,
   padsHeld,
   resumeGame,
   setBigPicture,
@@ -565,9 +566,9 @@ function pick(title: string, choices: Choice[], chosen: string): Promise<string 
   });
 }
 
-/// Waits a few seconds for a press on any pad. A stick pushed a little is
-/// not a press, so a pad resting off centre never records.
-function record(title: string, text: string): Promise<string | null> {
+/// Waits a few seconds for a press on `device`, or on any pad. A stick
+/// pushed a little is not a press, so a pad resting off centre never records.
+function record(title: string, text: string, device?: string): Promise<string | null> {
   return new Promise((resolve) => {
     const card = h("div", "bp-dialog-card");
     card.setAttribute("role", "alertdialog");
@@ -586,12 +587,14 @@ function record(title: string, text: string): Promise<string | null> {
     // Laid out full first, so the time left runs down from there.
     void bar.offsetWidth;
     bar.classList.add("run");
+    const held = async (): Promise<string[]> =>
+      (device ? await padInput(device).catch(() => null) : await padsHeld().catch(() => null)) ?? [];
     void (async () => {
-      const down = new Set(await padsHeld().catch((): string[] => []));
+      const down = new Set(await held());
       const until = Date.now() + 6000;
       while (!done && Date.now() < until) {
         await new Promise((wait) => setTimeout(wait, 60));
-        const now = await padsHeld().catch((): string[] => []);
+        const now = await held();
         const fresh = now.find((input) => !down.has(input) && !/^(LS|RS) [XY][+-]$/.test(input));
         if (fresh) return finish(fresh);
         for (const input of [...down]) if (!now.includes(input)) down.delete(input);
@@ -721,10 +724,11 @@ function drawHints(): void {
     shown.push(hint("South", current?.dataset.hint ?? "Select"));
     if (deeper) shown.push(hint("East", "Back"));
     else if (source === "keyboard") shown.push(hint("East", "Menu"));
-    if (top()?.tab && consoles().length > 1) {
+    const tabName = top()?.tab ? top().tabName?.() : null;
+    if (tabName) {
       const bumpers = h("span", "bp-hint");
       bumpers.innerHTML = `${keycap("LB", family, source) ?? ""}${keycap("RB", family, source) ?? ""}`;
-      bumpers.append(h("span", "", "Console"));
+      bumpers.append(h("span", "", tabName));
       shown.push(bumpers);
     }
     shown.push(hint("Start", "Menu"));
@@ -962,6 +966,7 @@ function library(): Screen {
       screen.left = undefined;
       render(false);
     },
+    tabName: () => (consoles().length > 1 ? "Console" : null),
   };
   return screen;
 }

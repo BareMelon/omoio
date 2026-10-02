@@ -10,6 +10,9 @@ export interface Screen {
   first(): string | undefined;
   /// The bumpers, for a screen with tabs of its own.
   tab?(step: number): void;
+  /// What the bumpers move between, for the hint, or null while there is
+  /// only one.
+  tabName?(): string | null;
   /// Told whenever the highlight lands on something of the screen's. Not
   /// the page's own focus event, which a pad doesn't cause while the page
   /// itself isn't focused.
@@ -38,8 +41,9 @@ export interface Kit {
   ask(question: Question): void;
   /// A list to choose from, the current one ticked. Null when backed out of.
   pick(title: string, choices: Choice[], current: string): Promise<string | null>;
-  /// The next button pressed on any pad, by place. Null if none came.
-  record(title: string, text: string): Promise<string | null>;
+  /// The next button pressed, by place: on `device` if given, else on any
+  /// pad. Null if none came.
+  record(title: string, text: string, device?: string): Promise<string | null>;
   say(text: string): void;
 }
 
