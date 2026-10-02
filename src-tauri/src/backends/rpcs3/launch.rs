@@ -204,11 +204,11 @@ mod tests {
     fn writes_the_line_the_way_rpcs3_does() {
         let line = games_list_line(
             "BCES00850",
-            Path::new("C:\\Users\\Shadow\\Documents\\RPS3\\games\\LittleBigPlanet 2"),
+            Path::new("C:\\Games\\PS3\\LittleBigPlanet 2"),
         );
         assert_eq!(
             line,
-            "BCES00850: \"C:/Users/Shadow/Documents/RPS3/games/LittleBigPlanet 2/\""
+            "BCES00850: \"C:/Games/PS3/LittleBigPlanet 2/\""
         );
     }
 

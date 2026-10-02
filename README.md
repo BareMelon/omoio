@@ -49,18 +49,23 @@ two buttons take you back into the game.
 
 ![The portal menu over Skylanders SWAP Force, with a swapper going on the portal](design/screenshots/portal-menu.jpg)
 
-Skylanders games need figures on a portal. In a Skylanders game on Wii U, press
-the Guide button, or the button you picked for it, and Omoio's portal menu opens
-over the game. Choose a character with the controller and it goes on the
-portal. The first time, Cemu's own figure maker makes the figure, and Omoio saves
-it so the figure keeps what it has earned. Swappers can be mixed: pick a top,
-then a bottom, and each one shows how it moves.
+Skylanders games need figures on a portal. For now the portal menu is made and
+tested for Skylanders SWAP Force on Cemu. The other Skylanders games, and the
+other consoles, come later.
 
-Omoio can also show every figure's own picture, read from your copy of SWAP
-Force: a .wua file that Cemu packed, or an unpacked game folder. A small
-separate program, [omoio-portraits](https://github.com/Bertrram/omoio-portraits),
-does the reading. Omoio downloads it only when you ask and checks it before it
-runs. The pictures stay on your computer.
+In SWAP Force, press the Guide button, or the button you picked for it, and
+Omoio's portal menu opens over the game. Choose a character with the controller
+and it goes on the portal. The first time, Cemu's own figure maker makes the
+figure, and Omoio saves it so the figure keeps what it has earned. Swappers can
+be mixed: pick a top, then a bottom, and each one shows how it moves.
+
+Omoio doesn't come with the figures' pictures. It reads them from your own copy
+of SWAP Force, a .wua file that Cemu packed or an unpacked game folder, when you
+press Get pictures once. A small separate program,
+[omoio-portraits](https://github.com/Bertrram/omoio-portraits), does the reading.
+Omoio downloads it only when you ask and checks it before it runs. The pictures
+stay on your computer, and the screenshot above shows them as they look once
+read.
 
 ## Install
 
@@ -143,7 +148,11 @@ NUS form aren't supported.
 Xbox controllers, and other pads that speak XInput, work in both emulators.
 Other pads work in RPCS3 through SDL, and Cemu doesn't take them yet. You set one
 layout on the Controller screen and Omoio uses it everywhere, for up to four
-players.
+players. Every button is labelled with what it does on PS3 and Wii U, and you
+change one by picking its label and pressing the new button. Big Picture has the
+same screen, used with the pad.
+
+![The Controller screen, with an Xbox pad and what each button does](design/screenshots/controller.png)
 
 </details>
 
@@ -165,6 +174,19 @@ Only where it has a reason it can point to. It writes your controller layout. Fo
 PS3 games it also sets a resolution that fits your screen, and switches on a
 short list of fixes for named games, each with its reason shown. Everything else
 stays at the emulator's defaults, and you can change any setting for each game.
+
+</details>
+
+<details>
+<summary>What are community packs?</summary>
+<br>
+
+Changes the emulators' communities make for a game: RPCS3's patches for PS3
+games, and Cemu's graphic packs for Wii U games, such as a sharper picture or
+60 fps. Open a game, choose Community packs and press Download packs. They come
+from RPCS3's and Cemu's own sources, and Cemu's are checked against the
+checksum GitHub publishes. A pack stays off until you turn it on, unless it's a
+fix, and then it says why it's on.
 
 </details>
 
@@ -210,10 +232,14 @@ Needs Rust, Node 20 or newer, and the Tauri prerequisites for Windows.
 
 ```
 npm install
+npm run tauri icon Images/Icon/omoio-icon-1024.png    # the app icons, once
 npm run tauri dev      # run locally
-npm run tauri build    # build the installer
+npm run tauri build -- --no-bundle    # build omoio.exe
 ```
+
+The installer also needs the key its updates are signed with, in
+`TAURI_SIGNING_PRIVATE_KEY`, so it's built for releases only.
 
 ## Licence
 
-Not decided yet.
+[MIT](LICENSE). RPCS3, Cemu and the community packs keep their own licences.

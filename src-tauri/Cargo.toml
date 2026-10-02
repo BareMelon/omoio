@@ -1,8 +1,9 @@
 [package]
 name = "omoio"
 version = "0.1.0"
-description = "PS3 game library and launcher for RPCS3"
+description = "A game library for Windows that sets up and runs PS3 and Wii U games through RPCS3 and Cemu"
 authors = ["Bertram Bech"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

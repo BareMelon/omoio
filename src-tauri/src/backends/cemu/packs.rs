@@ -26,6 +26,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
 const RELEASES_API: &str = "https://api.github.com/repos/cemu-project/cemu_graphic_packs/releases/latest";
@@ -346,22 +347,39 @@ fn key_for(pack: &Path, packs: &Path) -> Option<String> {
     Some(parts.join("\\"))
 }
 
-/// The packs written for this title, by their settings.xml name.
-fn packs_for(app: &AppHandle, title: &str) -> Vec<(String, Rules)> {
-    let Ok(packs) = folder(app) else {
+/// Every pack in the download, by its settings.xml name, read once per
+/// release: reading them all takes over half a second, and the game panel
+/// asks each time a game is picked.
+static READ: Mutex<Option<(String, Vec<(String, Rules)>)>> = Mutex::new(None);
+
+fn all_packs(app: &AppHandle) -> Vec<(String, Rules)> {
+    let (Some(release), Ok(packs)) = (installed(app), folder(app)) else {
         return Vec::new();
     };
+    let mut read = READ.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((seen, all)) = read.as_ref() {
+        if *seen == release {
+            return all.clone();
+        }
+    }
     let mut found = Vec::new();
     walk(&packs, &mut found);
-    found
+    let all: Vec<(String, Rules)> = found
         .iter()
         .filter_map(|dir| {
             let rules = parse_rules(&std::fs::read_to_string(dir.join("rules.txt")).ok()?)?;
-            if !rules.title_ids.iter().any(|id| id == title) {
-                return None;
-            }
             Some((key_for(dir, &packs)?, rules))
         })
+        .collect();
+    *read = Some((release, all.clone()));
+    all
+}
+
+/// The packs written for this title, by their settings.xml name.
+fn packs_for(app: &AppHandle, title: &str) -> Vec<(String, Rules)> {
+    all_packs(app)
+        .into_iter()
+        .filter(|(_, rules)| rules.title_ids.iter().any(|id| id == title))
         .collect()
 }
 
