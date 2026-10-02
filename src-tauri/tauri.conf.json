@@ -55,7 +55,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU3RjQxMDM4M0VBODlDQjcKUldTM25LZytPQkQwVjk5MGdTbGpCRjFaMlgxMWYzOHROcFNmbjJITVNPeGdYdVVlVkg0aDEyeWcK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzQ0E2QTUwQTc3QUU4RTIKUldUaTZIcW5VR3JLNCtUb0RaYTVsdWRQUzdxR0ptbFVyMnphWDBZNVNGQjlCV011TFFTY2xGTHYK",
       "endpoints": [
         "https://github.com/Bertrram/omoio/releases/latest/download/latest.json"
       ]
