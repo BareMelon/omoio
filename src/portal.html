@@ -6,7 +6,17 @@
     <title>Portal</title>
   </head>
   <body>
-    <div id="portal"></div>
+    <!-- Shown the moment the window opens, until the menu has asked the
+         emulator what is on the portal. -->
+    <div id="portal">
+      <div class="portal-panel" role="dialog" aria-label="Portal">
+        <div class="portal-loading" role="status">
+          <span class="portal-spinner" aria-hidden="true"></span>
+          <p class="portal-loading-title">Loading the portal</p>
+          <p class="portal-loading-note">Please wait a moment.</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/portal.ts"></script>
   </body>
 </html>

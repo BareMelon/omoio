@@ -401,21 +401,15 @@ body {
   color: var(--mute);
 }
 
-/* ---- status and buttons ---- */
+/* ---- buttons ---- */
 
+/* The buttons sit on the left, so the corner is free for notices. */
 .portal-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 24px;
   padding: 14px 28px;
   border-top: 1px solid var(--line);
-}
-
-.portal-status {
-  min-height: 20px;
-  font-size: 15px;
-  color: var(--mute);
 }
 
 .portal-hints {
@@ -434,6 +428,190 @@ body {
   color: var(--ink);
   font: inherit;
   font-weight: 700;
+}
+
+/* ---- loading ---- */
+
+/* What the window shows the moment it opens the first time, while the menu
+   asks the emulator what is on the portal. */
+.portal-loading {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.portal-loading .portal-spinner {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 20px;
+  border-width: 5px;
+}
+
+.portal-loading-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.portal-loading-note {
+  margin: 0;
+  font-size: 18px;
+  color: var(--mute);
+}
+
+/* A spinner turns at a steady pace; with less motion asked for it turns
+   slowly rather than stopping, since it is the only sign of work. */
+.portal-spinner {
+  display: block;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--line2);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: portal-turn 0.8s linear infinite;
+}
+
+@keyframes portal-turn {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* ---- notices ---- */
+
+/* What the menu is doing, as a card in the corner of the screen like a
+   Windows notification, sized to be read from a sofa. It slides in from the
+   edge it sits on and fades out where it is. */
+.portal-notice {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: min(560px, calc(100vw - 64px));
+  padding: 18px 26px 18px 18px;
+  box-sizing: border-box;
+  background: var(--raise);
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  box-shadow: 0 20px 60px rgb(var(--shadow) / 0.6);
+  opacity: 0;
+  transform: translateX(28px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.portal-notice.shown {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .portal-notice {
+    transition:
+      opacity 180ms var(--ease-out),
+      transform 180ms var(--ease-out),
+      visibility 0s linear 180ms;
+  }
+
+  .portal-notice.shown {
+    transition:
+      opacity 240ms var(--ease-out),
+      transform 240ms var(--ease-out),
+      visibility 0s;
+  }
+}
+
+.portal-notice-art {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--r);
+  background: var(--raise2);
+}
+
+/* A figure's picture, its layers over each other as on a tile. */
+.portal-notice-art > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.portal-notice-shape svg {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+
+/* With a picture, the kind's mark sits small on its corner. */
+.portal-notice-corner {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 0 0 2px var(--raise);
+}
+
+.portal-notice-corner .portal-notice-shape svg {
+  width: 17px;
+  height: 17px;
+}
+
+.portal-notice-corner .portal-spinner {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+}
+
+.portal-notice.done .portal-notice-shape {
+  color: var(--go);
+}
+
+.portal-notice.problem .portal-notice-shape {
+  color: var(--warn);
+}
+
+.portal-notice.hint .portal-notice-shape {
+  color: var(--brand-text);
+}
+
+.portal-notice-words {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.portal-notice-words strong {
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.portal-notice-words span {
+  font-size: 17px;
+  color: var(--mute);
 }
 
 /* Each element's colour, for its drawing, its name under a figure's and

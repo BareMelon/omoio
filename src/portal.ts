@@ -169,7 +169,9 @@ let tab = 0;
 let zone: "grid" | "portal" = "grid";
 let at = 0;
 let chip = 0;
-let status = "";
+/// Whether the menu has been filled once. Until then the page keeps the
+/// "Loading the portal" it was written with.
+let ready = false;
 /// The top half picked for a swapper, while waiting for its bottom.
 let pickedTop: { name: string; top: Offer } | null = null;
 /// The figures' pictures Omoio has read out of this game, by name.
@@ -466,8 +468,6 @@ function renderBody(): HTMLElement {
 
 function renderFoot(): HTMLElement {
   const foot = node("div", "portal-foot");
-  const said = node("div", "portal-status", status);
-  said.setAttribute("role", "status");
   const entry = tabs[tab]?.entries[at];
   const hints: [string, string][] = [];
   if (zone === "portal") {
@@ -483,13 +483,14 @@ function renderFoot(): HTMLElement {
     hint.append(node("kbd", "", nameOf(family, input)), words);
     row.appendChild(hint);
   }
-  foot.append(said, row);
+  foot.append(row);
   return foot;
 }
 
 /// Draws the whole menu again, keeping where the grid and tabs were
 /// scrolled so moving doesn't make the list jump.
 function render() {
+  if (!ready) return;
   settle();
   const scrolled = root.querySelector(".portal-body")?.scrollTop ?? 0;
   const tabsScrolled = root.querySelector(".portal-tabs")?.scrollLeft ?? 0;
@@ -504,9 +505,76 @@ function render() {
   panel.querySelector(".portal-tab.sel")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-function say(text: string) {
-  status = text;
-  render();
+// ---- notices ----
+
+/// What the menu is doing or has done, shown as a card in the corner of the
+/// screen like a Windows notification, large enough to read from a sofa.
+/// Work under way and hints stay until something replaces them; a finished
+/// job and a problem go by themselves.
+interface Notice {
+  kind: "working" | "done" | "problem" | "hint";
+  title: string;
+  detail?: string;
+  /// The figure it is about, its picture's layers bottom first: a swapper
+  /// is two. Left out when Omoio has no picture of a layer.
+  picture?: (string | null)[];
+}
+
+const NOTICE_LASTS: Partial<Record<Notice["kind"], number>> = { done: 3500, problem: 8000 };
+
+const NOTICE_SHAPES: Record<Exclude<Notice["kind"], "working">, string> = {
+  done: BADGES.on[1],
+  problem: `<path d="M12 6v7.5M12 18h.01" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`,
+  hint: BADGES.picked[1],
+};
+
+const card = node("div", "portal-notice");
+card.setAttribute("role", "status");
+document.body.appendChild(card);
+let notice: Notice | null = null;
+let noticeTimer = 0;
+
+/// The kind's mark: a spinner while working, a shape otherwise.
+function noticeMark(kind: Notice["kind"]): HTMLElement {
+  if (kind === "working") return node("span", "portal-spinner");
+  const mark = node("span", "portal-notice-shape");
+  mark.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${NOTICE_SHAPES[kind]}</svg>`;
+  return mark;
+}
+
+/// Shows a notice in place of the one up now, or with `null` takes it away.
+function notify(next: Notice | null) {
+  window.clearTimeout(noticeTimer);
+  notice = next;
+  if (!next) {
+    card.classList.remove("shown");
+    return;
+  }
+  const art = node("span", "portal-notice-art");
+  const layers = next.picture ?? [];
+  if (layers.length > 0 && layers.every(Boolean)) {
+    for (const source of layers) art.appendChild(image(source!));
+    art.appendChild(node("span", "portal-notice-corner")).appendChild(noticeMark(next.kind));
+  } else {
+    art.appendChild(noticeMark(next.kind));
+  }
+  const words = node("span", "portal-notice-words");
+  words.append(node("strong", "", next.title));
+  if (next.detail) words.append(node("span", "", next.detail));
+  card.replaceChildren(art, words);
+  card.className = `portal-notice ${next.kind} shown`;
+  const lasts = NOTICE_LASTS[next.kind];
+  if (lasts) noticeTimer = window.setTimeout(() => notify(null), lasts);
+}
+
+function problem(err: unknown, otherwise: string): Notice {
+  return { kind: "problem", title: typeof err === "string" ? err : otherwise };
+}
+
+/// The picture of a figure on the portal, by the name the portal gives it.
+function pictureNamed(name: string): (string | null)[] {
+  const known = offers.find((offer) => offer.name === name);
+  return [pictureOf(known?.id, known?.variant)];
 }
 
 function showTab(index: number) {
@@ -514,8 +582,8 @@ function showTab(index: number) {
   tab = (index + tabs.length) % tabs.length;
   at = 0;
   zone = "grid";
-  // Leaving a tab drops a picked top, and the line asking for its bottom.
-  if (pickedTop) status = "";
+  // Leaving a tab drops a picked top, and the notice asking for its bottom.
+  if (pickedTop) notify(null);
   pickedTop = null;
   render();
 }
@@ -544,17 +612,17 @@ function movePortal(move: Move) {
 
 /// One change to the portal at a time, since each goes through the
 /// emulator's own window and takes a moment.
-async function change(saying: string, job: () => Promise<string[]>, said: (names: string[]) => string) {
+async function change(saying: Notice, job: () => Promise<string[]>, said: (names: string[]) => Notice) {
   if (busy) return;
   busy = true;
-  say(saying);
+  notify(saying);
   try {
     onPortal = await job();
-    status = said(onPortal);
+    notify(said(onPortal));
     mine = await listFigures();
     buildTabs();
   } catch (err) {
-    status = typeof err === "string" ? err : "That didn't work. Try again.";
+    notify(problem(err, "That didn't work. Try again."));
   } finally {
     busy = false;
     render();
@@ -568,7 +636,12 @@ function freeSlot(): number {
 }
 
 function takeOffSlot(slot: number, name: string) {
-  return change(`Taking ${name} off…`, () => portalClear(slot), () => `${name} is off the portal.`);
+  const picture = pictureNamed(name);
+  return change(
+    { kind: "working", title: `Taking ${name} off…`, picture },
+    () => portalClear(slot),
+    () => ({ kind: "done", title: `${name} is off the portal`, picture })
+  );
 }
 
 /// Takes off the figure picked in the portal row, or the one the selected
@@ -595,20 +668,21 @@ async function takeOff() {
 async function putOn(name: string, figure: Figure | undefined, offer: Offer | undefined): Promise<boolean> {
   const slot = freeSlot();
   if (slot < 0) {
-    say("The portal is full. Take a figure off first.");
+    notify({ kind: "problem", title: "The portal is full", detail: "Take a figure off first." });
     return false;
   }
+  const picture = [pictureOf(offer?.id ?? figure?.id, offer?.variant ?? figure?.variant)];
   if (figure) {
     await change(
-      `Putting ${name} on the portal…`,
+      { kind: "working", title: `Putting ${name} on the portal…`, picture },
       () => portalLoad(slot, figure.path),
-      (names) => `${names[slot] || name} is on the portal.`
+      (names) => ({ kind: "done", title: `${names[slot] || name} is on the portal`, picture })
     );
   } else if (offer) {
     await change(
-      `Making ${offer.name}…`,
+      { kind: "working", title: `Making ${offer.name}…`, detail: "A new figure, kept for next time.", picture },
       () => portalCreate(slot, offer),
-      (names) => `${names[slot] || offer.name} is on the portal.`
+      (names) => ({ kind: "done", title: `${names[slot] || offer.name} is on the portal`, picture })
     );
   }
   return Boolean(onPortal[slot]);
@@ -619,12 +693,18 @@ async function putOn(name: string, figure: Figure | undefined, offer: Offer | un
 async function putSwapper(top: Offer, bottom: Offer) {
   const halves = [top, bottom].filter((half) => !onPortal.includes(half.name));
   const free = onPortal.length === 0 ? halves.length : onPortal.filter((name) => !name).length;
-  if (free < halves.length) return say("A swapper needs two free places on the portal. Take a figure off first.");
+  if (free < halves.length) {
+    return notify({ kind: "problem", title: "A swapper needs two free places", detail: "Take a figure off first." });
+  }
   for (const half of halves) {
     if (!(await putOn(half.name, savedFor(half), half))) return;
   }
   const same = baseName(top.name) === baseName(bottom.name);
-  say(`${same ? baseName(top.name) : `${baseName(top.name)} and ${baseName(bottom.name)}`} is on the portal.`);
+  notify({
+    kind: "done",
+    title: `${same ? baseName(top.name) : `${baseName(top.name)} and ${baseName(bottom.name)}`} is on the portal`,
+    picture: [bottom, top].map((half) => pictureOf(half.id, half.variant)),
+  });
 }
 
 /// Puts the selected figure on the portal: the saved one when there is one,
@@ -636,15 +716,17 @@ async function choose() {
   if (!entry || busy) return;
   if (entry.swap) {
     if (!pickedTop) {
-      pickedTop = { name: entry.name, top: entry.swap.top };
-      return say(`Top: ${entry.name}. Now pick the bottom.`);
+      const top = entry.swap.top;
+      pickedTop = { name: entry.name, top };
+      notify({ kind: "hint", title: "Now pick the bottom", detail: `Top: ${entry.name}`, picture: [pictureOf(top.id, top.variant)] });
+      return render();
     }
     const top = pickedTop.top;
     pickedTop = null;
     return putSwapper(top, entry.swap.bottom);
   }
   const name = portalName(entry);
-  if (onPortal.includes(name)) return say(`${name} is already on the portal.`);
+  if (onPortal.includes(name)) return notify({ kind: "done", title: `${name} is already on the portal`, picture: pictureNamed(name) });
   await putOn(entry.name, entry.figure, entry.offer);
 }
 
@@ -654,12 +736,15 @@ async function loadOffers() {
   if (offers.length > 0 || asking) return;
   asking = true;
   busy = true;
-  say("Getting the characters…");
+  const getting: Notice = { kind: "working", title: "Getting the characters…" };
+  // While the page still says it is loading, that says enough.
+  if (ready) notify(getting);
+  render();
   try {
     offers = await figureCharacters();
-    status = "";
+    if (notice === getting) notify(null);
   } catch (err) {
-    status = typeof err === "string" ? err : "Couldn't get the characters.";
+    notify(problem(err, "Couldn't get the characters."));
   } finally {
     asking = false;
     busy = false;
@@ -670,19 +755,23 @@ async function loadOffers() {
   }
 }
 
+/// Reads what is on the portal. Usually quick, so the notice only comes up
+/// when Cemu takes its time.
 async function refresh() {
   busy = true;
-  say("Reading the portal…");
+  const looking: Notice = { kind: "working", title: "Reading the portal…" };
+  const slow = window.setTimeout(() => ready && notify(looking), 400);
   const [names, files] = await Promise.all([
     portalFigures().catch((err: unknown) => {
-      status = typeof err === "string" ? err : "Couldn't read the portal.";
+      notify(problem(err, "Couldn't read the portal."));
       return null;
     }),
     listFigures(),
   ]);
+  window.clearTimeout(slow);
   if (names) {
     onPortal = names;
-    status = "";
+    if (notice === looking) notify(null);
   }
   mine = files;
   busy = false;
@@ -713,7 +802,8 @@ function press(input: string) {
   if (input === "East") {
     if (!pickedTop) return void closePortalMenu();
     pickedTop = null;
-    return say("");
+    notify(null);
+    return render();
   }
   if (busy) return;
   if (input === "South") void choose();
@@ -768,16 +858,25 @@ document.addEventListener("keydown", (event) => {
 /// Shown again: what is already held down, such as the button that opened
 /// the menu, is not taken as a press.
 async function show() {
-  family = (await portalMenuFamily()) as PadFamily;
-  held = await readPads();
-  zone = "grid";
-  shown = true;
-  // Read again each time, since pictures can be got while the game runs.
-  pictures = await figurePictures()
-    .then((found) => ({ folder: found.folder, names: new Set(found.names) }))
-    .catch(() => null);
-  await refresh();
-  await loadOffers();
+  notify(null);
+  try {
+    family = (await portalMenuFamily()) as PadFamily;
+    held = await readPads();
+    zone = "grid";
+    shown = true;
+    // Read again each time, since pictures can be got while the game runs.
+    pictures = await figurePictures()
+      .then((found) => ({ folder: found.folder, names: new Set(found.names) }))
+      .catch(() => null);
+    await refresh();
+    await loadOffers();
+  } finally {
+    // Filled once, the menu draws itself from then on, a problem or not.
+    if (!ready) {
+      ready = true;
+      render();
+    }
+  }
 }
 
 void onPortalMenu((state) => {
