@@ -3,18 +3,157 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Omoio</title>
-  <meta name="description" content="Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.">
+  <title>Omoio, a PS3 and Wii U game library for Windows</title>
+  <meta name="description" content="Omoio is a free, open source game library for Windows. Import the PS3 and Wii U games you own, press Play, and Omoio sets up RPCS3 or Cemu for you.">
+  <link rel="canonical" href="https://omoio.app/">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-video-preview:-1">
   <meta name="theme-color" content="#0b0e14">
-  <meta property="og:title" content="Omoio">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Omoio">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://omoio.app/">
+  <meta property="og:title" content="Omoio, a PS3 and Wii U game library for Windows">
   <meta property="og:description" content="Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.">
   <meta property="og:image" content="https://omoio.app/og.png">
-  <meta property="og:url" content="https://omoio.app/">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The Omoio icon and name, with the line: Your PS3 and Wii U games in one library.">
   <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="twitter:title" content="Omoio, a PS3 and Wii U game library for Windows">
+  <meta name="twitter:description" content="Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.">
+  <meta name="twitter:image" content="https://omoio.app/og.png">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <script src="site.js" defer></script>
+  <!-- What search engines and AI tools read about the app. The questions mirror the Questions section; change both together. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://omoio.app/#website",
+        "url": "https://omoio.app/",
+        "name": "Omoio",
+        "inLanguage": "en"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://omoio.app/#app",
+        "name": "Omoio",
+        "url": "https://omoio.app/",
+        "description": "Omoio is a free, open source game library for Windows. Import the PS3 and Wii U games you own, press Play, and Omoio sets up RPCS3 or Cemu for you.",
+        "applicationCategory": "GameApplication",
+        "applicationSubCategory": "Game library and emulator launcher",
+        "operatingSystem": "Windows (64-bit)",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "isAccessibleForFree": true,
+        "license": "https://opensource.org/licenses/MIT",
+        "downloadUrl": "https://github.com/Bertrram/omoio/releases/latest",
+        "image": "https://omoio.app/og.png",
+        "screenshot": "https://omoio.app/poster.jpg",
+        "featureList": [
+          "One library for PS3 and Wii U games",
+          "Installs and updates RPCS3 and Cemu",
+          "One controller layout for every emulator, for up to four players",
+          "Big Picture mode for a TV and a controller",
+          "Community packs: RPCS3 patches and Cemu graphic packs",
+          "PS3 game updates and save backups"
+        ],
+        "sameAs": [
+          "https://github.com/Bertrram/omoio",
+          "https://www.youtube.com/@OmoioApp"
+        ]
+      },
+      {
+        "@type": "VideoObject",
+        "name": "Omoio: play your PS3 and Wii U games without opening an emulator",
+        "description": "A one minute look at Omoio, a game library for Windows that sets up RPCS3 and Cemu for your PS3 and Wii U games.",
+        "thumbnailUrl": "https://omoio.app/poster.jpg",
+        "uploadDate": "2026-10-03",
+        "duration": "PT1M10S",
+        "contentUrl": "https://www.youtube.com/watch?v=8EbjNOFRLiA",
+        "embedUrl": "https://www.youtube.com/embed/8EbjNOFRLiA"
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is Omoio an emulator?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Omoio is the library and launcher around the emulators. It installs RPCS3 for PS3 games and Cemu for Wii U games, keeps them updated and starts them for you, and they do the emulation."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Omoio come with games?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Omoio plays dumps of games you own. It doesn't include games, download them or help you find them."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it free?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Omoio is free and open source under the MIT licence, and so are the emulators it installs."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does it run on?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "64-bit Windows. PS3 games run through RPCS3 and Wii U games through Cemu, and more systems are planned. How well a game runs depends on the emulator and your PC."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use my controller?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Xbox controllers and other XInput pads work in both emulators. Other pads work in RPCS3 through SDL. You set one layout, for up to four players."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What do Wii U games need?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Unpacked game folders work as they are. Disc images (.wud and .wux) need your own keys file, added on the Emulators screen. Downloads in NUS form aren't supported."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does Windows warn me about the installer?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The installer isn't code signed yet, because a certificate costs money every year. Click More info, then Run anyway. Download it only from this page or from the releases on GitHub."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Something broke. Where do I tell you?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Open an issue on GitHub with the game, what happened and your Omoio version. The Logs screen keeps a log of every play session. Look it over for personal details before you share it."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <header class="top">
@@ -93,8 +232,16 @@
       <h2 id="questions-title">Questions</h2>
       <div class="questions">
         <details>
+          <summary>Is Omoio an emulator?</summary>
+          <p>No. Omoio is the library and launcher around the emulators. It installs RPCS3 for PS3 games and Cemu for Wii U games, keeps them updated and starts them for you, and they do the emulation.</p>
+        </details>
+        <details>
           <summary>Does Omoio come with games?</summary>
           <p>No. Omoio plays dumps of games you own. It doesn't include games, download them or help you find them.</p>
+        </details>
+        <details>
+          <summary>Is it free?</summary>
+          <p>Yes. Omoio is free and open source under the MIT licence, and so are the emulators it installs.</p>
         </details>
         <details>
           <summary>What does it run on?</summary>
@@ -121,7 +268,7 @@
   </main>
 
   <footer class="foot">
-    <p>Omoio is in early development, and feedback is welcome. The code and the issues are on <a href="https://github.com/Bertrram/omoio">GitHub</a>, under the MIT licence.</p>
+    <p>Omoio is in early development, and feedback is welcome. The code and the issues are on <a href="https://github.com/Bertrram/omoio">GitHub</a>, under the MIT licence, and videos are on <a href="https://www.youtube.com/@OmoioApp">YouTube</a>.</p>
     <p class="small">Omoio doesn't come with games. You bring dumps of games you own. RPCS3 and Cemu are separate projects, and the credit for the emulation is theirs. PlayStation and Wii U are trademarks of their owners, and Omoio has no connection with Sony or Nintendo.</p>
   </footer>
 </body>

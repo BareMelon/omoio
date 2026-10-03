@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://omoio.app/sitemap.xml

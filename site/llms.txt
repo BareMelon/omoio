@@ -1,0 +1,41 @@
+# Omoio
+
+> Omoio is a free, open source game library and launcher for Windows. You import dumps of PS3 and Wii U games you own and press Play. Omoio installs the emulator, keeps it updated, sets up your controller and starts the game: RPCS3 for PS3 games and Cemu for Wii U games.
+
+Omoio is in early development and runs on 64-bit Windows only. It is not an emulator itself; RPCS3 and Cemu are separate projects that do the emulation, run as their official builds. Omoio does not include games, download them or help anyone find them, and it does not get around copy protection.
+
+## Download
+
+- [omoio.app](https://omoio.app/): the Download for Windows button fetches the newest installer from GitHub.
+- [Latest release on GitHub](https://github.com/Bertrram/omoio/releases/latest): the installer is `Omoio_<version>_x64-setup.exe`. It installs for the current user and needs no admin rights. It isn't code signed yet, so Windows SmartScreen may warn; click More info, then Run anyway.
+
+## What it does
+
+- One library for every system. Import a folder, a zip or 7z file, or scan a whole drive at once.
+- Installs the official builds of RPCS3 and Cemu and keeps them up to date. Games run inside Omoio's window, fullscreen with F11.
+- One controller layout for every emulator, for up to four players. Xbox and other XInput pads work in both emulators; other pads work in RPCS3 through SDL.
+- Big Picture: a full-screen library for a TV and a controller. View and Menu together switch between Big Picture and a running game.
+- Community packs: RPCS3's patches for PS3 games and Cemu's graphic packs for Wii U games, such as 60 fps for Skylanders SWAP Force.
+- For PS3 games: official game updates, save backups and RPCS3's settings for each game. Homebrew installs from a .pkg the user already has.
+- For Wii U games: Cemu's settings for each game. Unpacked game folders work as they are; disc images (.wud, .wux) need the user's own keys file. Downloads in NUS form aren't supported.
+- A Skylanders portal menu over Skylanders SWAP Force on Cemu, so figures go on the portal with the controller.
+- Cover art from RAWG when the user adds a free RAWG key; without one, Omoio draws its own tiles.
+
+## Setup
+
+1. Install Omoio and choose which emulators to install.
+2. For PS3, Omoio opens Sony's official firmware page; the user downloads the firmware file there and picks it in Omoio.
+3. Import games you own and press Play.
+
+## Systems
+
+- Supported now: PS3 through RPCS3, Wii U through Cemu.
+- Planned: PS2, GameCube and Wii, PSP, PS1, Game Boy Advance, PS Vita and DS.
+- Not planned: PS4, because a PS4 game is locked to Sony's console keys. Mac and Linux aren't supported.
+
+## Links
+
+- [Source code (MIT licence)](https://github.com/Bertrram/omoio)
+- [Issues and bug reports](https://github.com/Bertrram/omoio/issues)
+- [Launch video](https://www.youtube.com/watch?v=8EbjNOFRLiA)
+- [YouTube channel](https://www.youtube.com/@OmoioApp)
