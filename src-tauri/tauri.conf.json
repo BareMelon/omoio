@@ -49,7 +49,12 @@
       },
       "nsis": {
         "installMode": "currentUser",
-        "installerHooks": "installer-hooks.nsh"
+        "installerHooks": "installer-hooks.nsh",
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "uninstallerIcon": "icons/icon.ico",
+        "uninstallerHeaderImage": "installer/header.bmp"
       }
     }
   },
