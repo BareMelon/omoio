@@ -4,6 +4,8 @@
 <h1 align="center">Omoio</h1>
 <p align="center">Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.</p>
 
+[![The Omoio video on YouTube, 1 minute 10 seconds](design/screenshots/video.jpg)](https://youtu.be/8EbjNOFRLiA)
+
 ![The library, with the panel for The Last of Us open](design/screenshots/library.png)
 <sub>Covers in these pictures come from [RAWG](https://rawg.io).</sub>
 
