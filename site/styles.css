@@ -1,0 +1,330 @@
+/* The app's colours and type, from src/styles/tokens.css, plus the launch
+   video's grid. */
+:root {
+  --void: #0b0e14;
+  --panel: #11151e;
+  --line: #252c3d;
+  --line2: #323a4e;
+  --ink: #e6eaf2;
+  --mute: #7b8598;
+  --dim: #5a6377;
+  --brand: #126bfc;
+  --brand-lit: #2a7bff;
+  --brand-text: #8fbaff;
+  --on-brand: #ffffff;
+  --glass: rgba(6, 9, 14, 0.72);
+  --shadow: 0 0 0;
+  --grid: rgba(143, 186, 255, 0.045);
+  /* The lit top edge of a raised button, as light falls on it from above. */
+  --highlight: rgba(255, 255, 255, 0.16);
+
+  --ui: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Inter, Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --r: 7px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  font: 400 16px/1.55 var(--ui);
+  -webkit-font-smoothing: antialiased;
+  /* The launch video's grid, faded out before the video so it never sits
+     behind text the eye has to read. */
+  background:
+    linear-gradient(to bottom, transparent, var(--void) 560px),
+    linear-gradient(var(--grid) 1px, transparent 1px) 50% 0 / 64px 64px,
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px) 50% 0 / 64px 64px,
+    var(--void);
+}
+
+a { color: var(--ink); text-underline-offset: 3px; text-decoration-color: var(--line2); }
+:focus-visible { outline: 2px solid var(--brand-lit); outline-offset: 3px; border-radius: var(--r); }
+
+a, .download, .video-frame { -webkit-tap-highlight-color: transparent; }
+
+.top {
+  display: flex;
+  justify-content: flex-end;
+  padding: 18px 24px 0;
+  padding-top: max(18px, env(safe-area-inset-top));
+}
+
+.top-link {
+  font-size: 14px;
+  color: var(--mute);
+  text-decoration: none;
+  padding: 8px 4px;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 912px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 0 56px;
+}
+
+.app-icon {
+  display: block;
+  width: 88px;
+  height: 88px;
+  filter: drop-shadow(0 10px 24px rgb(var(--shadow) / 0.55));
+}
+
+h1 {
+  margin: 20px 0 0;
+  font: 700 44px/1.05 var(--display);
+  letter-spacing: -0.025em;
+}
+
+.lede {
+  max-width: 25em;
+  margin: 14px 0 0;
+  font-size: 20px;
+  line-height: 1.45;
+}
+/* Lines break between the two sentences, never inside one, where there is room. */
+.lede span { display: inline-block; text-wrap: balance; }
+
+.download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 36px;
+  height: 52px;
+  padding: 0 28px;
+  border-radius: var(--r);
+  background: var(--brand);
+  color: var(--on-brand);
+  font: 600 16px/1 var(--ui);
+  text-decoration: none;
+  box-shadow: inset 0 1px 0 var(--highlight), 0 1px 2px rgb(var(--shadow) / 0.4);
+  transition: background-color 120ms ease, transform 160ms var(--ease-out);
+  user-select: none;
+}
+.download svg { width: 20px; height: 20px; }
+.download:active { transform: scale(0.97); }
+
+.meta {
+  margin: 14px 0 0;
+  min-height: 1.6em;
+  font: 400 13px/1.6 var(--mono);
+  color: var(--mute);
+}
+
+.note {
+  max-width: 27em;
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--dim);
+  text-wrap: pretty;
+}
+.note[hidden] { display: none; }
+.elsewhere { margin-top: 14px; color: var(--mute); }
+
+.video { padding-bottom: 64px; }
+
+.video-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--panel);
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
+  transition: transform 160ms var(--ease-out);
+}
+a.video-frame:active { transform: scale(0.99); }
+a.video-frame:focus-visible { outline: 2px solid var(--brand-lit); outline-offset: 3px; }
+.video-frame img,
+.video-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  margin: -34px 0 0 -34px;
+  border-radius: 50%;
+  background: var(--glass);
+  color: var(--on-brand);
+  box-shadow: inset 0 0 0 1px var(--highlight);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: background-color 150ms ease, transform 200ms var(--ease-out);
+}
+.play svg { width: 26px; height: 26px; margin-left: 3px; }
+
+.duration {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--glass);
+  font: 500 12px/1.4 var(--mono);
+}
+
+.meta a { color: var(--mute); }
+
+.section { padding-bottom: 72px; }
+
+h2 {
+  margin: 0 0 24px;
+  font: 650 26px/1.2 var(--display);
+  letter-spacing: -0.015em;
+}
+
+h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.section p {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--mute);
+  text-wrap: pretty;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.steps li { counter-increment: step; }
+.steps li::before {
+  content: counter(step, decimal-leading-zero);
+  display: block;
+  margin-bottom: 10px;
+  font: 500 13px/1 var(--mono);
+  color: var(--brand-text);
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 28px 32px;
+}
+.features > div {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.questions { border-top: 1px solid var(--line); }
+.questions details { border-bottom: 1px solid var(--line); }
+.questions summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.questions summary::-webkit-details-marker { display: none; }
+/* A chevron drawn from two borders, turned to point down, then up when open. */
+.questions summary::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin: -4px 4px 0 0;
+  border-right: 1.5px solid var(--mute);
+  border-bottom: 1.5px solid var(--mute);
+  transform: rotate(45deg);
+  transition: transform 200ms var(--ease-out);
+}
+.questions details[open] summary::after { transform: translateY(4px) rotate(225deg); }
+.questions details p { margin: 0; padding: 0 0 18px; max-width: 42em; }
+.questions a { color: var(--ink); }
+
+.caption {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--dim);
+}
+.caption a { color: var(--mute); }
+
+.foot {
+  border-top: 1px solid var(--line);
+  padding: 28px 16px 36px;
+  padding-bottom: max(36px, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 14px;
+  color: var(--mute);
+}
+.foot p { max-width: 40em; margin: 0 auto; text-wrap: pretty; }
+.foot .small { margin-top: 8px; font-size: 13px; color: var(--dim); }
+
+@media (hover: hover) and (pointer: fine) {
+  a:hover { text-decoration-color: currentColor; }
+  .top-link:hover { color: var(--ink); }
+  .questions summary:hover { color: var(--brand-text); }
+  .download:hover { background: var(--brand-lit); }
+  .video-frame:hover .play { background: var(--brand); transform: scale(1.06); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download, .video-frame, .play { transition: background-color 120ms ease; }
+  .questions summary::after { transition: none; }
+  .download:active, a.video-frame:active { transform: none; }
+  .video-frame:hover .play { transform: none; }
+}
+
+@media (max-width: 560px) {
+  .top { padding-right: 12px; }
+  .hero { padding: 24px 0 40px; }
+  .app-icon { width: 72px; height: 72px; }
+  h1 { margin-top: 16px; font-size: 38px; }
+  .lede { font-size: 18px; }
+  .download { align-self: stretch; margin-top: 28px; }
+  .video { padding-bottom: 44px; }
+  .video-frame { border-radius: 10px; }
+  .section { padding-bottom: 48px; }
+  h2 { font-size: 23px; margin-bottom: 18px; }
+  .steps, .features { grid-template-columns: 1fr; gap: 24px; }
+  .play { width: 56px; height: 56px; margin: -28px 0 0 -28px; }
+  .play svg { width: 22px; height: 22px; }
+}

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Omoio</title>
+  <meta name="description" content="Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.">
+  <meta name="theme-color" content="#0b0e14">
+  <meta property="og:title" content="Omoio">
+  <meta property="og:description" content="Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.">
+  <meta property="og:image" content="https://omoio.app/og.png">
+  <meta property="og:url" content="https://omoio.app/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <a class="top-link" href="https://github.com/Bertrram/omoio">GitHub</a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <img class="app-icon" src="favicon.svg" width="88" height="88" alt="">
+      <h1>Omoio</h1>
+      <p class="lede"><span>Your PS3 and Wii U games in one library.</span> <span>Press Play and Omoio sets up the emulator for you.</span></p>
+
+      <a id="download" class="download" href="https://github.com/Bertrram/omoio/releases/latest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>
+        </svg>
+        Download for Windows
+      </a>
+      <p id="download-meta" class="meta">64-bit Windows</p>
+      <p class="note">The installer isn't signed yet, so Windows may warn you. Click More info, then Run anyway.</p>
+      <p id="elsewhere" class="note elsewhere" hidden>Omoio runs on Windows only, so download it on a Windows PC.</p>
+    </section>
+
+    <section class="video">
+      <a id="video" class="video-frame" href="https://youtu.be/8EbjNOFRLiA" aria-label="Play the Omoio video, 1 minute 10 seconds">
+        <img src="poster.jpg" width="1280" height="720" alt="Omoio's library with twelve PS3 and Wii U games">
+        <span class="play" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>
+        </span>
+        <span class="duration" aria-hidden="true">1:10</span>
+      </a>
+      <p class="caption">The video plays from YouTube when you press it. Covers in it come from <a href="https://rawg.io">RAWG</a>.</p>
+    </section>
+
+    <section class="section" aria-labelledby="steps-title">
+      <h2 id="steps-title">From download to Play</h2>
+      <ol class="steps">
+        <li>
+          <h3>Install Omoio</h3>
+          <p>Run the installer. It doesn't need admin rights.</p>
+        </li>
+        <li>
+          <h3>Choose your emulators</h3>
+          <p>Omoio installs RPCS3 for PS3 games and Cemu for Wii U games. For PS3 it opens Sony's firmware page, and you pick the file you downloaded there.</p>
+        </li>
+        <li>
+          <h3>Import your games</h3>
+          <p>Add folders, zip or 7z files of games you own, then press Play.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section" aria-labelledby="features-title">
+      <h2 id="features-title">What you get</h2>
+      <div class="features">
+        <div>
+          <h3>One library</h3>
+          <p>Import a folder, a zip or 7z file, or scan a whole drive. PS3 and Wii U games sit side by side, and each starts in its own emulator.</p>
+        </div>
+        <div>
+          <h3>Emulators kept up to date</h3>
+          <p>Omoio installs the official builds of RPCS3 and Cemu and keeps them updated. Patches and graphic packs from their communities download from the same place.</p>
+        </div>
+        <div>
+          <h3>Controllers and Big Picture</h3>
+          <p>Set one layout for up to four players. Big Picture is the library for a TV and a controller, and View and Menu together take you between it and a running game.</p>
+        </div>
+        <div>
+          <h3>Saves and updates for PS3</h3>
+          <p>Back up PS3 saves and install official game updates. Save backups are for PS3 games only for now.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="questions-title">
+      <h2 id="questions-title">Questions</h2>
+      <div class="questions">
+        <details>
+          <summary>Does Omoio come with games?</summary>
+          <p>No. Omoio plays dumps of games you own. It doesn't include games, download them or help you find them.</p>
+        </details>
+        <details>
+          <summary>What does it run on?</summary>
+          <p>64-bit Windows. PS3 games run through RPCS3 and Wii U games through Cemu, and more systems are planned. How well a game runs depends on the emulator and your PC.</p>
+        </details>
+        <details>
+          <summary>Can I use my controller?</summary>
+          <p>Xbox controllers and other XInput pads work in both emulators. Other pads work in RPCS3 through SDL. You set one layout, for up to four players.</p>
+        </details>
+        <details>
+          <summary>What do Wii U games need?</summary>
+          <p>Unpacked game folders work as they are. Disc images (.wud and .wux) need your own keys file, added on the Emulators screen. Downloads in NUS form aren't supported.</p>
+        </details>
+        <details>
+          <summary>Why does Windows warn me about the installer?</summary>
+          <p>The installer isn't code signed yet, because a certificate costs money every year. Click More info, then Run anyway. Download it only from this page or from the releases on GitHub.</p>
+        </details>
+        <details>
+          <summary>Something broke. Where do I tell you?</summary>
+          <p>Open an issue on <a href="https://github.com/Bertrram/omoio/issues">GitHub</a> with the game, what happened and your Omoio version. The Logs screen keeps a log of every play session. Look it over for personal details before you share it.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Omoio is in early development, and feedback is welcome. The code and the issues are on <a href="https://github.com/Bertrram/omoio">GitHub</a>, under the MIT licence.</p>
+    <p class="small">Omoio doesn't come with games. You bring dumps of games you own. RPCS3 and Cemu are separate projects, and the credit for the emulation is theirs. PlayStation and Wii U are trademarks of their owners, and Omoio has no connection with Sony or Nintendo.</p>
+  </footer>
+</body>
+</html>
