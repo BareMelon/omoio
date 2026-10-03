@@ -4,7 +4,7 @@
 <h1 align="center">Omoio</h1>
 <p align="center">Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.</p>
 
-![The library, with the panel for 007 Legends open](design/screenshots/library.png)
+![The library, with the panel for The Last of Us open](design/screenshots/library.png)
 <sub>Covers in these pictures come from [RAWG](https://rawg.io).</sub>
 
 Omoio is a game library for Windows. You import the dumps of games you own
@@ -38,7 +38,7 @@ really appreciated, so open an issue.
 
 ## Big Picture
 
-![Big Picture with Skylanders SWAP Force picked](design/screenshots/big-picture.jpg)
+![Big Picture with Skylanders SWAP Force picked](design/screenshots/big-picture.png)
 
 Big Picture fills the screen and is made for a TV and a controller, with each
 game's settings, community packs and saves inside it. Press View and Menu together
