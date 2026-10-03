@@ -3,6 +3,7 @@
 </p>
 <h1 align="center">Omoio</h1>
 <p align="center">Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.</p>
+<p align="center"><a href="https://omoio.app">omoio.app</a></p>
 
 [![The Omoio video on YouTube, 1 minute 10 seconds](design/screenshots/video.jpg)](https://youtu.be/8EbjNOFRLiA)
 
@@ -71,7 +72,8 @@ read.
 
 ## Install
 
-Download `Omoio_x.y.z_x64-setup.exe` from [Releases](../../releases) and run it.
+Download Omoio from [omoio.app](https://omoio.app), or download
+`Omoio_x.y.z_x64-setup.exe` from [Releases](../../releases), and run it.
 It doesn't need admin rights. On first start it asks which emulators you want.
 PS3 games also need Sony's free firmware: Omoio opens Sony's download page and
 installs the file you pick.
