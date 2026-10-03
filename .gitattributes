@@ -1,0 +1,3 @@
+# The emulators' icons are kept byte for byte as their projects publish them.
+src/icons/emulators/*.svg -text
+src/icons/emulators/*.png binary

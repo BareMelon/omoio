@@ -10,13 +10,22 @@ import {
 } from "../api";
 import { store } from "../state";
 import type { View } from "./view";
+import rpcs3Icon from "../icons/emulators/rpcs3.svg";
+import pcsx2Icon from "../icons/emulators/pcsx2.png";
+import dolphinIcon from "../icons/emulators/dolphin.png";
+import ppssppIcon from "../icons/emulators/ppsspp.png";
+import duckstationIcon from "../icons/emulators/duckstation.png";
+import cemuIcon from "../icons/emulators/cemu.png";
+import mgbaIcon from "../icons/emulators/mgba.png";
+import vita3kIcon from "../icons/emulators/vita3k.svg";
+import melondsIcon from "../icons/emulators/melonds.svg";
 
 type Emulator = {
   name: string;
   console: string;
-  /// The console as it is usually shortened. A fact about the hardware, shown
-  /// in our own lettering, rather than anyone's logo.
-  badge: string;
+  /// The emulator's own icon, unchanged from its project. Each keeps its
+  /// project's licence; src/icons/emulators/NOTICE.md says whose and which.
+  icon: string;
   /// One hue per family, so the grid reads by maker and kind at a glance.
   hue: number;
   needs?: string;
@@ -39,15 +48,15 @@ const NINTENDO_HANDHELD = 268;
 /// games already decrypted, and a PS4 game someone bought is locked to Sony's
 /// keys (Bertram dropped it, 2 October 2026).
 const EMULATORS: Emulator[] = [
-  { name: "RPCS3", console: "PlayStation 3", badge: "PS3", hue: SONY_HOME, runs: "ps3" },
-  { name: "PCSX2", console: "PlayStation 2", badge: "PS2", hue: SONY_HOME, needs: "Your own BIOS" },
-  { name: "Dolphin", console: "GameCube and Wii", badge: "Wii", hue: NINTENDO_HOME },
-  { name: "PPSSPP", console: "PSP", badge: "PSP", hue: SONY_HANDHELD },
-  { name: "DuckStation", console: "PlayStation", badge: "PS1", hue: SONY_HOME, needs: "Your own BIOS" },
-  { name: "Cemu", console: "Wii U", badge: "Wii U", hue: NINTENDO_HOME, runs: "wiiu" },
-  { name: "mGBA", console: "Game Boy Advance", badge: "GBA", hue: NINTENDO_HANDHELD },
-  { name: "Vita3K", console: "PS Vita", badge: "Vita", hue: SONY_HANDHELD, needs: "Your own firmware" },
-  { name: "melonDS", console: "Nintendo DS", badge: "DS", hue: NINTENDO_HANDHELD },
+  { name: "RPCS3", console: "PlayStation 3", icon: rpcs3Icon, hue: SONY_HOME, runs: "ps3" },
+  { name: "PCSX2", console: "PlayStation 2", icon: pcsx2Icon, hue: SONY_HOME, needs: "Your own BIOS" },
+  { name: "Dolphin", console: "GameCube and Wii", icon: dolphinIcon, hue: NINTENDO_HOME },
+  { name: "PPSSPP", console: "PSP", icon: ppssppIcon, hue: SONY_HANDHELD },
+  { name: "DuckStation", console: "PlayStation", icon: duckstationIcon, hue: SONY_HOME, needs: "Your own BIOS" },
+  { name: "Cemu", console: "Wii U", icon: cemuIcon, hue: NINTENDO_HOME, runs: "wiiu" },
+  { name: "mGBA", console: "Game Boy Advance", icon: mgbaIcon, hue: NINTENDO_HANDHELD },
+  { name: "Vita3K", console: "PS Vita", icon: vita3kIcon, hue: SONY_HANDHELD, needs: "Your own firmware" },
+  { name: "melonDS", console: "Nintendo DS", icon: melondsIcon, hue: NINTENDO_HANDHELD },
 ];
 
 const STAGE: Record<InstallProgress["stage"], string> = {
@@ -58,15 +67,19 @@ const STAGE: Record<InstallProgress["stage"], string> = {
   done: "Done",
 };
 
-/// A tile in the family's colour with the console's short name on it. The
-/// colours are worked out from the hue, the same way the library's
-/// placeholder art is, so nothing here is a fixed colour.
+/// The emulator's icon on a faint tile in its family's colour, so the grid
+/// still reads by maker and kind at a glance. The colours are worked out from
+/// the hue, the same way the library's placeholder art is.
 function badge(emulator: Emulator, size: "big" | "small"): HTMLElement {
   const tile = document.createElement("div");
   tile.className = `emu-badge ${size}`;
-  tile.style.background = `linear-gradient(150deg, hsl(${emulator.hue} 58% 30%), hsl(${emulator.hue} 62% 13%))`;
-  tile.style.borderColor = `hsl(${emulator.hue} 55% 42% / 0.55)`;
-  tile.textContent = emulator.badge;
+  tile.style.background = `radial-gradient(circle at 50% 35%, hsl(${emulator.hue} 55% 30% / 0.55), hsl(${emulator.hue} 60% 12% / 0.35))`;
+  tile.style.borderColor = `hsl(${emulator.hue} 55% 42% / 0.4)`;
+  const icon = document.createElement("img");
+  icon.src = emulator.icon;
+  // The name sits right beside it, so the picture says nothing more.
+  icon.alt = "";
+  tile.appendChild(icon);
   return tile;
 }
 
@@ -259,7 +272,7 @@ export async function renderEmulators(): Promise<View> {
   foot.className = "note plain";
   foot.style.marginTop = "14px";
   foot.textContent =
-    "Ordered by GitHub stars. Each one is added once its downloads and licence have been checked.";
+    "Ordered by GitHub stars. Each one is added once its downloads and licence have been checked. The icons are the emulators' own, under their projects' licences.";
   content.appendChild(foot);
 
   return { title: "Emulators", subtitle: `${mine.length} installed`, content };

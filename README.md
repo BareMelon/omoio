@@ -224,7 +224,9 @@ dumps of games you own. It doesn't crack anything: Wii U disc images need your
 own keys file, and Cemu does the decrypting. PS3 firmware comes from Sony's page,
 downloaded by you. Covers come only from RAWG, and the Skylanders pictures only
 from your own copy of the game. RPCS3 and Cemu are separate projects, run as
-their official builds, and all credit for the emulation goes to them.
+their official builds, and all credit for the emulation goes to them. The
+Emulators screen shows each emulator's own icon, unchanged, under its project's
+licence; [the notice beside them](src/icons/emulators/NOTICE.md) lists which.
 
 ## Build
 
@@ -242,4 +244,5 @@ The installer also needs the key its updates are signed with, in
 
 ## Licence
 
-[MIT](LICENSE). RPCS3, Cemu and the community packs keep their own licences.
+[MIT](LICENSE). RPCS3, Cemu, the community packs and the emulators' icons keep
+their own licences.

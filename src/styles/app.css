@@ -2035,23 +2035,22 @@ button {
   place-items: center;
   flex: none;
   border: 1px solid transparent;
-  color: var(--on-brand);
-  font-family: var(--mono);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-shadow: 0 1px 4px rgb(var(--shadow) / 0.5);
+}
+.emu-badge img {
+  width: 76%;
+  height: 76%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 4px rgb(var(--shadow) / 0.5));
 }
 .emu-badge.big {
   width: 64px;
   height: 64px;
   border-radius: 14px;
-  font-size: 17px;
 }
 .emu-badge.small {
   width: 48px;
   height: 48px;
   border-radius: 11px;
-  font-size: 12.5px;
 }
 .emu-hero {
   display: flex;
