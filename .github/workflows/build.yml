@@ -1,0 +1,61 @@
+name: Build installer
+
+# Builds the Windows installer from the tagged source on GitHub's own machines,
+# so anyone can see a release comes from the code in this repository.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Install frontend packages
+        run: npm ci
+
+      # The icon set is generated, never committed.
+      - name: Generate icons
+        run: npx tauri icon Images/Icon/omoio-icon-1024.png
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      # Bash rather than PowerShell: the update key has no password, and
+      # PowerShell drops a variable set to "", which leaves Tauri waiting for
+      # one. Without the key secret the installer is still built, only without
+      # the signature the in-app updater checks.
+      - name: Build installer
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            npx tauri build
+          else
+            echo "No update signing key; building without updater signature."
+            npx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omoio-installer
+          path: |
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe.sig
+          if-no-files-found: error
