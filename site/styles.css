@@ -328,3 +328,26 @@ h3 {
   .play { width: 56px; height: 56px; margin: -28px 0 0 -28px; }
   .play svg { width: 22px; height: 22px; }
 }
+
+/* The download count page, omoio.app/stats. */
+.stats h1 { font-size: 64px; font-variant-numeric: tabular-nums; }
+.stats .lede { margin-top: 6px; color: var(--mute); }
+.releases {
+  width: 100%;
+  max-width: 360px;
+  margin-top: 28px;
+  border-collapse: collapse;
+  font: 400 14px/1.4 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.releases th {
+  padding: 0 0 8px;
+  font: 500 11px/1 var(--ui);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: left;
+}
+.releases td { padding: 10px 0; border-top: 1px solid var(--line); text-align: left; }
+.releases th:last-child, .releases td:last-child { text-align: right; }
+.stats .download { border: 0; cursor: pointer; }
