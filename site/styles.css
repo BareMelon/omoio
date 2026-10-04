@@ -351,3 +351,13 @@ h3 {
 .releases td { padding: 10px 0; border-top: 1px solid var(--line); text-align: left; }
 .releases th:last-child, .releases td:last-child { text-align: right; }
 .stats .download { border: 0; cursor: pointer; }
+
+/* Plain text pages, such as privacy. */
+.page { max-width: 680px; padding-top: 24px; padding-bottom: 32px; }
+.page h1 { margin-top: 24px; }
+.page .lede { color: var(--ink); text-wrap: pretty; }
+.page .section { padding: 40px 0 0; }
+.page .section p { margin-top: 10px; }
+.plain { margin: 12px 0 0; padding-left: 20px; color: var(--mute); font-size: 15px; }
+.plain li { margin-top: 8px; }
+.plain strong { color: var(--ink); font-weight: 600; }
