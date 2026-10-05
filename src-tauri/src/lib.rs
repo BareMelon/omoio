@@ -112,6 +112,7 @@ pub fn run() {
             commands::get_figure_pictures,
             commands::stop_figure_pictures,
             commands::figures,
+            commands::villains,
             commands::add_figures,
             commands::close_portal_menu,
             commands::portal_menu_family,

@@ -740,10 +740,41 @@ export interface Figure {
   /// Force's new poses of older Skylanders (series 3).
   series: number | null;
   movement: Movement | null;
+  /// The villain a Trap Team trap holds, read from the trap's own data.
+  holds: Trapped | null;
+}
+
+export interface Trapped {
+  /// The villain's number in the game's own files, 1001 to 1046.
+  villain: number;
+  /// Its variant form, such as Outlaw Brawl and Chain.
+  variant: boolean;
+  evolved: boolean;
 }
 
 export function figures(): Promise<Figure[]> {
   return invoke("figures");
+}
+
+/// A Trap Team villain: caught or not, and the saved trap that holds it now.
+export interface Villain {
+  id: number;
+  name: string;
+  /// null for Kaos, who only fits his own trap.
+  element: FigureElement | null;
+  caught: boolean;
+  trap: {
+    name: string;
+    path: string;
+    id: number;
+    variant: number;
+    variant_form: boolean;
+    evolved: boolean;
+  } | null;
+}
+
+export function villains(): Promise<Villain[]> {
+  return invoke("villains");
 }
 
 /// Resolves to how many were added.

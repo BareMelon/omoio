@@ -5,12 +5,15 @@
 //!
 //! Figures are the user's own files, copied into Omoio's figures folder from
 //! Settings, or new ones of any character, which the emulator's own figure
-//! maker makes into the same folder. Omoio never writes figure data itself.
+//! maker makes into the same folder. Omoio never writes figure data itself;
+//! a Trap Team trap is read, for the villain it holds.
 
 use crate::backends::EmulatorBackend;
 use crate::core::console::Console;
+use crate::core::figure_data::{self, Trapped};
 use crate::core::figures::{self, Character, Element, Kind, Movement};
 use crate::core::settings::Settings;
+use crate::core::villains::{Villain, VILLAINS};
 use crate::session::Session;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -59,6 +62,17 @@ pub struct Figure {
     pub series: Option<u8>,
     /// How a swapper's bottom half moves.
     pub movement: Option<Movement>,
+    /// The villain a trap holds, read from the data the game wrote to it.
+    pub holds: Option<Trapped>,
+}
+
+/// The villain in a trap file. Only a trap is opened, and only read.
+fn held(path: &Path, id: Option<u16>) -> Option<Trapped> {
+    if !id.is_some_and(figure_data::is_trap) {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    figure_data::trapped(&<[u8; figure_data::SIZE]>::try_from(bytes.as_slice()).ok()?)
 }
 
 /// Which character each figure Omoio had made is, by file name.
@@ -105,6 +119,7 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
                 .map(|path| {
                     let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                     let character = made.get(&file).copied();
+                    let holds = held(&path, character.map(|[id, _]| id));
                     Figure {
                         name: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
                         path: path.to_string_lossy().into_owned(),
@@ -114,6 +129,7 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
                         kind: character.map(|[id, _]| figures::kind(id)),
                         series: character.and_then(|[_, variant]| figures::series(variant)),
                         movement: character.and_then(|[id, _]| figures::movement(id)),
+                        holds,
                     }
                 })
                 .collect()
@@ -130,6 +146,70 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
         )
     });
     found
+}
+
+/// A villain as the menu's villains tab shows it.
+#[derive(serde::Serialize)]
+pub struct VillainState {
+    #[serde(flatten)]
+    pub villain: Villain,
+    /// Seen in one of the user's traps, now or before.
+    pub caught: bool,
+    /// The saved trap that holds it now.
+    pub trap: Option<HeldIn>,
+}
+
+#[derive(serde::Serialize)]
+pub struct HeldIn {
+    pub name: String,
+    pub path: String,
+    pub id: u16,
+    pub variant: u16,
+    /// The villain's variant form, such as Outlaw Brawl and Chain.
+    pub variant_form: bool,
+    pub evolved: bool,
+}
+
+/// Which villains Omoio has seen in a trap. Kept, so a villain stays caught
+/// once its trap has taken another.
+fn caught_file(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("caught-villains.json"))
+}
+
+/// Every Trap Team villain: which ones the user has caught and which saved
+/// trap holds each now.
+pub fn villains(app: &AppHandle) -> Vec<VillainState> {
+    let traps: Vec<Figure> = list(app).into_iter().filter(|figure| figure.holds.is_some()).collect();
+    let file = caught_file(app).ok();
+    let mut caught: std::collections::BTreeSet<u16> = file
+        .as_ref()
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    let known = caught.len();
+    caught.extend(traps.iter().filter_map(|trap| trap.holds.map(|holds| holds.villain)));
+    if caught.len() != known {
+        if let (Some(file), Ok(text)) = (file, serde_json::to_string(&caught)) {
+            let _ = std::fs::write(file, text);
+        }
+    }
+    VILLAINS
+        .iter()
+        .map(|&villain| {
+            let trap = traps.iter().find_map(|trap| {
+                let holds = trap.holds.filter(|holds| holds.villain == villain.id)?;
+                Some(HeldIn {
+                    name: trap.name.clone(),
+                    path: trap.path.clone(),
+                    id: trap.id?,
+                    variant: trap.variant?,
+                    variant_form: holds.variant,
+                    evolved: holds.evolved,
+                })
+            });
+            VillainState { villain, caught: caught.contains(&villain.id), trap }
+        })
+        .collect()
 }
 
 /// Copies figure files the user picked into the figures folder. A file of the

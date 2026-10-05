@@ -1499,6 +1499,12 @@ pub fn figures(app: AppHandle) -> Vec<crate::portal_menu::Figure> {
     crate::portal_menu::list(&app)
 }
 
+/// Trap Team's villains: which the user has caught, and the trap holding each.
+#[tauri::command]
+pub fn villains(app: AppHandle) -> Vec<crate::portal_menu::VillainState> {
+    crate::portal_menu::villains(&app)
+}
+
 /// Copies figure files the user picked into Omoio's figures folder.
 #[tauri::command]
 pub fn add_figures(app: AppHandle, paths: Vec<String>) -> Result<usize, String> {
