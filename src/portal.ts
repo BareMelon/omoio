@@ -1055,7 +1055,7 @@ async function loadOffers() {
 }
 
 /// Reads what is on the portal. Usually quick, so the notice only comes up
-/// when Cemu takes its time.
+/// when the emulator takes its time.
 async function refresh() {
   busy = true;
   const looking: Notice = { kind: "working", title: "Reading the portal…" };

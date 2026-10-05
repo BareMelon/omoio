@@ -132,9 +132,10 @@ pub trait EmulatorBackend: Sync {
         None
     }
 
-    /// Called again and again while a game runs, for anything the emulator
-    /// puts on its window that doesn't belong over the game.
-    fn tidy_window(&self, _pid: u32) {}
+    /// Called again and again while a game runs, with the game's window, for
+    /// anything the emulator puts on the screen that doesn't belong over the
+    /// game.
+    fn tidy_window(&self, _pid: u32, _game: isize) {}
 
     /// Stops the running game hearing the pad while one of Omoio's menus is
     /// over it, or lets it hear again. An emulator that needs nothing done,

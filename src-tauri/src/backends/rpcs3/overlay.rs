@@ -13,8 +13,8 @@
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
-    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWLP_HWNDPARENT, GWL_STYLE,
+    EnumWindows, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWLP_HWNDPARENT, GWL_STYLE, GW_OWNER,
     SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNA, WS_CAPTION, WS_POPUP, WS_SYSMENU,
     WS_THICKFRAME, WS_VISIBLE,
 };
@@ -29,15 +29,24 @@ unsafe extern "system" fn visit(window: HWND, state: LPARAM) -> BOOL {
     let mut owner = 0u32;
     unsafe { GetWindowThreadProcessId(window, Some(&mut owner)) };
 
-    if owner == search.pid && unsafe { IsWindowVisible(window) }.as_bool() {
+    if owner == search.pid && unsafe { IsWindowVisible(window) }.as_bool() && is_game_window(window) {
         search.found = Some(window);
         return BOOL(0); // stop at the first one
     }
     BOOL(1)
 }
 
-/// RPCS3's visible window for a given process. Called on a timer while the
-/// game boots, because the window only appears once it has something to show.
+/// Whether a window can be the game's. An emulator's dialogs have an owner,
+/// and RPCS3's main window, there for a Skylanders game's portal, shows for a
+/// moment before it is hidden.
+fn is_game_window(window: HWND) -> bool {
+    let owned = unsafe { GetWindow(window, GW_OWNER) }.is_ok();
+    !owned && !super::portal::title(window).starts_with(super::portal::MAIN_TITLE)
+}
+
+/// The emulator's game window for a given process. Called on a timer while
+/// the game boots, because the window only appears once it has something to
+/// show.
 pub fn find_window(pid: u32) -> Option<isize> {
     let mut search = Search { pid, found: None };
     let _ = unsafe { EnumWindows(Some(visit), LPARAM(&mut search as *mut Search as isize)) };

@@ -262,8 +262,9 @@ pub fn watch(app: AppHandle, pid: u32) {
 
             if attached {
                 place(&window, &session);
-                if let Some(backend) = session.playing().and_then(|playing| crate::backends::for_console(playing.console)) {
-                    backend.tidy_window(pid);
+                let backend = session.playing().and_then(|playing| crate::backends::for_console(playing.console));
+                if let (Some(backend), Some(game)) = (backend, session.window()) {
+                    backend.tidy_window(pid, game);
                 }
             }
         }

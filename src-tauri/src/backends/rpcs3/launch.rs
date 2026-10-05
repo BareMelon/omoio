@@ -148,13 +148,20 @@ pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
     keep_pad_to_the_game(app);
 
     // --no-gui keeps RPCS3's own window out of the way: the user asked to play
-    // a game, not to meet the emulator. Spawned rather than waited on, so
-    // Omoio stays usable while the game runs.
-    let child = super::command(&exe)
-        .arg("--no-gui")
-        .arg(&eboot)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    // a game, not to meet the emulator. A Skylanders game needs that window
+    // for its portal, so it starts with it and Omoio hides it; see portal.rs.
+    // Spawned rather than waited on, so Omoio stays usable while the game runs.
+    let skylanders = crate::core::figures::is_skylanders(&game.title);
+    let mut command = super::command(&exe);
+    if skylanders {
+        command.env("QT_QPA_PLATFORM", super::portal::QT_PLATFORM);
+    } else {
+        command.arg("--no-gui");
+    }
+    let child = command.arg(&eboot).spawn().map_err(|e| e.to_string())?;
+    if skylanders {
+        super::portal::prepare(child.id());
+    }
     Ok(child.id())
 }
 

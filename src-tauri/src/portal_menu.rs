@@ -289,11 +289,6 @@ pub fn used(app: &AppHandle, figure: &str) {
     let _ = settings.save(&file);
 }
 
-/// Skylanders games are the ones with a portal to fill.
-fn wants_portal(title: &str) -> bool {
-    title.to_lowercase().contains("skylanders")
-}
-
 #[derive(Clone, serde::Serialize)]
 struct MenuState {
     open: bool,
@@ -355,12 +350,23 @@ fn open(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Hides the menu. The game underneath carries on, and hears the pad again.
+/// Hides the menu. The game underneath carries on, and hears the pad again:
+/// an RPCS3 game hears it only while its window is in front.
 pub fn close(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();
         tell(app, false);
         crate::session::quiet_game(app);
+        app.state::<Session>().focus_game();
+    }
+}
+
+/// Puts the menu back in front after the emulator's own windows took it for
+/// a figure, so the game stays deaf to the pad until the menu closes, and
+/// Omoio may hand the game the keyboard then.
+pub fn take_front(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(LABEL).filter(|_| showing(app)) {
+        let _ = window.set_focus();
     }
 }
 
@@ -410,7 +416,7 @@ pub fn watch(app: AppHandle, pid: u32) {
             let Some(playing) = session.playing() else {
                 continue;
             };
-            if !wants_portal(&playing.title) {
+            if !figures::is_skylanders(&playing.title) {
                 return;
             }
             let pressing = crate::pads::connected()
@@ -447,11 +453,5 @@ mod tests {
         assert!(is_figure(Path::new("x.dump")));
         assert!(!is_figure(Path::new("notes.txt")));
         assert!(!is_figure(Path::new("no extension")));
-    }
-
-    #[test]
-    fn only_skylanders_games_open_the_menu() {
-        assert!(wants_portal("Skylanders SWAP Force"));
-        assert!(!wants_portal("LittleBigPlanet 3"));
     }
 }

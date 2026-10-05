@@ -729,7 +729,7 @@ impl super::EmulatorBackend for Cemu {
         packs::apply(app);
     }
 
-    fn tidy_window(&self, pid: u32) {
+    fn tidy_window(&self, pid: u32, _game: isize) {
         portal::tidy(pid);
     }
 

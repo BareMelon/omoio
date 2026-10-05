@@ -1471,13 +1471,16 @@ fn running_emulator(app: &AppHandle) -> Result<(&'static dyn crate::backends::Em
 
 /// The figures on the running game's toy portal, by slot, empty where there
 /// is none. Each of these takes a moment, since the emulator's own window does
-/// the work, so they run off the interface thread.
+/// the work, so they run off the interface thread. That window may take the
+/// front from the menu, which takes it back after.
 #[tauri::command]
 pub async fn portal_figures(app: AppHandle) -> Result<Vec<String>, String> {
     let (backend, pid) = running_emulator(&app)?;
-    tauri::async_runtime::spawn_blocking(move || backend.portal_figures(pid))
+    let names = tauri::async_runtime::spawn_blocking(move || backend.portal_figures(pid))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    crate::portal_menu::take_front(&app);
+    names
 }
 
 /// `slot` counts from 0. A figure that went on is remembered as used, so the
@@ -1488,7 +1491,9 @@ pub async fn portal_load(app: AppHandle, slot: usize, figure: String) -> Result<
     let path = figure.clone();
     let names = tauri::async_runtime::spawn_blocking(move || backend.portal_load(pid, slot, Path::new(&path)))
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(|e| e.to_string())?;
+    crate::portal_menu::take_front(&app);
+    let names = names?;
     crate::portal_menu::used(&app, &figure);
     Ok(names)
 }
@@ -1552,8 +1557,9 @@ pub async fn figure_characters(app: AppHandle) -> Result<Vec<crate::core::figure
         crate::portal_menu::characters(&handle, backend, playing.console, pid)
     })
     .await
-    .map_err(|e| e.to_string())??;
-    Ok(crate::core::figures::offers(characters, game))
+    .map_err(|e| e.to_string())?;
+    crate::portal_menu::take_front(&app);
+    Ok(crate::core::figures::offers(characters?, game))
 }
 
 /// Has the emulator make a new figure of a character, kept in the figures
@@ -1570,7 +1576,9 @@ pub async fn portal_create(
     let made = character.clone();
     let names = tauri::async_runtime::spawn_blocking(move || backend.portal_create(pid, slot, &character, &path))
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(|e| e.to_string())?;
+    crate::portal_menu::take_front(&app);
+    let names = names?;
     crate::portal_menu::made(&app, &file, &made);
     crate::portal_menu::used(&app, &file.to_string_lossy());
     Ok(names)
@@ -1590,9 +1598,11 @@ pub fn set_portal_button(app: AppHandle, button: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn portal_clear(app: AppHandle, slot: usize) -> Result<Vec<String>, String> {
     let (backend, pid) = running_emulator(&app)?;
-    tauri::async_runtime::spawn_blocking(move || backend.portal_clear(pid, slot))
+    let names = tauri::async_runtime::spawn_blocking(move || backend.portal_clear(pid, slot))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    crate::portal_menu::take_front(&app);
+    names
 }
 
 /// The figures' pictures a game has so far: the running game's when no

@@ -46,6 +46,11 @@ pub enum Game {
     Imaginators,
 }
 
+/// Skylanders games are the ones with a portal to fill.
+pub fn is_skylanders(title: &str) -> bool {
+    title.to_lowercase().contains("skylanders")
+}
+
 /// Which game a title is, from its name. `None` for one Omoio can't tell,
 /// which then shows every figure.
 pub fn game_from_title(title: &str) -> Option<Game> {
@@ -325,6 +330,15 @@ pub fn game_variant(name: &str, id: u16, variant: u16) -> u16 {
         .map_or(variant, |&(.., right)| right)
 }
 
+/// Which of those seven traps a figure is, from its id and the game's own
+/// variant, which an emulator's list can't name.
+pub fn trap_named(id: u16, variant: u16) -> Option<&'static str> {
+    TRAP_VARIANTS
+        .iter()
+        .find(|&&(_, trap_id, _, right)| trap_id == id && right == variant)
+        .map(|&(name, ..)| name)
+}
+
 /// A character as the menu lists it, with where it belongs.
 #[derive(Debug, Clone, Serialize)]
 pub struct Offer {
@@ -513,6 +527,23 @@ mod tests {
         assert_eq!(game_variant("Whirlwind", 216, 0x3000), 0x3000);
         let made = offers(vec![Character { name: "Tempest Timer".into(), id: 212, variant: 0x300D }], Some(Game::TrapTeam));
         assert_eq!((made[0].character.id, made[0].character.variant), (212, 0x300E));
+    }
+
+    #[test]
+    fn a_trap_made_with_the_games_variant_is_named() {
+        assert_eq!(trap_named(212, 0x300E), Some("Tempest Timer"));
+        assert_eq!(trap_named(210, 0x3015), Some("Rune Rocket"));
+        assert_eq!(trap_named(219, 0x3015), Some("Shining Ship"));
+        // The variant the emulators list, and a trap they have right.
+        assert_eq!(trap_named(212, 0x300D), None);
+        assert_eq!(trap_named(212, 0x3003), None);
+    }
+
+    #[test]
+    fn only_skylanders_games_have_a_portal() {
+        assert!(is_skylanders("Skylanders SWAP Force"));
+        assert!(is_skylanders("Skylanders Giants"));
+        assert!(!is_skylanders("LittleBigPlanet 3"));
     }
 
     #[test]

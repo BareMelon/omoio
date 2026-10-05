@@ -10,6 +10,8 @@ pub mod launch;
 pub mod overlay;
 pub mod packages;
 pub mod patches;
+#[cfg(windows)]
+pub mod portal;
 pub mod saves;
 pub mod updates;
 
@@ -317,11 +319,51 @@ impl super::EmulatorBackend for Rpcs3 {
             settings: true,
             saves: true,
             compatibility: true,
-            // RPCS3's portal window is Qt, which Omoio cannot drive yet.
-            portal: false,
+            portal: true,
             // Omoio switches RPCS3's background input off before each game.
             quiet_behind: true,
         }
+    }
+
+    fn portal_figures(&self, pid: u32) -> Result<Vec<String>, String> {
+        portal::figures(pid)
+    }
+
+    fn portal_load(&self, pid: u32, slot: usize, figure: &Path) -> Result<Vec<String>, String> {
+        portal::load(pid, slot, figure)
+    }
+
+    fn portal_clear(&self, pid: u32, slot: usize) -> Result<Vec<String>, String> {
+        portal::clear(pid, slot)
+    }
+
+    fn portal_characters(&self, pid: u32) -> Result<Vec<crate::core::figures::Character>, String> {
+        portal::characters(pid)
+    }
+
+    fn portal_create(
+        &self,
+        pid: u32,
+        slot: usize,
+        character: &crate::core::figures::Character,
+        file: &Path,
+    ) -> Result<Vec<String>, String> {
+        portal::create(pid, slot, character, file)
+    }
+
+    fn tidy_window(&self, pid: u32, game: isize) {
+        portal::tidy(pid, game);
+    }
+
+    /// A PS3 game is a folder of plain files, which is all the picture
+    /// reader needs.
+    fn readable_copy(
+        &self,
+        _app: &AppHandle,
+        game: &crate::core::library::Game,
+        _title_of: &dyn Fn(&Path) -> Option<String>,
+    ) -> Option<PathBuf> {
+        game.path.is_dir().then(|| game.path.clone())
     }
 
     fn game_settings(
