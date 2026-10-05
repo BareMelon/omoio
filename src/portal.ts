@@ -174,15 +174,28 @@ let chip = 0;
 let ready = false;
 /// The top half picked for a swapper, while waiting for its bottom.
 let pickedTop: { name: string; top: Offer } | null = null;
-/// The figures' pictures Omoio has read out of this game, by name.
-let pictures: { folder: string; names: Set<string> } | null = null;
+/// The figures' pictures Omoio has read out of this game, by name, and for
+/// each figure id the picture of its lowest variant.
+let pictures: { folder: string; names: Set<string>; firstOf: Map<number, string> } | null = null;
 
 /// A figure's picture, or its plain version's when its variant has none of
-/// its own. `null` when Omoio has no picture of it.
+/// its own, or failing that any version's: Trap Team names its pictures by
+/// the game's own variants, which Cemu's list doesn't give its Trap Masters.
+/// `null` when Omoio has no picture of it.
 function pictureOf(id: number | null | undefined, variant: number | null | undefined): string | null {
   if (id == null) return null;
   const four = (value: number) => value.toString(16).padStart(4, "0");
-  return fileOf(`${id}-${four(variant ?? 0)}`) ?? fileOf(`${id}-0000`);
+  return fileOf(`${id}-${four(variant ?? 0)}`) ?? fileOf(`${id}-0000`) ?? fileOf(pictures?.firstOf.get(id) ?? "");
+}
+
+/// For each figure id, the name of its picture with the lowest variant.
+function firstPictures(names: string[]): Map<number, string> {
+  const first = new Map<number, string>();
+  for (const name of [...names].sort()) {
+    const match = /^(\d+)-[0-9a-f]{4}$/.exec(name);
+    if (match && !first.has(Number(match[1]))) first.set(Number(match[1]), name);
+  }
+  return first;
 }
 
 /// One of the pictures Omoio read out of the game, by name, when it has it.
@@ -871,7 +884,7 @@ async function show() {
     shown = true;
     // Read again each time, since pictures can be got while the game runs.
     pictures = await figurePictures()
-      .then((found) => ({ folder: found.folder, names: new Set(found.names) }))
+      .then((found) => ({ folder: found.folder, names: new Set(found.names), firstOf: firstPictures(found.names) }))
       .catch(() => null);
     await refresh();
     await loadOffers();
