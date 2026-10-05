@@ -3,7 +3,7 @@
 </p>
 <h1 align="center">Omoio</h1>
 <p align="center">Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.</p>
-<p align="center"><a href="https://omoio.app">omoio.app</a></p>
+<p align="center"><a href="https://omoio.app">omoio.app</a> · <a href="https://ko-fi.com/omoio">Support on Ko-fi</a></p>
 
 [![The Omoio video on YouTube, 1 minute 10 seconds](design/screenshots/video.jpg)](https://youtu.be/wWmthRdoImE)
 
@@ -245,6 +245,12 @@ npm run tauri build -- --no-bundle    # build omoio.exe
 
 The installer also needs the key its updates are signed with, in
 `TAURI_SIGNING_PRIVATE_KEY`, so it's built for releases only.
+
+## Support
+
+Omoio is free and stays free. If it saved you some setup and you want to help,
+you can buy me a coffee on [Ko-fi](https://ko-fi.com/omoio). It goes into
+getting the installer code signed and adding the next emulators.
 
 ## Licence
 
