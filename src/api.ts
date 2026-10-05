@@ -752,8 +752,9 @@ export interface Trapped {
   evolved: boolean;
 }
 
-export function figures(): Promise<Figure[]> {
-  return invoke("figures");
+/// The user's figure files. With `playable`, only those the running game reads.
+export function figures(playable = false): Promise<Figure[]> {
+  return invoke("figures", { playable });
 }
 
 /// A Trap Team villain: caught or not, and the saved trap that holds it now.

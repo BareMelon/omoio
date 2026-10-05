@@ -891,7 +891,7 @@ async function change(saying: Notice, job: () => Promise<string[]>, said: (names
   try {
     onPortal = await job();
     notify(said(onPortal));
-    mine = await listFigures();
+    mine = await listFigures(true);
     buildTabs();
   } catch (err) {
     notify(problem(err, "That didn't work. Try again."));
@@ -1065,7 +1065,7 @@ async function refresh() {
       notify(problem(err, "Couldn't read the portal."));
       return null;
     }),
-    listFigures(),
+    listFigures(true),
     listVillains().catch(() => [] as Villain[]),
   ]);
   window.clearTimeout(slow);

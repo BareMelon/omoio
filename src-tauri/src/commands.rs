@@ -1498,10 +1498,25 @@ pub async fn portal_load(app: AppHandle, slot: usize, figure: String) -> Result<
     Ok(names)
 }
 
-/// The user's figure files, the ones used lately first.
+/// The user's figure files, the ones used lately first. With `playable`, only
+/// those the running game reads, for the portal menu: a figure from a later
+/// game does nothing in an earlier one. A file the user brought is kept, since
+/// Omoio can't tell which character it is.
 #[tauri::command]
-pub fn figures(app: AppHandle) -> Vec<crate::portal_menu::Figure> {
+pub fn figures(app: AppHandle, playable: Option<bool>) -> Vec<crate::portal_menu::Figure> {
+    use crate::core::figures::{game_from_title, reads};
+    let game = playable
+        .unwrap_or(false)
+        .then(|| app.state::<Session>().playing())
+        .flatten()
+        .and_then(|playing| game_from_title(&playing.title));
     crate::portal_menu::list(&app)
+        .into_iter()
+        .filter(|figure| {
+            let character = figure.id.zip(figure.variant);
+            game.is_none_or(|game| character.is_none_or(|(id, variant)| reads(game, id, variant)))
+        })
+        .collect()
 }
 
 /// Trap Team's villains: which the user has caught, and the trap holding each.
