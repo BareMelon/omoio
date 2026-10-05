@@ -26,9 +26,9 @@ import itemIcon from "./icons/items.svg";
 import swapperIcon from "./icons/swappers.svg";
 
 /// The Skylanders menu, drawn by Omoio over the running game and used with
-/// the pad alone. The shoulder buttons go through the tabs: Saved, then one
-/// tab to each element, then items such as the treasure chest and the
-/// swords, traps and adventure packs. The d-pad or left stick moves, the
+/// the pad alone. The shoulder buttons go through the tabs: Saved and
+/// traps, then one tab to each element, then swappers, items such as the
+/// treasure chest and the swords, and adventure packs. The d-pad or left stick moves, the
 /// bottom face button puts a figure on the portal, the left one takes it
 /// off, the right one closes. Mouse and keyboard work as well.
 ///
@@ -234,6 +234,9 @@ function buildTabs() {
       entries: mine.map((figure) => ({ name: figure.name, element: figure.element, kind: figure.kind, figure })),
     },
   ];
+  // Traps go on and off all through a Trap Team game, so they sit next to Saved.
+  const traps = offers.filter((offer) => offer.kind === "trap").map(entry).sort(byName);
+  if (traps.length > 0) next.push({ label: "Traps", icon: kindIcon("trap") ?? undefined, entries: traps });
   for (const [element, label] of ELEMENTS) {
     const entries = characters.filter((offer) => offer.element === element).map(entry).sort(byName);
     if (entries.length > 0) next.push({ label, element, entries });
@@ -249,7 +252,7 @@ function buildTabs() {
     })
     .sort(byName);
   if (swappers.length > 0) next.push({ label: "Swappers", icon: "swapper", entries: swappers });
-  for (const [kind, label] of KINDS) {
+  for (const [kind, label] of KINDS.filter(([kind]) => kind !== "trap")) {
     const entries = offers.filter((offer) => offer.kind === kind).map(entry).sort(byName);
     if (entries.length > 0) next.push({ label, icon: kindIcon(kind) ?? undefined, entries });
   }
