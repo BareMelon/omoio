@@ -55,6 +55,12 @@ rustls = { version = "0.23", default-features = false }
 # emulator names the controller that is actually there. Pure Rust, no DLL to
 # ship. See backends/rpcs3/controllers.rs.
 gilrs = "0.11"
+# Reads which villain a Trap Team trap holds, for the portal menu: a figure's
+# data is encrypted with AES under a key made with MD5. Read only. aes is
+# already in the build through sevenz-rust2, and md-5 shares sha2's pieces.
+# See core/figure_data.rs.
+aes = "0.9"
+md-5 = "0.11"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
