@@ -301,6 +301,30 @@ pub fn movement(id: u16) -> Option<Movement> {
     BOTTOMS.get(usize::from(id.checked_sub(1000)?)).copied()
 }
 
+/// Seven traps Cemu's figure maker lists with a variant Trap Team doesn't
+/// use, so the game reads them as another trap or not at all (Cemu issue
+/// #1816): name, id, Cemu's variant, the game's. The game's own Collection
+/// pictures, named by id and variant, and a list made from real figures agree
+/// on the game's. Dolphin's list has the same seven.
+const TRAP_VARIANTS: [(&str, u16, u16, u16); 7] = [
+    ("Rune Rocket", 210, 0x3014, 0x3015),
+    ("Tempest Timer", 212, 0x300D, 0x300E),
+    ("Tech Totem", 214, 0x3000, 0x3001),
+    ("Banded Boulder", 216, 0x3000, 0x3004),
+    ("Spinning Sandstorm", 216, 0x3013, 0x3012),
+    ("Dark Dagger", 218, 0x3000, 0x3018),
+    ("Shining Ship", 219, 0x3000, 0x3015),
+];
+
+/// The variant the game itself gives a figure. Only the seven traps above
+/// change, and only while Cemu still lists them wrongly.
+pub fn game_variant(name: &str, id: u16, variant: u16) -> u16 {
+    TRAP_VARIANTS
+        .iter()
+        .find(|&&(trap, trap_id, listed, _)| trap == name && trap_id == id && listed == variant)
+        .map_or(variant, |&(.., right)| right)
+}
+
 /// A character as the menu lists it, with where it belongs.
 #[derive(Debug, Clone, Serialize)]
 pub struct Offer {
@@ -314,21 +338,23 @@ pub struct Offer {
 }
 
 /// The characters `game` reads, each with its element and kind. Every one
-/// when the game isn't known.
+/// when the game isn't known. A figure made from an offer carries the
+/// game's own variant, so a trap Cemu lists wrongly is made right.
 pub fn offers(characters: Vec<Character>, game: Option<Game>) -> Vec<Offer> {
     characters
         .into_iter()
         .filter(|c| game.is_none_or(|game| reads(game, c.id, c.variant)))
-        .map(|character| Offer {
-            element: element(character.id),
-            kind: kind(character.id),
-            half: half(character.id),
-            series: series(character.variant),
-            movement: movement(character.id),
-            character: Character {
-                name: repaired(&character.name),
-                ..character
-            },
+        .map(|character| {
+            let name = repaired(&character.name);
+            let variant = game_variant(&name, character.id, character.variant);
+            Offer {
+                element: element(character.id),
+                kind: kind(character.id),
+                half: half(character.id),
+                series: series(variant),
+                movement: movement(character.id),
+                character: Character { name, id: character.id, variant },
+            }
         })
         .collect()
 }
@@ -468,6 +494,25 @@ mod tests {
         for each in [Bounce, Climb, Dig, Rocket, Sneak, Speed, Spin, Teleport] {
             assert_eq!((1000..1016).filter(|&id| movement(id) == Some(each)).count(), 2, "{each:?}");
         }
+    }
+
+    #[test]
+    fn traps_cemu_lists_wrongly_are_made_with_the_games_variant() {
+        assert_eq!(game_variant("Tempest Timer", 212, 0x300D), 0x300E);
+        assert_eq!(game_variant("Rune Rocket", 210, 0x3014), 0x3015);
+        assert_eq!(game_variant("Tech Totem", 214, 0x3000), 0x3001);
+        assert_eq!(game_variant("Banded Boulder", 216, 0x3000), 0x3004);
+        assert_eq!(game_variant("Spinning Sandstorm", 216, 0x3013), 0x3012);
+        assert_eq!(game_variant("Dark Dagger", 218, 0x3000), 0x3018);
+        assert_eq!(game_variant("Shining Ship", 219, 0x3000), 0x3015);
+        // The traps Cemu has right, and the seven once Cemu fixes its list.
+        assert_eq!(game_variant("Breezy Bird", 212, 0x3003), 0x3003);
+        assert_eq!(game_variant("Rock Hawk", 216, 0x3003), 0x3003);
+        assert_eq!(game_variant("Tempest Timer", 212, 0x300E), 0x300E);
+        // Another figure that happens to share an id and variant.
+        assert_eq!(game_variant("Whirlwind", 216, 0x3000), 0x3000);
+        let made = offers(vec![Character { name: "Tempest Timer".into(), id: 212, variant: 0x300D }], Some(Game::TrapTeam));
+        assert_eq!((made[0].character.id, made[0].character.variant), (212, 0x300E));
     }
 
     #[test]
