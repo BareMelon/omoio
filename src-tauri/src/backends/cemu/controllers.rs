@@ -5,7 +5,8 @@
 //! in its config folder (`InputManager::load` in Cemu v2.6), and Omoio writes
 //! them from the layout it keeps (core/pad_layout.rs):
 //!
-//! - Player 1 is the Wii U GamePad, which most games expect to be there.
+//! - Player 1 is the Wii U GamePad, which most games expect to be there, but a
+//!   Pro Controller in the few games that need one (`PRO_FIRST`).
 //! - Players 2 to 4 are Wii U Pro Controllers, which multiplayer games take.
 //!
 //! Each is an XInput pad, named by its slot. Cemu's XInput pad is known by the
@@ -19,6 +20,22 @@
 use crate::core::pad_layout::{Player, PLAYERS};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
+
+/// Games whose first player has to be a Wii U Pro Controller rather than the
+/// GamePad, by their title ids. Skylanders Trap Team asks for a language the
+/// first time it starts, and that screen answers the GamePad's touch screen
+/// and a Pro Controller's buttons but never the GamePad's buttons, so a pad
+/// standing in for the GamePad was stuck on the flags. As a Pro Controller the
+/// same pad picked a flag and went on through the logos, the save slots and
+/// into the opening film (European disc, 5 October 2026; 000500001017c600 is
+/// the American one). Omoio shows only the TV picture, so nothing of the
+/// GamePad's screen is lost.
+pub const PRO_FIRST: [&str; 2] = ["0005000010181f00", "000500001017c600"];
+
+/// Player 1's file as each kind of controller, kept beside the others so the
+/// one a game needs can become `controller0.xml` as the game starts.
+const FIRST_AS_GAMEPAD: &str = "Player 1 GamePad.xml";
+const FIRST_AS_PRO: &str = "Player 1 Pro Controller.xml";
 
 /// The Wii U's buttons with the place each sits, in the order of the
 /// GamePad's `ButtonId`, which counts from 1. They sit where Nintendo's pads
@@ -141,11 +158,10 @@ fn xinput_slot(player: &Player) -> Option<u32> {
         .map(|number| number - 1)
 }
 
-/// Player `index`'s file, counted from 0 as Cemu names them. A player Cemu
-/// cannot read the pad of still gets the file, with no pad in it, so one left
-/// from before does not keep driving them.
-fn profile(index: usize, player: &Player) -> String {
-    let kind = Kind::for_player(index);
+/// A player's file, as the `kind` of controller. A player Cemu cannot read
+/// the pad of still gets the file, with no pad in it, so one left from before
+/// does not keep driving them.
+fn profile(kind: Kind, player: &Player) -> String {
     let controller = xinput_slot(player)
         .map(|slot| {
             let entries: String = WII_U
@@ -182,12 +198,32 @@ fn profile(index: usize, player: &Player) -> String {
     )
 }
 
+/// One file per player, counted from 0 as Cemu names them, and player 1's
+/// again as both kinds of controller.
 fn write_all(dir: &Path, players: &[Player]) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
     for (index, player) in players.iter().enumerate().take(PLAYERS) {
-        std::fs::write(dir.join(format!("controller{index}.xml")), profile(index, player))?;
+        std::fs::write(dir.join(format!("controller{index}.xml")), profile(Kind::for_player(index), player))?;
+    }
+    if let Some(first) = players.first() {
+        std::fs::write(dir.join(FIRST_AS_GAMEPAD), profile(Kind::GamePad, first))?;
+        std::fs::write(dir.join(FIRST_AS_PRO), profile(Kind::Pro, first))?;
     }
     Ok(())
+}
+
+/// Makes player 1 the kind of controller the game about to start needs: a
+/// Pro Controller for one in `PRO_FIRST`, the GamePad for any other. Cemu
+/// reads `controller0.xml` as the game starts, and each start sets it again.
+pub fn first_player(app: &AppHandle, pro: bool) -> Result<(), String> {
+    let dir = profile_dir(app)?;
+    let from = dir.join(if pro { FIRST_AS_PRO } else { FIRST_AS_GAMEPAD });
+    if !from.is_file() {
+        return Ok(());
+    }
+    std::fs::copy(from, dir.join("controller0.xml"))
+        .map(|_| ())
+        .map_err(|_| "Couldn't save the controller settings for Cemu.".to_string())
 }
 
 fn profile_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -237,14 +273,14 @@ mod tests {
 
     #[test]
     fn player_one_is_the_gamepad_and_the_rest_are_pro_controllers() {
-        let one = profile(0, &Player::on(xinput(1)));
+        let one = profile(Kind::for_player(0), &Player::on(xinput(1)));
         assert!(one.contains("<type>Wii U GamePad</type>"));
         assert!(one.contains("<api>XInput</api>"));
         assert!(one.contains("<uuid>0</uuid>"));
         assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A is the right button");
         assert!(one.contains("<mapping>2</mapping>\n\t\t\t\t<button>12</button>"), "B, which games jump with, is the bottom one");
 
-        let two = profile(1, &Player::on(xinput(2)));
+        let two = profile(Kind::for_player(1), &Player::on(xinput(2)));
         assert!(two.contains("<type>Wii U Pro Controller</type>"));
         assert!(two.contains("<uuid>1</uuid>"));
         assert!(two.contains("<display_name>Controller 2</display_name>"));
@@ -257,14 +293,14 @@ mod tests {
             ("East".to_string(), "South".to_string()),
             ("South".to_string(), "East".to_string()),
         ]);
-        let text = profile(0, &Player::with_buttons(xinput(1), buttons));
+        let text = profile(Kind::for_player(0), &Player::with_buttons(xinput(1), buttons));
         assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A now on the bottom button");
     }
 
     #[test]
     fn guide_is_never_written_since_cemu_cannot_read_it() {
         let buttons = BTreeMap::from([("Start".to_string(), "Guide".to_string())]);
-        let text = profile(1, &Player::with_buttons(xinput(2), buttons));
+        let text = profile(Kind::for_player(1), &Player::with_buttons(xinput(2), buttons));
         assert_eq!(text.matches("<entry>").count(), 23);
     }
 
@@ -276,13 +312,13 @@ mod tests {
             handler: "SDL".to_string(),
             family: "playstation".to_string(),
         };
-        let text = profile(1, &Player::on(pad));
+        let text = profile(Kind::for_player(1), &Player::on(pad));
         assert!(text.contains("<type>Wii U Pro Controller</type>"));
         assert!(!text.contains("<controller>"));
     }
 
     #[test]
-    fn every_player_gets_a_file() {
+    fn every_player_gets_a_file_and_player_one_a_pro_controller_too() {
         let dir = std::env::temp_dir().join(format!("omoio-cemu-pads-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let players: Vec<Player> = (1..=4).map(|slot| Player::on(xinput(slot))).collect();
@@ -290,6 +326,12 @@ mod tests {
         for index in 0..PLAYERS {
             assert!(dir.join(format!("controller{index}.xml")).is_file());
         }
+        let pro = std::fs::read_to_string(dir.join(FIRST_AS_PRO)).unwrap();
+        assert!(pro.contains("<type>Wii U Pro Controller</type>"));
+        assert!(pro.contains("<uuid>0</uuid>"), "player 1's own pad");
+        assert!(pro.contains("<mapping>12</mapping>\n\t\t\t\t<button>0</button>"), "D-pad up after Home: {pro}");
+        let gamepad = std::fs::read_to_string(dir.join(FIRST_AS_GAMEPAD)).unwrap();
+        assert_eq!(gamepad, std::fs::read_to_string(dir.join("controller0.xml")).unwrap());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

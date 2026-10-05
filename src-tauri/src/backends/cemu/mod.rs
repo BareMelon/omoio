@@ -816,6 +816,11 @@ impl super::EmulatorBackend for Cemu {
         if !game.path.exists() {
             return Err("This game isn't where it was. Reconnect the drive it's on.".to_string());
         }
+        // Known by name as well as by id: a disc image's id is known only once
+        // Cemu has run it, and a game's first start is when it needs this.
+        let pro = crate::core::figures::game_from_title(&game.title) == Some(crate::core::figures::Game::TrapTeam)
+            || title_id_for(app, game).is_some_and(|id| controllers::PRO_FIRST.contains(&id.as_str()));
+        let _ = controllers::first_player(app, pro);
         // The game's own folder, so Cemu reads its meta and starts it as a
         // proper title rather than in the standalone mode it keeps for loose
         // programs. Not `-f`: Omoio places the picture itself, in its window
