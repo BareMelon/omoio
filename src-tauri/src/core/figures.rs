@@ -71,7 +71,8 @@ fn id_game(id: u16) -> Game {
         540..=543 => Game::Giants,
         0..=99 | 200..=207 | 300..=304 | 400..=449 => Game::Spyro,
         100..=199 | 208..=209 => Game::Giants,
-        210..=299 | 305..=399 | 450..=999 => Game::TrapTeam,
+        // Imaginators' Senseis start at 600 (King Pen), so Trap Team stops before.
+        210..=299 | 305..=399 | 450..=599 => Game::TrapTeam,
         1000..=3219 | 3300..=3399 => Game::SwapForce,
         3220..=3299 | 3400..=3599 => Game::SuperChargers,
         _ => Game::Imaginators,
@@ -411,6 +412,9 @@ mod tests {
         assert!(!reads(swap, 230, 0x3000)); // Hand of Fate
         assert!(!reads(Game::Giants, 3000, 0x2000));
         assert!(reads(Game::SuperChargers, 3400, 0x4100)); // Fiesta
+        assert!(reads(Game::TrapTeam, 450, 0x0000)); // Gusto
+        assert!(!reads(Game::TrapTeam, 601, 0x0000)); // King Pen, an Imaginators Sensei
+        assert!(!reads(Game::SuperChargers, 630, 0x0000)); // Crash Bandicoot, also Imaginators
     }
 
     #[test]
