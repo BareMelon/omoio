@@ -1,4 +1,4 @@
-const VIDEO_ID = "8EbjNOFRLiA";
+const VIDEO_ID = "wWmthRdoImE";
 
 // The API answers cross-origin requests and the download links don't, so the
 // newest installer is found here and the button points straight at it. Until
