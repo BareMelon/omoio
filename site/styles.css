@@ -299,7 +299,40 @@ h3 {
 .foot p { max-width: 40em; margin: 0 auto; text-wrap: pretty; }
 .foot .small { margin-top: 8px; font-size: 13px; color: var(--dim); }
 
+/* The thank-you shown while the installer downloads. */
+.thanks {
+  width: min(460px, calc(100vw - 32px));
+  margin: auto;
+  padding: 28px 28px 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--ink);
+  text-align: center;
+  box-shadow: 0 30px 80px -20px rgb(var(--shadow) / 0.8);
+}
+.thanks::backdrop { background: rgb(var(--shadow) / 0.6); }
+.thanks[open] { animation: thanks-in 220ms var(--ease-out); }
+.thanks-icon { display: block; margin: 0 auto; }
+.thanks h2 { margin: 16px 0 0; font: 650 24px/1.2 var(--display); letter-spacing: -0.015em; text-wrap: balance; }
+.thanks p { margin: 10px 0 0; font-size: 15px; line-height: 1.5; color: var(--mute); text-wrap: pretty; }
+.thanks-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+.thanks-actions .download { margin-top: 0; }
+.thanks-close {
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--mute);
+  font: 500 15px/1 var(--ui);
+  cursor: pointer;
+}
+@keyframes thanks-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
 @media (hover: hover) and (pointer: fine) {
+  .thanks-close:hover { color: var(--ink); border-color: var(--line2); }
   a:hover { text-decoration-color: currentColor; }
   .top-link:hover { color: var(--ink); }
   .questions summary:hover { color: var(--brand-text); }
@@ -308,6 +341,7 @@ h3 {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .thanks[open] { animation: none; }
   .download, .video-frame, .play { transition: background-color 120ms ease; }
   .questions summary::after { transition: none; }
   .download:active, a.video-frame:active { transform: none; }

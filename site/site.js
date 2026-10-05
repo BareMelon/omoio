@@ -48,6 +48,19 @@ function playVideoInPlace(event) {
   player.focus();
 }
 
+// A thank-you while the installer downloads, with the SmartScreen steps and
+// the Ko-fi link. Only for the real file: the fallback opens GitHub instead.
+function thankForDownload() {
+  if (!document.getElementById("download").href.endsWith(".exe")) return;
+  const thanks = document.getElementById("thanks");
+  if (typeof thanks.showModal === "function" && !thanks.open) thanks.showModal();
+}
+
+const thanks = document.getElementById("thanks");
+thanks.querySelector(".thanks-close").addEventListener("click", () => thanks.close());
+thanks.addEventListener("click", (event) => { if (event.target === thanks) thanks.close(); });
+document.getElementById("download").addEventListener("click", thankForDownload);
+
 if (!/Windows/.test(navigator.userAgent)) {
   document.getElementById("elsewhere").hidden = false;
 }
