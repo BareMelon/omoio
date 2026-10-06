@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -28,6 +29,7 @@ import {
   type Places,
   type Settings,
 } from "../api";
+import { updateControls } from "../components/omoioUpdate";
 import { store } from "../state";
 import type { View } from "./view";
 
@@ -123,7 +125,11 @@ function section(title: string, ...children: HTMLElement[]): HTMLElement {
 }
 
 export async function renderSettings(): Promise<View> {
-  const [places, settings]: [Places, Settings] = await Promise.all([getPlaces(), getSettings()]);
+  const [places, settings, version]: [Places, Settings, string] = await Promise.all([
+    getPlaces(),
+    getSettings(),
+    getVersion(),
+  ]);
   const { rpcs3Version, firmwareVersion } = store.get();
 
   const content = document.createElement("div");
@@ -370,6 +376,12 @@ export async function renderSettings(): Promise<View> {
 
   content.appendChild(section("Session logs", keep.row, logsRow.row));
 
+  // ---- Omoio itself ----
+  const versionRow = row("Omoio", "Looks for a new version when it starts and every few hours after.");
+  const [updateSaid, updateButton] = updateControls();
+  versionRow.right.append(updateSaid, value(version), updateButton);
+  content.appendChild(section("Updates", versionRow.row));
+
   // ---- library ----
   const count = store.get().games?.length ?? 0;
   const libraryRow = row(
@@ -398,5 +410,5 @@ export async function renderSettings(): Promise<View> {
     "Forgetting games empties the list only. Omoio never deletes the game files themselves.";
   content.appendChild(note);
 
-  return { title: "Settings", subtitle: "Omoio 0.1.0", content };
+  return { title: "Settings", subtitle: `Omoio ${version}`, content };
 }

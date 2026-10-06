@@ -17,6 +17,7 @@ import { renderBigPicture } from "./bigpicture/bigPicture";
 import { renderPlayingBar } from "./components/playingBar";
 import { openSetupIfNeeded } from "./components/setupSheet";
 import { updateEmulatorsInBackground } from "./components/emulatorUpdates";
+import { startUpdateChecks } from "./components/omoioUpdate";
 import { watchForDroppedGames } from "./components/dropZone";
 import { store, type ViewId } from "./state";
 import { renderTitlebar } from "./components/titlebar";
@@ -148,7 +149,11 @@ store.subscribe((state) => {
 
 getRpcs3Version().then((version) => store.setRpcs3Version(version));
 getFirmwareVersion().then((version) => store.setFirmwareVersion(version));
-listGames().then((games) => store.setGames(games));
+// Omoio's own updates wait for the library, so the first moments after the
+// window opens go to showing it.
+listGames()
+  .then((games) => store.setGames(games))
+  .finally(startUpdateChecks);
 playingGame().then((playing) => store.setPlaying(playing));
 bigPicture().then((state) => store.setBigPicture(state));
 void onBigPicture((state) => store.setBigPicture(state));

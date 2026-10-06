@@ -22,6 +22,7 @@ import {
   type PadFamily,
 } from "../api";
 import { fitCovers, placeholderArt, tint } from "../components/art";
+import { onUpdateChange, readyUpdate, restartToUpdate } from "../components/omoioUpdate";
 import { store } from "../state";
 import { focusables, nearest, remember, revealInColumn, revealInRow } from "./focus";
 import { listen, untilLetGo, type Action, type Source } from "./input";
@@ -418,6 +419,17 @@ function quitGame(): void {
   });
 }
 
+/// Never while a game runs, so the item is only in the menu when none is.
+async function updateOmoio(): Promise<void> {
+  closeMenu();
+  say("Restarting to update…");
+  try {
+    await restartToUpdate();
+  } catch {
+    say("Couldn't start the update. Try again, or download it from omoio.app.");
+  }
+}
+
 function quitOmoio(): void {
   const { playing } = store.get();
   const close = () => void getCurrentWindow().close();
@@ -449,6 +461,7 @@ function drawMenu(): void {
     closeMenu();
     go(section);
   };
+  const update = store.get().playing ? null : readyUpdate();
   panel.append(
     head,
     menuItem("menu:home", "Home", goTo("home")),
@@ -467,6 +480,7 @@ function drawMenu(): void {
       startInBigPicture ? "On" : "Off"
     ),
     menuItem("menu:exit", "Exit Big Picture", () => void setBigPicture(false)),
+    ...(update ? [menuItem("menu:update", "Restart to update", () => void updateOmoio(), update.version)] : []),
     menuItem("menu:quit", "Quit Omoio", quitOmoio)
   );
   const scrim = h("div", "bp-menu-scrim");
@@ -1220,6 +1234,16 @@ export function renderBigPicture(): HTMLElement {
     void readSessions().then(() => {
       if (showing) render(false);
     });
+  });
+
+  // Said once and never over a game. Big Picture doesn't stop for a question
+  // about it; the restart waits in the menu.
+  let toldOf = "";
+  onUpdateChange(() => {
+    const update = readyUpdate();
+    if (!update || update.version === toldOf || !showing || store.get().playing) return;
+    toldOf = update.version;
+    say(`Omoio ${update.version} is ready. Restart to update is in the menu.`);
   });
 
   return root;

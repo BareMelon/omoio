@@ -1161,6 +1161,59 @@ img.cover-behind {
   justify-self: end;
 }
 
+/* Omoio's own update, once it has downloaded, in the same corner. It stays
+   away while a sheet or an emulator update is on screen: restarting then
+   would cut short whatever they are doing. */
+.omoio-update {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 40;
+  display: grid;
+  gap: 4px;
+  width: 300px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  box-shadow: 0 16px 40px -12px rgb(var(--shadow) / 0.7);
+  animation: omoio-update-in 0.24s var(--ease-out);
+}
+.omoio-update[hidden],
+body:has(.scrim) .omoio-update,
+body:has(.emu-updating) .omoio-update {
+  display: none;
+}
+@keyframes omoio-update-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.omoio-update-h {
+  font-size: 13px;
+  font-weight: 600;
+}
+.omoio-update-p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--mute);
+}
+.omoio-update-p:empty {
+  display: none;
+}
+.omoio-update .sheet-actions {
+  margin-top: 10px;
+}
+.update-said {
+  font-size: 11.5px;
+  color: var(--mute);
+}
+
 .notice {
   padding: 11px 13px;
   margin-bottom: 16px;
