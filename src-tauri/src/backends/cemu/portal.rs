@@ -3,10 +3,11 @@
 //! Cemu keeps its portal in memory and fills it only from its own Emulated
 //! USB Devices window; there is no file or command-line option for it. Omoio
 //! opens that window through its menu item, presses its buttons with window
-//! messages, reads what each slot holds, and closes it again. Nothing moves
-//! the mouse, and each window is put out of sight as it opens so it never
-//! covers the game. How this was proven is in docs/what-we-verified.md,
-//! "Skylanders".
+//! messages and reads what each slot holds. The window is left open for the
+//! rest of the game, so a figure goes on without waiting for it to open
+//! again. Nothing moves the mouse, and each window is put out of sight as it
+//! opens so it never covers the game. How this was proven is in
+//! docs/what-we-verified.md, "Skylanders".
 //!
 //! The same way, through Cemu's input settings window, it keeps the game from
 //! hearing the pad while the portal menu or Big Picture is over it.
@@ -63,6 +64,8 @@ const FILE_NAME_EDIT: i32 = 1001;
 const OPEN_BUTTON: i32 = 1;
 
 const WAIT: Duration = Duration::from_secs(5);
+/// How long Cemu may take to show a figure going on or off in its slot.
+const SETTLE: Duration = Duration::from_secs(2);
 const SAVE_WAIT: Duration = Duration::from_secs(15);
 const MAKER_WAIT: Duration = Duration::from_secs(20);
 /// How long Cemu may take to show its menu bar or open one of its windows.
@@ -70,9 +73,16 @@ const MAKER_WAIT: Duration = Duration::from_secs(20);
 /// and a window took longer than five seconds: a figure failed twice and
 /// went on at the third try (2 October 2026).
 const START_WAIT: Duration = Duration::from_secs(20);
+/// How long the portal window may take to show before its menu command is
+/// sent again, in case Cemu let it go unanswered. Once Cemu answers, the
+/// window shows within a fifth of a second (6 October 2026).
+const RESEND: Duration = Duration::from_secs(1);
+/// How long the game may go on hearing the pad while the portal window
+/// opens ahead of the input settings window.
+const READY_WAIT: Duration = Duration::from_secs(3);
 
-/// One errand in Cemu's portal window at a time. A second one finds the
-/// window the first is working in, uses it, and closes it under it.
+/// One errand in Cemu's portal window at a time. A second one would press
+/// buttons in the window the first is working in.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
 fn turn() -> MutexGuard<'static, ()> {
@@ -95,10 +105,10 @@ fn command_when_ready(pid: u32, label: &str) -> Option<u32> {
     }
 }
 
-/// Waits for Cemu's window titled `title` and puts it out of sight. Looked
-/// for often, so it is gone before it can be seen over the game.
-fn arrives(pid: u32, title: &str) -> Option<HWND> {
-    let until = Instant::now() + START_WAIT;
+/// Waits up to `limit` for Cemu's window titled `title` and puts it out of
+/// sight. Looked for often, so it is gone before it can be seen over the game.
+fn arrives(pid: u32, title: &str, limit: Duration) -> Option<HWND> {
+    let until = Instant::now() + limit;
     while Instant::now() < until {
         if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == title) {
             out_of_sight(window);
@@ -229,9 +239,28 @@ fn wait_up_to(limit: Duration, pid: u32, found: impl Fn(HWND) -> bool) -> Option
         if let Some(window) = windows_of(pid).into_iter().find(|&w| found(w)) {
             return Some(window);
         }
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(20));
     }
     None
+}
+
+/// Asks `done` every 20 ms until it says yes or `limit` is up, so a step
+/// takes as long as Cemu needs for it rather than a fixed pause.
+fn until(limit: Duration, mut done: impl FnMut() -> bool) {
+    let end = Instant::now() + limit;
+    while !done() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Whether Cemu has put up a message of its own.
+fn message_up(pid: u32, expected: &[&str]) -> bool {
+    windows_of(pid).into_iter().any(|w| is_message(w, expected))
+}
+
+/// What `slot` holds now, empty for nothing.
+fn slot_now(window: HWND, slot: usize) -> String {
+    read(window).map(|names| names[slot].clone()).unwrap_or_default()
 }
 
 /// The command a menu item sends, found by its text so it does not matter
@@ -335,13 +364,14 @@ pub fn hush(pid: u32, hushed: bool) -> Result<(), String> {
     let main = main_window(pid).ok_or("Cemu isn't answering.")?;
     let input = command_when_ready(pid, INPUT_SETTINGS).ok_or("Cemu isn't ready yet.")?;
     let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(input as usize), LPARAM(0)) };
-    arrives(pid, INPUT_SETTINGS)
+    arrives(pid, INPUT_SETTINGS, START_WAIT)
         .map(|_| ())
         .ok_or("Cemu's input settings didn't open.".to_string())
 }
 
 /// The Emulated USB Devices window, opened if it is not already, and put out
-/// of sight.
+/// of sight. Its menu command is sent again each `RESEND` until it shows;
+/// Cemu only shows the window again when it is open already.
 fn open(pid: u32) -> Result<HWND, String> {
     if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == WINDOW) {
         out_of_sight(window);
@@ -349,8 +379,35 @@ fn open(pid: u32) -> Result<HWND, String> {
     }
     let main = main_window(pid).ok_or("Cemu isn't answering. Try again once the game has started.")?;
     let devices = command_when_ready(pid, WINDOW).ok_or("Cemu's portal isn't ready yet. Try again in a moment.")?;
-    let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(devices as usize), LPARAM(0)) };
-    arrives(pid, WINDOW).ok_or("Cemu's portal didn't open. Try again.".to_string())
+    show_devices(pid, main, devices, START_WAIT).ok_or("Cemu's portal didn't open. Try again.".to_string())
+}
+
+fn show_devices(pid: u32, main: HWND, devices: u32, limit: Duration) -> Option<HWND> {
+    let until = Instant::now() + limit;
+    while Instant::now() < until {
+        let _ = unsafe { PostMessageW(Some(main), WM_COMMAND, WPARAM(devices as usize), LPARAM(0)) };
+        if let Some(window) = arrives(pid, WINDOW, RESEND) {
+            return Some(window);
+        }
+    }
+    None
+}
+
+/// Opens the portal window as the portal menu opens, before Cemu's input
+/// settings window: for a good while after that window opens, Cemu answers
+/// no menu command at all, and the portal menu's first read waited twenty
+/// seconds and failed (6 October 2026). The menu covers the screen as it
+/// opens, and the window stays open after.
+pub fn ready(pid: u32) {
+    let _turn = turn();
+    let open_now = windows_of(pid).into_iter().map(text).collect::<Vec<_>>();
+    if open_now.iter().any(|title| title == WINDOW || title == INPUT_SETTINGS) {
+        return;
+    }
+    tidy(pid);
+    if let (Some(main), Some(devices)) = (main_window(pid), command(pid, WINDOW)) {
+        let _ = show_devices(pid, main, devices, READY_WAIT);
+    }
 }
 
 /// Controls of one class and text, in the order Cemu made them. The
@@ -436,10 +493,7 @@ fn dismiss_message(pid: u32, expected: &[&str]) -> Option<String> {
 /// The figures on the portal, by slot.
 pub fn figures(pid: u32) -> Result<Vec<String>, String> {
     let _turn = turn();
-    let window = open(pid)?;
-    let names = read(window);
-    close(window);
-    names
+    read(open(pid)?)
 }
 
 /// Puts the figure in `file` on the portal in `slot`, counted from 0, and
@@ -457,17 +511,17 @@ pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
     let picker = wait_up_to(SAVE_WAIT, pid, |w| class(w) == "#32770" && text(w) == OPEN_FIGURE)
         .ok_or("Cemu didn't ask for the figure. Try again.")?;
     finish_file_window(pid, picker, file)?;
+    // Cemu reads the file once its window has closed, then names it in the
+    // slot or says why it couldn't.
+    until(SETTLE, || !slot_now(window, slot).is_empty() || message_up(pid, &[OPEN_FIGURE]));
     if let Some(said) = dismiss_message(pid, &[OPEN_FIGURE]) {
-        close(window);
         return Err(if said.is_empty() {
             "Cemu couldn't put that figure on the portal.".to_string()
         } else {
             format!("Cemu couldn't put that figure on the portal: {said}")
         });
     }
-    let names = read(window);
-    close(window);
-    names
+    read(window)
 }
 
 /// Takes the figure in `slot` off the portal, and returns what is left.
@@ -480,14 +534,14 @@ pub fn clear(pid: u32, slot: usize) -> Result<Vec<String>, String> {
         .nth(slot)
         .ok_or("Cemu's portal looks different from what Omoio knows.")?;
     press(button);
-    std::thread::sleep(Duration::from_millis(300));
-    let names = read(window);
-    close(window);
-    names
+    until(SETTLE, || slot_now(window, slot).is_empty());
+    read(window)
 }
 
 /// Fills in a Windows file window Cemu opened, out of sight, presses its
-/// Open or Save button, and waits for it to close.
+/// Open or Save button, and waits for it to close. The button is pressed
+/// once the name box shows the whole name, which the typed characters take
+/// a moment to fill in.
 fn finish_file_window(pid: u32, picker: HWND, file: &Path) -> Result<(), String> {
     const DIFFERENT: &str = "Cemu's file window looks different from what Omoio knows.";
     out_of_sight(picker);
@@ -500,15 +554,13 @@ fn finish_file_window(pid: u32, picker: HWND, file: &Path) -> Result<(), String>
             own == FILE_NAME_EDIT || inside == FILE_NAME_LIST
         })
         .ok_or(DIFFERENT)?;
-    type_into(name_box, &file.to_string_lossy());
-    std::thread::sleep(Duration::from_millis(400));
+    let name = file.to_string_lossy();
+    type_into(name_box, &name);
+    // Starts with: the open window's suggestions can add to what was typed.
+    until(Duration::from_secs(2), || text(name_box).starts_with(name.as_ref()));
     let button = unsafe { GetDlgItem(Some(picker), OPEN_BUTTON) }.map_err(|_| DIFFERENT.to_string())?;
     press(button);
-    let until = Instant::now() + WAIT;
-    while Instant::now() < until && windows_of(pid).contains(&picker) {
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    std::thread::sleep(Duration::from_millis(300));
+    until(WAIT, || !windows_of(pid).contains(&picker));
     Ok(())
 }
 
@@ -584,7 +636,6 @@ pub fn characters(pid: u32) -> Result<Vec<Character>, String> {
         .unwrap_or_default();
     cancel_creator(creator);
     std::thread::sleep(Duration::from_millis(300));
-    close(window);
     if found.is_empty() {
         Err("Couldn't read Cemu's list of characters.".to_string())
     } else {
@@ -607,14 +658,12 @@ pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Resu
         .collect();
     let (Some(&id_box), Some(&variant_box), 2) = (boxes.first(), boxes.get(1), boxes.len()) else {
         cancel_creator(creator);
-        close(window);
         return Err(LOOKS_DIFFERENT.to_string());
     };
     set_text(id_box, &character.id.to_string());
     set_text(variant_box, &character.variant.to_string());
     let Some(make) = controls(creator, "Button", Some("Create")).into_iter().next() else {
         cancel_creator(creator);
-        close(window);
         return Err(LOOKS_DIFFERENT.to_string());
     };
     press(make);
@@ -629,29 +678,24 @@ pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Resu
         std::thread::sleep(Duration::from_millis(300));
         cancel_creator(creator);
         std::thread::sleep(Duration::from_millis(300));
-        close(window);
         return Err(match said {
             Some(said) if !said.is_empty() => format!("Cemu couldn't make that figure: {said}"),
             _ => "Cemu didn't ask where to keep the figure. Try again.".to_string(),
         });
     };
     finish_file_window(pid, saver, file)?;
-    let until = Instant::now() + WAIT;
-    while Instant::now() < until && windows_of(pid).contains(&creator) {
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    std::thread::sleep(Duration::from_millis(300));
+    // Cemu writes the figure, closes its maker and puts the figure in the
+    // slot, or says why it couldn't.
+    until(WAIT, || !windows_of(pid).contains(&creator));
+    until(SETTLE, || !slot_now(window, slot).is_empty() || message_up(pid, &[OPEN_FIGURE, SAVE_FIGURE, CREATOR]));
     if let Some(said) = dismiss_message(pid, &[OPEN_FIGURE, SAVE_FIGURE, CREATOR]) {
-        close(window);
         return Err(if said.is_empty() {
             "Cemu couldn't make that figure.".to_string()
         } else {
             format!("Cemu couldn't make that figure: {said}")
         });
     }
-    let names = read(window);
-    close(window);
-    names
+    read(window)
 }
 
 #[cfg(test)]

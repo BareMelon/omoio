@@ -81,6 +81,10 @@ pub trait EmulatorBackend: Sync {
         Err(NO_PORTAL.to_string())
     }
 
+    /// Gets the emulator's own portal window open as the portal menu opens,
+    /// before the game is hushed. An emulator that needs nothing leaves this.
+    fn ready_portal(&self, _pid: u32) {}
+
     /// A copy of the game whose files Omoio can read, for the figures'
     /// pictures: decrypted, as an archive or an unpacked folder. `title_of`
     /// says which game such an archive holds, so another game's is never

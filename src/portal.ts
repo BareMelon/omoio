@@ -1175,26 +1175,36 @@ async function loadOffers() {
 }
 
 /// Reads what is on the portal, after any change under way. Usually quick,
-/// so the notice only comes up when the emulator takes its time.
+/// so the notice only comes up when the emulator takes its time. The saved
+/// figures and the villains show at once, and again once the portal is
+/// read, in case a change under way made a figure meanwhile.
 async function refresh() {
   const looking: Notice = { kind: "working", title: "Reading the portal…" };
   const slow = window.setTimeout(() => ready && !working && notify(looking), 400);
-  const names = await inTurn(portalFigures).catch((err: unknown) => {
+  const reading = inTurn(portalFigures).catch((err: unknown) => {
     notify(problem(err, "Couldn't read the portal."));
     return null;
   });
+  // A villain caught since the menu was last open stands out until the next time.
+  const before = caughtBefore;
+  await takeLists(before);
+  const names = await reading;
   window.clearTimeout(slow);
   if (names) {
     readPortal(names);
     if (notice === looking) notify(null);
   }
-  // Listed after the portal is read, so a figure made meanwhile is in it.
+  await takeLists(before);
+}
+
+/// Lists the saved figures and the villains, marking those caught since
+/// `before`.
+async function takeLists(before: Set<number> | null) {
   const [files, found] = await Promise.all([listFigures(true), listVillains().catch(() => [] as Villain[])]);
   mine = files;
   villainList = found;
-  // A villain caught since the menu was last open stands out until the next time.
   const caught = new Set(found.filter((villain) => villain.caught).map((villain) => villain.id));
-  caughtNew = caughtBefore ? new Set([...caught].filter((id) => !caughtBefore!.has(id))) : new Set();
+  caughtNew = before ? new Set([...caught].filter((id) => !before.has(id))) : new Set();
   caughtBefore = caught;
   buildTabs();
   render();

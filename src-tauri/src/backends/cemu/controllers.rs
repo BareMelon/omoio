@@ -22,14 +22,17 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 /// Games whose first player has to be a Wii U Pro Controller rather than the
-/// GamePad, by their title ids. Skylanders Trap Team asks for a language the
-/// first time it starts, and that screen answers the GamePad's touch screen
-/// and a Pro Controller's buttons but never the GamePad's buttons, so a pad
-/// standing in for the GamePad was stuck on the flags. As a Pro Controller the
-/// same pad picked a flag and went on through the logos, the save slots and
-/// into the opening film (European disc, 5 October 2026; 000500001017c600 is
-/// the American one). Omoio shows only the TV picture, so nothing of the
-/// GamePad's screen is lost.
+/// GamePad until they have saved once, by their title ids. Skylanders Trap
+/// Team asks for a language the first time it starts, and that screen answers
+/// the GamePad's touch screen and a Pro Controller's buttons but never the
+/// GamePad's buttons, so a pad standing in for the GamePad was stuck on the
+/// flags. As a Pro Controller the same pad picked a flag and went on through
+/// the logos, the save slots and into the opening film (European disc, 5
+/// October 2026; 000500001017c600 is the American one). Only until then:
+/// Cemu turns the stick into the presses menus move by for the GamePad but
+/// not for a Pro Controller (`VPADController.cpp` against
+/// `WPADController::KPADRead`, v2.6), so the stick moved nothing in the
+/// menus.
 pub const PRO_FIRST: [&str; 2] = ["0005000010181f00", "000500001017c600"];
 
 /// Player 1's file as each kind of controller, kept beside the others so the
@@ -212,9 +215,35 @@ fn write_all(dir: &Path, players: &[Player]) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Whether the game with this title id has saved in Cemu, which puts its
+/// first start behind it.
+pub fn has_saved(app: &AppHandle, title_id: &str) -> bool {
+    super::install_dir(app).is_ok_and(|dir| saved_in(&dir.join("portable").join("mlc01"), title_id))
+}
+
+/// Whether there is any file in the game's save folder under `mlc`, which
+/// Cemu keeps by the two halves of the title id.
+fn saved_in(mlc: &Path, title_id: &str) -> bool {
+    if title_id.len() != 16 {
+        return false;
+    }
+    let (high, low) = title_id.split_at(8);
+    has_file(&mlc.join("usr").join("save").join(high).join(low).join("user"))
+}
+
+fn has_file(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            let path = entry.path();
+            path.is_file() || (path.is_dir() && has_file(&path))
+        })
+    })
+}
+
 /// Makes player 1 the kind of controller the game about to start needs: a
-/// Pro Controller for one in `PRO_FIRST`, the GamePad for any other. Cemu
-/// reads `controller0.xml` as the game starts, and each start sets it again.
+/// Pro Controller for one in `PRO_FIRST` that hasn't saved yet, the GamePad
+/// otherwise. Cemu reads `controller0.xml` as the game starts, and each start
+/// sets it again.
 pub fn first_player(app: &AppHandle, pro: bool) -> Result<(), String> {
     let dir = profile_dir(app)?;
     let from = dir.join(if pro { FIRST_AS_PRO } else { FIRST_AS_GAMEPAD });
@@ -315,6 +344,21 @@ mod tests {
         let text = profile(Kind::for_player(1), &Player::on(pad));
         assert!(text.contains("<type>Wii U Pro Controller</type>"));
         assert!(!text.contains("<controller>"));
+    }
+
+    #[test]
+    fn a_game_has_saved_once_its_save_folder_holds_a_file() {
+        let mlc = std::env::temp_dir().join(format!("omoio-cemu-mlc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&mlc);
+        let user = mlc.join("usr").join("save").join("00050000").join("10181f00").join("user");
+        assert!(!saved_in(&mlc, "0005000010181f00"));
+        std::fs::create_dir_all(user.join("80000001")).unwrap();
+        assert!(!saved_in(&mlc, "0005000010181f00"), "an empty folder is no save");
+        std::fs::write(user.join("80000001").join("Save_Header"), b"x").unwrap();
+        assert!(saved_in(&mlc, "0005000010181f00"));
+        assert!(!saved_in(&mlc, "000500001017c600"));
+        assert!(!saved_in(&mlc, "short"));
+        let _ = std::fs::remove_dir_all(&mlc);
     }
 
     #[test]

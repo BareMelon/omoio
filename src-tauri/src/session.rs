@@ -291,6 +291,9 @@ pub fn quiet_game(app: &AppHandle) {
         };
         let portal = crate::portal_menu::showing(&app);
         let over = portal || session.is_hidden();
+        if portal {
+            backend.ready_portal(pid);
+        }
         if backend.hush(pid, over).is_ok() && over {
             if let Some(window) = app.get_webview_window(if portal { "portal" } else { "main" }) {
                 let _ = window.set_focus();
