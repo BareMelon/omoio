@@ -19,7 +19,9 @@
 //! empty), byte 17 whether it is evolved, and bytes 0 and 7 whether it is
 //! the villain's variant form. A third checksum covers the rest of a trap's
 //! area, where it keeps the villains it held before; a character's covers
-//! less, so it is only checked on traps.
+//! less, so it is only checked on traps. The villain itself sits under the
+//! second, so when neither area passes the third it is still read from the
+//! one the game wrote last, as that editor does.
 
 use aes::cipher::{BlockCipherDecrypt, KeyInit};
 use aes::Aes128;
@@ -152,7 +154,8 @@ pub fn trapped(figure: &[u8; SIZE]) -> Option<Trapped> {
     if !is_trap(id(figure)) {
         return None;
     }
-    let area = current(&decrypted(figure), trap_area_ok)?;
+    let data = decrypted(figure);
+    let area = current(&data, trap_area_ok).or_else(|| current(&data, head_ok))?;
     (area[16] != 0).then(|| Trapped {
         villain: 1000 + u16::from(area[16]),
         variant: area[0] == 1 && area[7] == area[16],
@@ -287,6 +290,24 @@ mod tests {
         assert_eq!(trapped(&made(217, 0x3003)), None);
         // Only a trap is read.
         assert_eq!(trapped(&trap(3000, 0x2000, 11, false, false)), None);
+    }
+
+    #[test]
+    fn a_trap_tells_its_villain_when_only_the_older_ones_dont_check_out() {
+        let mut area = [0u8; AREA];
+        area[1] = 1;
+        area[16] = 11;
+        let mut plain = made(217, 0x3003);
+        write(&mut plain, 8, 1, area);
+        // Where byte `n` of the area sits in the figure.
+        let at = |n: usize| (8..).filter(|&b| !sector_end(b)).nth(n / BLOCK).unwrap() * BLOCK + n % BLOCK;
+        // A byte among the villains it held before, under the third checksum only.
+        plain[at(200)] ^= 0xFF;
+        assert_eq!(current(&decrypted(&encrypted(&plain)), trap_area_ok), None);
+        assert_eq!(trapped(&encrypted(&plain)), Some(Trapped { villain: 1011, variant: false, evolved: false }));
+        // The part with the villain broken too, nothing is read.
+        plain[at(20)] ^= 0xFF;
+        assert_eq!(trapped(&encrypted(&plain)), None);
     }
 
     /// The figures the user's own games wrote on this machine, read only, to
