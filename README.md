@@ -25,7 +25,8 @@ really appreciated, so open an issue.
   whole drive at once.
 - Games run inside Omoio's window, fullscreen with F11, and you never see the
   emulator.
-- RPCS3 and Cemu installed for you and kept up to date.
+- RPCS3 and Cemu installed for you. RPCS3 is kept up to date, and Cemu is
+  updated to the newest version Omoio has been tested with.
 - One controller layout for every emulator, set by pressing the buttons, for up
   to four players.
 - A Skylanders portal menu that puts figures and traps on the portal from your
@@ -138,8 +139,10 @@ game you bought is locked to Sony's keys.
 <summary>Do I need to install RPCS3 or Cemu first?</summary>
 <br>
 
-No. Omoio downloads their official builds and keeps them up to date. It runs them
-as separate programs, and you never have to open either one.
+No. Omoio downloads their official builds. It keeps RPCS3 up to date and updates
+Cemu to the newest version Omoio has been tested with, so a new Cemu waits until
+Omoio has been checked against it, and your controllers keep working. It runs
+them as separate programs, and you never have to open either one.
 
 </details>
 

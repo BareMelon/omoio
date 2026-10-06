@@ -9,6 +9,7 @@ pub mod game_profile;
 pub mod keys;
 pub mod packs;
 pub mod portal;
+pub mod release;
 pub mod sdl;
 pub mod wua;
 
@@ -17,31 +18,18 @@ use crate::core::import_warning::Imported;
 use crate::core::library::Game;
 use crate::core::types::Progress;
 use futures_util::StreamExt;
-use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 
-const RELEASES_API: &str = "https://api.github.com/repos/cemu-project/Cemu/releases/latest";
 const USER_AGENT: &str = "Omoio";
 
 /// Cemu prints nothing for `--version` when started without a console, which
 /// is how Omoio starts it (tested), so the release tag is kept here instead.
 const VERSION_FILE: &str = "omoio-version.txt";
-
-#[derive(Deserialize)]
-struct Release {
-    tag_name: String,
-    assets: Vec<Asset>,
-}
-
-#[derive(Deserialize)]
-struct Asset {
-    name: String,
-    browser_download_url: String,
-}
 
 pub fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let local_data = app.path().local_data_dir().map_err(|e| e.to_string())?;
@@ -73,58 +61,37 @@ fn emit(app: &AppHandle, stage: &str, bytes: u64, total: u64) {
     );
 }
 
-async fn latest_release(client: &reqwest::Client) -> Result<Release, String> {
-    let response = client
-        .get(RELEASES_API)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|_| "Couldn't reach GitHub. Check your internet connection and try again.".to_string())?;
-    if !response.status().is_success() {
-        return Err("GitHub isn't answering right now. Try again in a while.".to_string());
-    }
-    response
-        .json()
-        .await
-        .map_err(|_| "GitHub answered in a form Omoio doesn't understand.".to_string())
-}
-
-/// The newest release's version, as `detect_version` reports it.
+/// The release Omoio installs and updates to, as `detect_version` reports
+/// it: the newest one checked (release.rs), never Cemu's latest.
 pub async fn newest_version() -> Result<String, String> {
-    let release = latest_release(&reqwest::Client::new()).await?;
-    let tag = release.tag_name.as_str();
-    Ok(tag.strip_prefix('v').unwrap_or(tag).to_string())
+    Ok(release::version().to_string())
 }
 
-/// Downloads the newest release from Cemu's own GitHub page and unpacks it
-/// into Omoio's folder. Returns the version installed.
+/// Downloads the release Omoio was checked against from Cemu's own GitHub
+/// page, checks it is the file that was checked, and unpacks it into Omoio's
+/// folder. Returns the version installed.
 pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
     let client = reqwest::Client::new();
 
     emit(&app, "checking", 0, 0);
-    let release = latest_release(&client).await?;
-    let asset = release
-        .assets
-        .iter()
-        .find(|asset| asset.name.ends_with("-windows-x64.zip"))
-        .ok_or("Cemu's newest release has no Windows build.")?;
-
     let dir = install_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let zip_path = dir.join(&asset.name);
+    let zip_path = dir.join(release::FILE);
 
-    // Cemu publishes no checksum beside its builds, unlike RPCS3, so there is
-    // nothing to check the download against beyond HTTPS from GitHub itself.
     let download = client
-        .get(&asset.browser_download_url)
+        .get(release::DOWNLOAD)
         .header("User-Agent", USER_AGENT)
         .send()
         .await
         .map_err(|_| "Couldn't download Cemu. Check your internet connection and try again.".to_string())?;
+    if !download.status().is_success() {
+        return Err("GitHub isn't handing out Cemu right now. Try again in a while.".to_string());
+    }
     let total = download.content_length().unwrap_or(0);
     let mut file = tokio::fs::File::create(&zip_path).await.map_err(|e| e.to_string())?;
     let mut stream = download.bytes_stream();
     let mut done: u64 = 0;
+    let mut hasher = Sha256::new();
     while let Some(chunk) = stream.next().await {
         if cancel.load(Ordering::Relaxed) {
             drop(file);
@@ -133,11 +100,17 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
         }
         let chunk = chunk.map_err(|_| "The download stopped part way. Try again.".to_string())?;
         file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        hasher.update(&chunk);
         done += chunk.len() as u64;
         emit(&app, "downloading", done, total);
     }
     file.flush().await.map_err(|e| e.to_string())?;
     drop(file);
+    let got: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    if got != release::SHA256 {
+        let _ = std::fs::remove_file(&zip_path);
+        return Err("The Cemu download wasn't the file Omoio expects. Try again in a while.".to_string());
+    }
 
     emit(&app, "extracting", 0, 1);
     let (from, into) = (zip_path.clone(), dir.clone());
@@ -150,7 +123,7 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
     // cache inside Omoio's folder instead of %APPDATA%\Cemu, where the user
     // may already have a Cemu of their own.
     std::fs::create_dir_all(dir.join("portable")).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(VERSION_FILE), &release.tag_name).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(VERSION_FILE), release::TAG).map_err(|e| e.to_string())?;
 
     emit(&app, "done", 1, 1);
     detect_version(&app).ok_or_else(|| "Cemu unpacked, but Cemu.exe isn't where it should be.".to_string())
@@ -977,10 +950,11 @@ impl super::EmulatorBackend for Cemu {
 
     fn missing_first_player(
         &self,
+        app: &AppHandle,
         players: &[crate::core::pad_layout::Player],
         connected: &[crate::core::pad_layout::Pad],
     ) -> Option<String> {
-        controllers::missing_first_player(players, connected)
+        controllers::missing_first_player(app, players, connected)
     }
 
     fn write_layout(
