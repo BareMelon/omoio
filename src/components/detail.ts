@@ -7,6 +7,7 @@ import {
   gameSaves,
   gameSettings,
   gameUpdates,
+  getFirmwareVersion,
   launchGame,
   listGames,
   padsHeld,
@@ -22,6 +23,7 @@ import {
   type Game,
 } from "../api";
 import { fitCovers, placeholderArt } from "./art";
+import { firmwareActions } from "./firmware";
 import { nameOf } from "./padNames";
 import type { CatalogueSelection } from "../state";
 import { openGameSettings } from "./gameSettingsSheet";
@@ -168,6 +170,22 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     reveal.classList.add("gone");
   }
 
+  // A PS3 game won't start without the firmware, so the panel says so before
+  // Play is pressed and offers the way to add it right here. Only once RPCS3
+  // is there, since it is what unpacks the file, and only once the version
+  // has been read: undefined means not known yet, not missing.
+  let askedForFirmware = false;
+  const askForFirmware = () => {
+    if (askedForFirmware) return;
+    askedForFirmware = true;
+    note.textContent = "Add PS3 firmware first, then you can play. Sony publishes it free: download the file, then choose it here.";
+    note.after(firmwareActions());
+  };
+  const { rpcs3Version, firmwareVersion } = store.get();
+  if (game.console === "ps3" && game.set_up && game.available && rpcs3Version && firmwareVersion === null) {
+    askForFirmware();
+  }
+
   reveal.onclick = async () => {
     try {
       await revealFolder(game.path);
@@ -289,6 +307,13 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
     } catch (err) {
       note.textContent = typeof err === "string" ? err : "Couldn't start this game.";
       play.disabled = false;
+      // The firmware can go missing or be removed outside Omoio, which leaves
+      // the version read at startup behind. Asking again after a failed start
+      // still shows the way to add it.
+      if (game.console === "ps3" && store.get().rpcs3Version && (await getFirmwareVersion()) === null) {
+        askForFirmware();
+        if (store.get().firmwareVersion !== null) store.setFirmwareVersion(null);
+      }
     }
   };
 
