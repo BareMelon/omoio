@@ -111,6 +111,31 @@ pub fn forget(app: &AppHandle, title_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Why the game would start with nobody to play player 1, set up as
+/// `before_launch` would set the players up, or `None`. A game with its own
+/// layout is not asked about: the emulator may keep that layout apart.
+pub fn launch_warning(app: &AppHandle, backend: &dyn EmulatorBackend, title_id: &str) -> Option<String> {
+    let connected = crate::pads::connected();
+    warning(current(app, title_id, &connected), &connected, |players, connected| {
+        backend.missing_first_player(players, connected)
+    })
+}
+
+/// `launch_warning` once the players are known: `ask` is the emulator's
+/// question about the players as they would start.
+fn warning(
+    current: Current,
+    connected: &[Pad],
+    ask: impl FnOnce(&[Player], &[Pad]) -> Option<String>,
+) -> Option<String> {
+    if current.own {
+        return None;
+    }
+    let mut players = current.players;
+    pad_layout::seat(&mut players, connected);
+    ask(&players, connected)
+}
+
 /// Called before a game starts, so plugging in and pressing Play is enough.
 /// A pad plugged in that no player has takes the place of one whose pad is
 /// not there, buttons someone chose never change, and the layout goes to the
@@ -126,4 +151,44 @@ pub fn before_launch(app: &AppHandle, backend: &dyn EmulatorBackend, title_id: &
         let _ = store(app, &layouts);
     }
     let _ = backend.write_layout(app, scope, &players);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pad(device: &str, handler: &str) -> Pad {
+        Pad {
+            device: device.to_string(),
+            name: device.to_string(),
+            handler: handler.to_string(),
+            family: "generic".to_string(),
+        }
+    }
+
+    fn on_a_ps5_pad(own: bool) -> Current {
+        Current {
+            players: vec![Player::on(pad("PS5 Controller 0", "SDL"))],
+            own,
+            saved: true,
+        }
+    }
+
+    #[test]
+    fn a_game_with_its_own_layout_is_not_asked_about() {
+        let asked = warning(on_a_ps5_pad(true), &[], |_, _| Some("no pad".to_string()));
+        assert_eq!(asked, None);
+    }
+
+    #[test]
+    fn the_emulator_is_asked_about_the_players_as_they_would_start() {
+        // A pad nobody has takes the place of player 1, whose pad is not
+        // plugged in, as `before_launch` would seat it.
+        let plugged = [pad("XInput Pad #2", "XInput")];
+        let asked = warning(on_a_ps5_pad(false), &plugged, |players, connected| {
+            assert_eq!(connected, &plugged[..]);
+            Some(players[0].pad.device.clone())
+        });
+        assert_eq!(asked.as_deref(), Some("XInput Pad #2"));
+    }
 }

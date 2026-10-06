@@ -137,6 +137,12 @@ export function launchGame(titleId: string): Promise<void> {
   return invoke("launch_game", { titleId });
 }
 
+/// Why the game would start with nobody answering player 1, asked before
+/// Play. Null when all is well.
+export function launchWarning(titleId: string): Promise<string | null> {
+  return invoke("launch_warning", { titleId });
+}
+
 export interface Playing {
   title_id: string;
   title: string;
