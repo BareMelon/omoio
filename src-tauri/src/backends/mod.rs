@@ -10,6 +10,7 @@ pub mod rpcs3;
 use crate::core::community::{PackChange, Packs};
 use crate::core::console::{Console, Features};
 use crate::core::game_settings::{Chosen, GameSettings};
+use crate::core::import_warning::Imported;
 use crate::core::library::Game;
 use crate::core::figures::Character;
 use crate::core::pad_layout::Player;
@@ -36,6 +37,14 @@ pub trait EmulatorBackend: Sync {
     fn recognises(&self, path: &Path) -> bool;
 
     fn identify(&self, path: &Path) -> Result<Game, String>;
+
+    /// Which of this console's games an archive holds, from the one small
+    /// file in it that says, so it is known before anything is unpacked.
+    /// `read` gives a file by its name in `names`, or `None` when getting it
+    /// out would mean unpacking much of the archive.
+    fn identify_packed(&self, _names: &[String], _read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Imported> {
+        None
+    }
 
     /// Why a dump with these file names cannot be taken, when it is one of
     /// this console's in a form that needs something the user has not given.
@@ -227,6 +236,12 @@ pub fn identify(path: &Path) -> Result<Game, String> {
         Some(backend) => backend.identify(path),
         None => Err(unknown_dump(all().iter().map(|backend| backend.console().short()))),
     }
+}
+
+/// Which game an archive holds, by whichever emulator can tell, before it is
+/// unpacked.
+pub fn identify_packed(names: &[String], read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Imported> {
+    all().iter().find_map(|backend| backend.identify_packed(names, read))
 }
 
 /// Why no emulator can take a dump with these file names, if one knows why.

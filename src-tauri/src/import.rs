@@ -4,6 +4,7 @@
 //! so importing is immediate and a game on an external drive stays on it.
 
 use crate::core::console::Console;
+use crate::core::import_warning::Imported;
 use crate::core::library::Game;
 use crate::core::sfo::{Category, Sfo};
 use std::path::{Path, PathBuf};
@@ -93,12 +94,9 @@ pub fn recognises(picked: &Path) -> bool {
     find_dump_root(picked).is_some()
 }
 
-pub fn identify(picked: &Path) -> Result<Game, Error> {
-    let root = find_dump_root(picked).ok_or(Error::NotAGameDump)?;
-    let sfo_file = sfo_path(&root).ok_or(Error::NotAGameDump)?;
-
-    let bytes = std::fs::read(&sfo_file).map_err(|_| Error::UnreadableMetadata)?;
-    let sfo = Sfo::parse(&bytes).map_err(|_| Error::UnreadableMetadata)?;
+/// The title id, name and version a PARAM.SFO gives.
+fn read_sfo(bytes: &[u8]) -> Result<(String, String, Option<String>), Error> {
+    let sfo = Sfo::parse(bytes).map_err(|_| Error::UnreadableMetadata)?;
 
     // A GD entry is an update or add-on. Letting one into the library would
     // put a second "LittleBigPlanet" beside the real one.
@@ -111,16 +109,67 @@ pub fn identify(picked: &Path) -> Result<Game, Error> {
         .title()
         .map(str::to_string)
         .unwrap_or_else(|| title_id.clone());
+    Ok((title_id, title, sfo.app_version().map(str::to_string)))
+}
+
+pub fn identify(picked: &Path) -> Result<Game, Error> {
+    let root = find_dump_root(picked).ok_or(Error::NotAGameDump)?;
+    let sfo_file = sfo_path(&root).ok_or(Error::NotAGameDump)?;
+
+    let bytes = std::fs::read(&sfo_file).map_err(|_| Error::UnreadableMetadata)?;
+    let (title_id, title, version) = read_sfo(&bytes)?;
 
     Ok(Game {
         console: Console::Ps3,
         title_id,
         title,
-        version: sfo.app_version().map(str::to_string),
+        version,
         update_version: None,
         size_bytes: directory_size(&root),
         path: root,
     })
+}
+
+/// Where an archive keeps the dump's PARAM.SFO, by the names inside it. The
+/// places `find_dump_root` and `sfo_path` look: at the top or one folder
+/// down, under PS3_GAME for a disc or at the dump's own top for a PSN title,
+/// and only when there is one dump to choose.
+fn packed_sfo(names: &[String]) -> Option<&str> {
+    let is = |part: &str, want: &str| part.eq_ignore_ascii_case(want);
+    // The dump's folder, whether it is a disc, and the name to read.
+    let mut found: Vec<(&str, bool, &str)> = Vec::new();
+    for name in names {
+        let parts: Vec<&str> = name.split(['/', '\\']).filter(|part| !part.is_empty()).collect();
+        let (root, disc) = match parts.as_slice() {
+            [game, sfo] if is(game, "PS3_GAME") && is(sfo, "PARAM.SFO") => ("", true),
+            [root, game, sfo] if is(game, "PS3_GAME") && is(sfo, "PARAM.SFO") => (*root, true),
+            [sfo] if is(sfo, "PARAM.SFO") => ("", false),
+            // A PS4 game keeps a param.sfo in sce_sys, as `sfo_path` says.
+            [root, sfo] if is(sfo, "PARAM.SFO") && !is(root, "sce_sys") => (*root, false),
+            _ => continue,
+        };
+        found.push((root, disc, name));
+    }
+
+    // The top is looked at first, as `find_dump_root` does.
+    let at_top = found.iter().any(|(root, ..)| root.is_empty());
+    found.retain(|(root, ..)| !at_top || root.is_empty());
+    let first = found.first()?.0;
+    if found.iter().any(|(root, ..)| *root != first) {
+        return None;
+    }
+    found
+        .iter()
+        .find(|(_, disc, _)| *disc)
+        .or(found.first())
+        .map(|(_, _, name)| *name)
+}
+
+/// Which game an archive holds, from its PARAM.SFO, before anything is
+/// unpacked. `read` gives one file inside by its name.
+pub fn identify_packed(names: &[String], read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Imported> {
+    let (title_id, title, _) = read_sfo(&read(packed_sfo(names)?)?).ok()?;
+    Some(Imported { console: Console::Ps3, title_id, title })
 }
 
 /// Sums what it can and ignores what it cannot read, because a size shown in
@@ -360,6 +409,51 @@ mod tests {
         let dir = TempDir::new("bad-sfo");
         dir.write("PARAM.SFO", b"this is not a PARAM.SFO");
         assert_eq!(identify(&dir.0).unwrap_err(), Error::UnreadableMetadata);
+    }
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn an_archives_game_is_told_from_its_param_sfo_before_unpacking() {
+        let bytes = sfo(&[("CATEGORY", "DG"), ("TITLE", "Skylanders Trap Team"), ("TITLE_ID", "BLES02055")]);
+        let wanted = "Skylanders Trap Team (Europe)/PS3_GAME/PARAM.SFO";
+        let read = |name: &str| (name == wanted).then(|| bytes.clone());
+        let inside = names(&[
+            "Skylanders Trap Team (Europe)/PS3_DISC.SFB",
+            "Skylanders Trap Team (Europe)/PS3_EXTRA/PARAM.SFO",
+            wanted,
+            "Skylanders Trap Team (Europe)/PS3_GAME/USRDIR/EBOOT.BIN",
+        ]);
+        assert_eq!(
+            identify_packed(&inside, &read),
+            Some(Imported {
+                console: Console::Ps3,
+                title_id: "BLES02055".to_string(),
+                title: "Skylanders Trap Team".to_string(),
+            })
+        );
+
+        // A PSN title at the top, with Windows separators.
+        let read = |name: &str| (name == "PARAM.SFO").then(|| bytes.clone());
+        assert!(identify_packed(&names(&["USRDIR\\EBOOT.BIN", "PARAM.SFO"]), &read).is_some());
+    }
+
+    #[test]
+    fn an_archive_is_not_guessed_at() {
+        let game = sfo(&disc_game());
+        let update = sfo(&[("CATEGORY", "GD"), ("TITLE", "LittleBigPlanet"), ("TITLE_ID", "BCES00141")]);
+        let any = |bytes: &Vec<u8>| {
+            let bytes = bytes.clone();
+            move |_: &str| Some(bytes.clone())
+        };
+        let two = names(&["One/PS3_GAME/PARAM.SFO", "Two/PS3_GAME/PARAM.SFO"]);
+        assert_eq!(identify_packed(&two, &any(&game)), None, "two dumps");
+        assert_eq!(identify_packed(&names(&["PS3_GAME/PARAM.SFO"]), &any(&update)), None, "an update");
+        assert_eq!(identify_packed(&names(&["Game/sce_sys/param.sfo"]), &any(&game)), None, "a PS4 game");
+        let unreadable = |_: &str| -> Option<Vec<u8>> { None };
+        assert_eq!(identify_packed(&names(&["Game/PS3_GAME/PARAM.SFO"]), &unreadable), None, "too deep to read");
     }
 
     #[test]

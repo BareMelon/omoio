@@ -66,6 +66,55 @@ pub fn names(path: &Path, kind: Kind) -> Result<Vec<String>, String> {
     }
 }
 
+/// One small file out of the archive, such as the PARAM.SFO that says which
+/// game it holds, when that takes a moment. `None` when getting it would mean
+/// unpacking much of the archive first, as it can in a solid 7z, where a file
+/// is reached only by decoding everything packed before it.
+pub fn read_small(path: &Path, kind: Kind, name: &str) -> Option<Vec<u8>> {
+    // Decoded in a second or two.
+    read_within(path, kind, name, 64 * 1024 * 1024)
+}
+
+/// `read_small`, with how much may be decoded ahead of the file to get it.
+fn read_within(path: &Path, kind: Kind, name: &str, most_ahead: u64) -> Option<Vec<u8>> {
+    // A PARAM.SFO is a couple of kilobytes and a meta.xml a few dozen.
+    const LARGEST: u64 = 1024 * 1024;
+
+    match kind {
+        Kind::Zip => {
+            let file = std::fs::File::open(path).ok()?;
+            let mut archive = zip::ZipArchive::new(file).ok()?;
+            let mut entry = archive.by_name(name).ok()?;
+            if entry.size() > LARGEST {
+                return None;
+            }
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes).ok()?;
+            Some(bytes)
+        }
+        Kind::SevenZip => {
+            let mut reader = open_7z(path).ok()?;
+            let archive = reader.archive();
+            let at = archive.files.iter().position(|file| file.name == name)?;
+            if archive.files[at].size > LARGEST {
+                return None;
+            }
+            if archive.is_solid {
+                let block = archive.stream_map.file_block_index.get(at).copied().flatten()?;
+                let first = *archive.stream_map.block_first_file_index.get(block)?;
+                let ahead: u64 = (first..at)
+                    .filter(|&i| archive.stream_map.file_block_index[i] == Some(block))
+                    .map(|i| archive.files[i].size)
+                    .sum();
+                if ahead > most_ahead {
+                    return None;
+                }
+            }
+            reader.read_file(name).ok()
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Cancelled;
 
@@ -406,6 +455,61 @@ mod tests {
             game.size_bytes <= expected,
             "the dump cannot be larger than the archive it came out of"
         );
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("omoio-small-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_small_file_comes_out_of_a_zip_without_unpacking_the_rest() {
+        use std::io::Write;
+        let dir = scratch("zip");
+        let path = dir.join("game.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("Game/PS3_GAME/USRDIR/EBOOT.BIN", options).unwrap();
+        zip.write_all(&[0; 4096]).unwrap();
+        zip.start_file("Game/PS3_GAME/PARAM.SFO", options).unwrap();
+        zip.write_all(b"sfo").unwrap();
+        zip.finish().unwrap();
+
+        assert_eq!(read_small(&path, Kind::Zip, "Game/PS3_GAME/PARAM.SFO").as_deref(), Some(&b"sfo"[..]));
+        assert_eq!(read_small(&path, Kind::Zip, "Game/PS3_GAME/ICON0.PNG"), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// In a solid 7z a file is reached by decoding everything packed before
+    /// it, so one sitting behind the game's data is not worth the wait.
+    #[test]
+    fn a_small_file_comes_out_of_a_solid_7z_only_when_little_is_ahead_of_it() {
+        let dir = scratch("7z");
+        let path = dir.join("game.7z");
+        let mut writer = sevenz_rust2::ArchiveWriter::create(&path).unwrap();
+        writer
+            .push_archive_entries(
+                vec![
+                    sevenz_rust2::ArchiveEntry::new_file("Game/PS3_GAME/PARAM.SFO"),
+                    sevenz_rust2::ArchiveEntry::new_file("Game/PS3_GAME/USRDIR/EBOOT.BIN"),
+                    sevenz_rust2::ArchiveEntry::new_file("Game/meta/meta.xml"),
+                ],
+                [&b"sfo"[..], &[7u8; 4096][..], &b"<menu/>"[..]]
+                    .into_iter()
+                    .map(sevenz_rust2::SourceReader::new)
+                    .collect(),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+        assert!(open_7z(&path).unwrap().archive().is_solid);
+
+        assert_eq!(read_within(&path, Kind::SevenZip, "Game/PS3_GAME/PARAM.SFO", 1024).as_deref(), Some(&b"sfo"[..]));
+        assert_eq!(read_within(&path, Kind::SevenZip, "Game/meta/meta.xml", 1024), None, "4 KB ahead of it");
+        assert_eq!(read_within(&path, Kind::SevenZip, "Game/meta/meta.xml", 8192).as_deref(), Some(&b"<menu/>"[..]));
+        assert_eq!(read_small(&path, Kind::SevenZip, "nothing.txt"), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

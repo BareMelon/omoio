@@ -99,6 +99,36 @@ export function importGame(path: string): Promise<Game> {
   return invoke("import_game", { path });
 }
 
+/// What to tell someone before a game that may not run well is imported.
+export interface ImportWarning {
+  title: string;
+  console: Console;
+  console_name: string;
+  /// "RPCS3 rates it Ingame: it starts, but you may hit problems before the end."
+  rating: string;
+  /// "The Wii U version is rated Playable in Cemu." Empty when no other
+  /// console has a version that plays well.
+  better: string;
+}
+
+export interface ImportCheck {
+  /// False when the game can only be told once an archive is unpacked, so
+  /// the check is made after the import instead.
+  checked: boolean;
+  warning: ImportWarning | null;
+}
+
+/// Answered from the compatibility lists Omoio already holds, so it never
+/// waits on the network.
+export function importCheck(path: string): Promise<ImportCheck> {
+  return invoke("import_check", { path });
+}
+
+/// The same warning for a game already in the library.
+export function gameWarning(titleId: string): Promise<ImportWarning | null> {
+  return invoke("game_warning", { titleId });
+}
+
 export function removeGame(titleId: string): Promise<void> {
   return invoke("remove_game", { titleId });
 }
@@ -438,6 +468,8 @@ export interface ScanResult {
   already_there: number;
   not_games: number;
   cancelled: boolean;
+  /// The games added that may not run well.
+  warnings: ImportWarning[];
 }
 
 export function scanFolder(path: string): Promise<ScanResult> {

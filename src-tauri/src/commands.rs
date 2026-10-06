@@ -1,6 +1,7 @@
 use crate::archive;
 use crate::backends::rpcs3;
 use crate::core::console::Console;
+use crate::core::import_warning::{self, Imported, List, Warning};
 use crate::core::library::Library;
 use crate::core::playlog::{self, Session as PlaySession};
 use crate::core::settings::Settings;
@@ -440,6 +441,78 @@ pub fn list_games(app: AppHandle) -> Result<Vec<GameEntry>, String> {
     Ok(library.games().iter().cloned().map(|g| entry(&app, g)).collect())
 }
 
+/// Every console's compatibility list, from the copies Omoio keeps. A list
+/// never downloaded is empty, so nothing here waits on the network.
+fn compat_lists(app: &AppHandle) -> Vec<List> {
+    crate::backends::all()
+        .iter()
+        .map(|backend| List::new(backend.console(), backend.name(), backend.catalogue(app).unwrap_or_default()))
+        .collect()
+}
+
+#[derive(serde::Serialize)]
+pub struct ImportCheck {
+    /// False when the game couldn't be told before importing it, as with an
+    /// archive whose game files sit deep inside, so the check waits until it
+    /// has been unpacked.
+    pub checked: bool,
+    pub warning: Option<Warning>,
+}
+
+/// What to warn about before a game is imported: whether its emulator rates
+/// it below playing well, and whether another console has a version that
+/// plays well. Answered before the long part of an import, unpacking an
+/// archive, starts.
+#[tauri::command]
+pub async fn import_check(app: AppHandle, path: String) -> Result<ImportCheck, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = PathBuf::from(&path);
+        let game = match archive::detect_kind(&path) {
+            Some(kind) => {
+                let names = archive::names(&path, kind).unwrap_or_default();
+                // Refused anyway, so there is nothing to warn about.
+                if crate::backends::refuses(&app, &names).is_some() {
+                    return ImportCheck { checked: true, warning: None };
+                }
+                match crate::backends::identify_packed(&names, &|name| archive::read_small(&path, kind, name)) {
+                    Some(game) => game,
+                    None => return ImportCheck { checked: false, warning: None },
+                }
+            }
+            None => {
+                let refused = crate::backends::refuses(&app, &crate::backends::names_in(&path)).is_some();
+                match crate::backends::identify(&path) {
+                    Ok(game) if !refused => Imported::of(&game),
+                    // The import itself says what is wrong.
+                    _ => return ImportCheck { checked: true, warning: None },
+                }
+            }
+        };
+        ImportCheck {
+            checked: true,
+            warning: import_warning::warning(&game, &compat_lists(&app)),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The same warning for a game already in the library, for an archive that
+/// could only be told once it was unpacked, and for several imported at once.
+#[tauri::command]
+pub async fn game_warning(app: AppHandle, title_id: String) -> Result<Option<Warning>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let library = Library::load(&library_path(&app)?);
+        Ok(library
+            .games()
+            .iter()
+            .find(|game| game.title_id == title_id)
+            .and_then(|game| import_warning::warning(&Imported::of(game), &compat_lists(&app))))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn import_game(app: AppHandle, path: String) -> Result<GameEntry, String> {
     // Measuring a dump means walking every file in it, so this stays off the
@@ -836,6 +909,9 @@ pub struct ScanResult {
     pub already_there: usize,
     pub not_games: usize,
     pub cancelled: bool,
+    /// The games added that may not run well, said once at the end rather
+    /// than asked about one at a time across a whole drive.
+    pub warnings: Vec<Warning>,
 }
 
 /// Imports every dump under a folder in one pass.
@@ -878,7 +954,9 @@ pub async fn scan_folder(
             already_there: 0,
             not_games: 0,
             cancelled: false,
+            warnings: Vec::new(),
         };
+        let mut added = Vec::new();
 
         let total = dumps.len();
         for (done, dump) in dumps.iter().enumerate() {
@@ -900,6 +978,7 @@ pub async fn scan_folder(
                                 title: game.title.clone(),
                             },
                         );
+                        added.push(Imported::of(&game));
                         library.upsert(game);
                         result.added += 1;
                     }
@@ -912,6 +991,8 @@ pub async fn scan_folder(
 
         if result.added > 0 {
             library.save(&library_file)?;
+            let lists = compat_lists(&app);
+            result.warnings = added.iter().filter_map(|game| import_warning::warning(game, &lists)).collect();
         }
         Ok(result)
     })

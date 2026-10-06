@@ -53,6 +53,8 @@ pub fn run() {
             commands::install_firmware,
             commands::list_games,
             commands::import_game,
+            commands::import_check,
+            commands::game_warning,
             commands::launch_game,
             commands::game_settings,
             commands::set_game_settings,

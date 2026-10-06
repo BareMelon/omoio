@@ -11,6 +11,7 @@ pub mod packs;
 pub mod portal;
 
 use crate::core::console::{Console, Features};
+use crate::core::import_warning::Imported;
 use crate::core::library::Game;
 use crate::core::types::Progress;
 use futures_util::StreamExt;
@@ -533,7 +534,48 @@ fn identify(picked: &Path) -> Result<Game, String> {
     let root = find_root(picked).ok_or("This doesn't look like an unpacked Wii U game.")?;
     let xml = std::fs::read_to_string(root.join("meta").join("meta.xml"))
         .map_err(|_| "Couldn't read meta.xml. This folder doesn't look like a Wii U game.".to_string())?;
-    let meta = parse_meta(&xml);
+    let (title_id, title, version) = read_meta(&xml)?;
+
+    Ok(Game {
+        console: Console::WiiU,
+        title_id,
+        title,
+        version,
+        update_version: None,
+        size_bytes: crate::import::directory_size(&root),
+        path: root,
+    })
+}
+
+/// Which game an archive holds, before anything is unpacked: from its
+/// meta.xml, or from a disc image's file name. The places `find_root` and
+/// `disc_image` look, the top or one folder down, and only when there is one.
+fn identify_packed(names: &[String], read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Imported> {
+    let depth = |name: &str| name.split(['/', '\\']).filter(|part| !part.is_empty()).count();
+    let metas: Vec<&String> = names.iter().filter(|name| readable_meta(name) && depth(name) <= 3).collect();
+    if let [meta] = metas.as_slice() {
+        let (title_id, title, _) = read_meta(&String::from_utf8_lossy(&read(meta)?)).ok()?;
+        return Some(Imported { console: Console::WiiU, title_id, title });
+    }
+    if !metas.is_empty() {
+        return None;
+    }
+    let images: Vec<&String> = names.iter().filter(|name| is_disc_image(name) && depth(name) <= 2).collect();
+    let [image] = images.as_slice() else {
+        return None;
+    };
+    let file = image.rsplit(['/', '\\']).next().unwrap_or(image.as_str());
+    let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+    Some(Imported {
+        console: Console::WiiU,
+        title_id: disc_id(file),
+        title: title_from_file(stem),
+    })
+}
+
+/// The title id, name and version meta.xml gives, or why it can't be taken.
+fn read_meta(xml: &str) -> Result<(String, String, Option<String>), String> {
+    let meta = parse_meta(xml);
 
     let title_id = meta.title_id.to_ascii_uppercase();
     if title_id.len() != 16 || !title_id.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -554,15 +596,7 @@ fn identify(picked: &Path) -> Result<Game, String> {
         .find(|name| !name.is_empty())
         .unwrap_or_else(|| title_id.clone());
 
-    Ok(Game {
-        console: Console::WiiU,
-        title_id,
-        title,
-        version: (!meta.version.is_empty()).then_some(meta.version),
-        update_version: None,
-        size_bytes: crate::import::directory_size(&root),
-        path: root,
-    })
+    Ok((title_id, title, (!meta.version.is_empty()).then_some(meta.version)))
 }
 
 /// Cemu shows its Getting started window whenever `settings.xml` is missing
@@ -757,6 +791,10 @@ impl super::EmulatorBackend for Cemu {
             (None, Some(image)) => Ok(identify_disc(&image)),
             _ => identify(path),
         }
+    }
+
+    fn identify_packed(&self, names: &[String], read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Imported> {
+        identify_packed(names, read)
     }
 
     fn refuses(&self, app: &AppHandle, names: &[String]) -> Option<String> {
@@ -1083,6 +1121,25 @@ Deluxe");
         std::fs::write(meta.join("iconTex.tga"), tga_file(8, 8)).unwrap();
         assert_eq!(png_size(&found().unwrap()), (8, 8));
         let _ = std::fs::remove_dir_all(&portable);
+    }
+
+    #[test]
+    fn an_archives_game_is_told_before_it_is_unpacked() {
+        let names = |list: &[&str]| list.iter().map(|name| name.to_string()).collect::<Vec<_>>();
+        let meta = |name: &str| (name == "Game (EU)/meta/meta.xml").then(|| META.as_bytes().to_vec());
+        let game = identify_packed(&names(&["Game (EU)/code/app.xml", "Game (EU)/meta/meta.xml"]), &meta).unwrap();
+        assert_eq!((game.console, game.title_id.as_str()), (Console::WiiU, "0005000010ABCD00"));
+        assert_eq!(game.title, "Example Game & Friends Deluxe");
+
+        let nothing = |_: &str| -> Option<Vec<u8>> { None };
+        let image = identify_packed(&names(&["Skylanders - Trap Team (Europe) (En,Fr)\\Skylanders - Trap Team (Europe) (En,Fr).wux"]), &nothing).unwrap();
+        assert_eq!(image.title, "Skylanders - Trap Team");
+
+        let update = META.replace("0005000010abcd00", "0005000e10abcd00");
+        let update = |_: &str| Some(update.as_bytes().to_vec());
+        assert_eq!(identify_packed(&names(&["meta/meta.xml"]), &update), None, "an update");
+        assert_eq!(identify_packed(&names(&["a/meta/meta.xml", "b/meta/meta.xml"]), &meta), None, "two games");
+        assert_eq!(identify_packed(&names(&["a.wud", "b.wux"]), &nothing), None, "two images");
     }
 
     #[test]

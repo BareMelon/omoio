@@ -400,6 +400,14 @@ impl super::EmulatorBackend for Rpcs3 {
         crate::import::identify(path).map_err(|e| e.to_string())
     }
 
+    fn identify_packed(
+        &self,
+        names: &[String],
+        read: &dyn Fn(&str) -> Option<Vec<u8>>,
+    ) -> Option<crate::core::import_warning::Imported> {
+        crate::import::identify_packed(names, read)
+    }
+
     fn icon(&self, _app: &AppHandle, game: &crate::core::library::Game) -> Option<Vec<u8>> {
         std::fs::read(crate::import::icon_path(&game.path)?).ok()
     }
