@@ -95,6 +95,18 @@ pub fn describe(status: &str) -> Option<(&'static str, &'static str, &'static st
     }
 }
 
+/// What a status means for someone about to import the game, said after
+/// "RPCS3 rates it Ingame:". Empty for Playable, which needs no warning.
+pub fn caution(status: &str) -> &'static str {
+    match status {
+        "Ingame" => "it starts, but you may hit problems before the end.",
+        "Intro" => "it gets as far as the menus but not into the game.",
+        "Loadable" => "it gets to a black screen and no further.",
+        "Nothing" => "it doesn't start.",
+        _ => "",
+    }
+}
+
 /// The game's name, which the export only carries alongside an update package,
 /// under `patchsets[].packages[].titles[]` with a type of `TITLE`. The other
 /// entries there are the same name in Japanese and are not what to show.
@@ -287,6 +299,7 @@ pub fn entries(app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>> {
                             label,
                             tone,
                             explanation,
+                            caution: caution(&entry.status),
                         })
                         .unwrap_or_default(),
                     kind: "",
@@ -492,6 +505,19 @@ mod tests {
         }
         assert!(describe("Wishlist").is_none());
         assert!(describe("").is_none());
+    }
+
+    #[test]
+    fn every_status_below_playable_has_a_caution_and_playable_has_none() {
+        for status in ["Playable", "Ingame", "Intro", "Loadable", "Nothing"] {
+            let (_, tone, _) = describe(status).unwrap();
+            let caution = caution(status);
+            if tone == "go" {
+                assert_eq!(caution, "", "{status}");
+            } else {
+                assert!(caution.starts_with("it ") && caution.ends_with('.'), "{status}: {caution:?}");
+            }
+        }
     }
 
     #[test]

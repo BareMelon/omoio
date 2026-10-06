@@ -21,6 +21,9 @@ pub struct Status {
     /// "go", "warn" or "bad". Empty when nobody has reported on the title.
     pub tone: &'static str,
     pub explanation: &'static str,
+    /// What the result means for someone about to import the game, to follow
+    /// "RPCS3 rates it Ingame:". Empty for a result that needs no warning.
+    pub caution: &'static str,
 }
 
 /// One title as a list reports it, before the releases of a game are put
@@ -101,6 +104,112 @@ pub fn fold(name: &str) -> String {
         .join(" ")
 }
 
+/// What a bracketed note may be made of when it only says where a copy was
+/// sold or which languages it has: "(Europe)", "(En,Fr,De)", "[USA]".
+const REGION_NOTES: [&str; 36] = [
+    "europe", "usa", "us", "eu", "uk", "japan", "jp", "world", "pal", "ntsc", "asia", "australia",
+    "korea", "america", "north", "en", "fr", "de", "es", "it", "nl", "pt", "sv", "no", "da", "fi",
+    "ru", "pl", "ja", "ko", "zh", "el", "tr", "cs", "hu", "ar",
+];
+
+/// Edition and platform words a port adds to the end of the same game's name:
+/// "Minecraft: Wii U Edition", "Super Smash Bros. for Wii U", "Trine 2:
+/// Director's Cut". Longest first, so "for wii u" goes before "wii u" does.
+const PORT_WORDS: [&[&str]; 7] = [
+    &["game", "of", "the", "year"],
+    &["for", "wii", "u"],
+    &["directors", "cut"],
+    &["playstation", "3"],
+    &["wii", "u"],
+    &["goty"],
+    &["ps3"],
+];
+
+fn is_region_note(inside: &str) -> bool {
+    let words = fold(inside);
+    !words.is_empty() && words.split(' ').all(|word| REGION_NOTES.contains(&word))
+}
+
+/// The name without its region and language notes. Any other bracketed note
+/// stays: "(Multiplayer Beta)" is a different title from the game.
+fn without_region_notes(name: &str) -> String {
+    let mut kept = String::new();
+    let mut rest = name;
+    while let Some(open) = rest.find(['(', '[']) {
+        let close = if rest[open..].starts_with('(') { ')' } else { ']' };
+        let Some(length) = rest[open + 1..].find(close) else {
+            break;
+        };
+        let end = open + 1 + length + 1;
+        kept.push_str(&rest[..open]);
+        if !is_region_note(&rest[open + 1..end - 1]) {
+            kept.push_str(&rest[open..end]);
+        }
+        kept.push(' ');
+        rest = &rest[end..];
+    }
+    kept.push_str(rest);
+    kept
+}
+
+fn ends_with(words: &[String], phrase: &[&str]) -> bool {
+    words.len() > phrase.len() && words[words.len() - phrase.len()..].iter().zip(phrase).all(|(a, b)| a == b)
+}
+
+/// Takes the port's own words off the end. A name is never cut to nothing.
+fn trim_port_words(words: &mut Vec<String>) {
+    loop {
+        let before = words.len();
+        if let Some(phrase) = PORT_WORDS.iter().find(|phrase| ends_with(words, phrase)) {
+            words.truncate(words.len() - phrase.len());
+        }
+        if words.len() > 1 && words.last().is_some_and(|word| word == "edition") {
+            words.pop();
+            // "Armored Edition", "Special Edition": one word says which. A
+            // number is left, since "2 Edition" would be a game of its own.
+            match PORT_WORDS.iter().find(|phrase| ends_with(words, phrase)) {
+                Some(phrase) => words.truncate(words.len() - phrase.len()),
+                None if words.len() > 1 && words.last().is_some_and(|w| w.chars().all(char::is_alphabetic)) => {
+                    words.pop();
+                }
+                None => {}
+            }
+        }
+        // Wii U ports put a U on the end: "Need for Speed: Most Wanted U".
+        if words.len() > 1 && words.last().is_some_and(|word| word == "u") {
+            words.pop();
+        }
+        if words.len() == before {
+            return;
+        }
+    }
+}
+
+/// A name brought down to what stays the same when one game is sold on two
+/// consoles, so the PS3's "Skylanders SWAP Force™" and the Cemu wiki's
+/// "Skylanders: Swap Force" come out alike.
+///
+/// Only for matching across consoles. On one console a special edition can
+/// be a title of its own with its own result, which `fold` keeps apart.
+pub fn same_game(name: &str) -> String {
+    // An apostrophe joins rather than splits: "Spyro's", not "Spyro s".
+    let name: String = name.chars().filter(|c| !matches!(c, '\'' | '’' | '‘' | '`')).collect();
+    let name = without_region_notes(&name.replace('&', " and "));
+    let mut words: Vec<String> = fold(&name).split_whitespace().map(str::to_string).collect();
+    trim_port_words(&mut words);
+
+    // Spaces go, so "SuperChargers" and "Super Chargers" meet, except
+    // between two numbers, so "1.5" and "15" stay apart.
+    let mut key = String::new();
+    for word in &words {
+        if key.ends_with(|c: char| c.is_ascii_digit()) && word.starts_with(|c: char| c.is_ascii_digit()) {
+            key.push(' ');
+        }
+        key.push_str(word);
+    }
+    key
+}
+
 /// Demos, trials and betas are their own titles with their own results, and
 /// someone who owns one should find it, so they are marked rather than dropped.
 fn is_demo(name: &str) -> bool {
@@ -110,7 +219,9 @@ fn is_demo(name: &str) -> bool {
             .any(|word| matches!(word, "demo" | "trial" | "beta"))
 }
 
-fn tone_rank(tone: &str) -> u8 {
+/// Best first: what plays well, then what runs with problems, then what
+/// doesn't run, and last what nobody has rated.
+pub fn tone_rank(tone: &str) -> u8 {
     match tone {
         "go" => 0,
         "warn" => 1,
@@ -270,6 +381,7 @@ mod tests {
                 label: "Result",
                 tone,
                 explanation: "",
+                caution: "",
             },
             kind: "",
         }
@@ -391,5 +503,82 @@ mod tests {
         assert_eq!(fold("LittleBigPlanet™ 2"), "littlebigplanet 2");
         assert_eq!(fold("LITTLEBIGPLANET 2"), "littlebigplanet 2");
         assert_eq!(fold("  Mario   Kart 8 "), "mario kart 8");
+    }
+
+    fn assert_same(a: &str, b: &str) {
+        assert_eq!(same_game(a), same_game(b), "{a:?} and {b:?} should be one game");
+    }
+
+    /// The names as RPCS3's list, the Cemu wiki, a PARAM.SFO, meta.xml and a
+    /// disc image's file give them.
+    #[test]
+    fn each_skylanders_game_is_the_same_game_on_both_consoles() {
+        for names in [
+            &["Skylanders Spyro's Adventure", "Skylanders: Spyro's Adventure", "Skylanders Spyro’s Adventure®"][..],
+            &["Skylanders Giants", "Skylanders: Giants", "Skylanders Giants™", "Skylanders - Giants (Europe) (En,Fr,De,Es,It,Nl,Sv,No,Da,Fi)"],
+            &["Skylanders SWAP Force", "Skylanders: Swap Force", "Skylanders SWAP Force™", "Skylanders - Swap Force", "SKYLANDERS SWAP FORCE [EU]"],
+            &["Skylanders Trap Team", "Skylanders: Trap Team", "Skylanders™ Trap Team", "Skylanders - Trap Team (USA)"],
+            &["Skylanders SuperChargers", "Skylanders: SuperChargers", "Skylanders Superchargers", "Skylanders Super Chargers"],
+            &["Skylanders Imaginators", "Skylanders: Imaginators", "Skylanders® Imaginators"],
+        ] {
+            for name in &names[1..] {
+                assert_same(names[0], name);
+            }
+        }
+    }
+
+    #[test]
+    fn no_two_skylanders_games_are_taken_for_each_other() {
+        let games = ["Spyro's Adventure", "Giants", "SWAP Force", "Trap Team", "SuperChargers", "Imaginators"]
+            .map(|game| same_game(&format!("Skylanders {game}")));
+        for (i, a) in games.iter().enumerate() {
+            for b in &games[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn a_port_is_the_same_game_under_its_edition_name() {
+        for (ps3, wii_u) in [
+            ("Batman: Arkham City", "Batman: Arkham City Armored Edition"),
+            ("Mass Effect™ 3", "Mass Effect 3: Special Edition"),
+            ("Minecraft: PlayStation®3 Edition", "Minecraft: Wii U Edition"),
+            ("Need for Speed™ Most Wanted", "Need for Speed: Most Wanted U"),
+            ("Trine 2", "Trine 2: Director's Cut"),
+            ("Tekken Tag Tournament 2", "Tekken Tag Tournament 2 Wii U Edition"),
+            ("Darksiders", "Darksiders Warmastered Edition"),
+            ("Sonic and All-Stars Racing Transformed", "Sonic & All-Stars Racing Transformed"),
+            ("Batman: Arkham Asylum Game of the Year Edition", "Batman: Arkham Asylum"),
+        ] {
+            assert_same(ps3, wii_u);
+        }
+    }
+
+    #[test]
+    fn different_games_stay_different() {
+        for (a, b) in [
+            ("Heavy Rain", "Rain"),
+            ("Batman: Arkham Origins", "Batman: Arkham Origins Blackgate"),
+            ("LEGO Batman 2: DC Super Heroes", "LEGO Batman 3: Beyond Gotham"),
+            ("Disney Infinity 2.0", "Disney Infinity 3.0"),
+            ("Call of Duty: Black Ops II", "Call of Duty: Black Ops"),
+            ("Mario Kart 8", "Mario Kart 8 Deluxe"),
+            ("Kingdom Hearts HD 1.5 ReMIX", "Kingdom Hearts HD 15 ReMIX"),
+            // A demo or a beta is a title of its own, with its own result.
+            ("God of War: Ascension (Multiplayer Beta)", "God of War: Ascension"),
+            ("Stacking Demo", "Stacking"),
+            ("FIFA 2 Edition", "FIFA"),
+        ] {
+            assert_ne!(same_game(a), same_game(b), "{a:?} and {b:?} are different games");
+        }
+    }
+
+    #[test]
+    fn a_name_is_never_cut_to_nothing() {
+        assert_eq!(same_game("Edition"), "edition");
+        assert_eq!(same_game("Special Edition"), "special");
+        assert_eq!(same_game("U"), "u");
+        assert_eq!(same_game("(Europe)"), "");
     }
 }

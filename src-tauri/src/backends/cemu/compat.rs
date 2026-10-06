@@ -80,6 +80,18 @@ pub fn describe(rating: &str) -> Option<(&'static str, &'static str, &'static st
     }
 }
 
+/// What a rating means for someone about to import the game, said after
+/// "Cemu rates it Runs:". Empty for Perfect and Playable, which need no
+/// warning.
+pub fn caution(rating: &str) -> &'static str {
+    match rating {
+        "Runs" => "it gets into the game, but major glitches make it hard to finish.",
+        "Loads" => "it gets as far as the menus, then crashes.",
+        "Unplayable" => "it doesn't load.",
+        _ => "",
+    }
+}
+
 /// One infobox field's value, without the editing notes the wiki leaves in
 /// some of them: `|rating = Playable <!-- Unplayable, Loads, ... -->`.
 fn field<'a>(text: &'a str, name: &str) -> Option<&'a str> {
@@ -184,6 +196,7 @@ pub fn entries(app: &AppHandle) -> Option<Vec<Entry>> {
                         label,
                         tone,
                         explanation,
+                        caution: caution(&game.rating),
                     })
                     .unwrap_or_default(),
                 kind: if game.kind == "Virtual Console" {
@@ -387,5 +400,18 @@ mod tests {
             assert!(explanation.ends_with('.'), "{rating} should read as a sentence");
         }
         assert!(describe("Unknown").is_none());
+    }
+
+    #[test]
+    fn every_rating_below_playable_has_a_caution_and_the_others_none() {
+        for rating in ["Perfect", "Playable", "Runs", "Loads", "Unplayable"] {
+            let (_, tone, _) = describe(rating).unwrap();
+            let caution = caution(rating);
+            if tone == "go" {
+                assert_eq!(caution, "", "{rating}");
+            } else {
+                assert!(caution.starts_with("it ") && caution.ends_with('.'), "{rating}: {caution:?}");
+            }
+        }
     }
 }

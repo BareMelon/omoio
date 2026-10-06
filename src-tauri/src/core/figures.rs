@@ -4,6 +4,7 @@
 //! numbers only. These facts were checked against Dolphin's figure list,
 //! which has them for every figure; the table here is Omoio's own.
 
+use crate::core::console::Console;
 use serde::{Deserialize, Serialize};
 
 /// The element a figure belongs to.
@@ -66,6 +67,16 @@ pub fn game_from_title(title: &str) -> Option<Game> {
     .into_iter()
     .find(|(name, _)| title.contains(name))
     .map(|(_, game)| game)
+}
+
+/// Whether the portal menu works in this game on this console. These are the
+/// three it has been played through with, and the three the README names.
+pub fn has_portal_menu(console: Console, title: &str) -> bool {
+    is_skylanders(title)
+        && matches!(
+            (console, game_from_title(title)),
+            (Console::Ps3, Some(Game::Giants)) | (Console::WiiU, Some(Game::SwapForce | Game::TrapTeam))
+        )
 }
 
 /// The game a figure id came out with. The sidekicks of the first two games
@@ -597,6 +608,18 @@ mod tests {
         assert!(is_skylanders("Skylanders SWAP Force"));
         assert!(is_skylanders("Skylanders Giants"));
         assert!(!is_skylanders("LittleBigPlanet 3"));
+    }
+
+    #[test]
+    fn the_portal_menu_works_in_three_games_each_on_its_console() {
+        assert!(has_portal_menu(Console::Ps3, "Skylanders Giants™"));
+        assert!(has_portal_menu(Console::WiiU, "Skylanders: Swap Force"));
+        assert!(has_portal_menu(Console::WiiU, "Skylanders - Trap Team"));
+
+        assert!(!has_portal_menu(Console::WiiU, "Skylanders: Giants"));
+        assert!(!has_portal_menu(Console::Ps3, "Skylanders Trap Team"));
+        assert!(!has_portal_menu(Console::WiiU, "Skylanders: SuperChargers"));
+        assert!(!has_portal_menu(Console::Ps3, "Giants: Citizen Kabuto"), "not a Skylanders game");
     }
 
     #[test]
