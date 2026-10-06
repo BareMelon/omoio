@@ -1003,6 +1003,11 @@ impl super::EmulatorBackend for Cemu {
         let pro = crate::core::figures::game_from_title(&game.title) == Some(crate::core::figures::Game::TrapTeam)
             || title_id_for(app, game).is_some_and(|id| controllers::PRO_FIRST.contains(&id.as_str()));
         let _ = controllers::first_player(app, pro);
+        // A game nobody can answer is not started: it would only sit on its
+        // first screen.
+        if let Some(why) = controllers::missing_first_player(app) {
+            return Err(why);
+        }
         // The game's own folder or .wua, so Cemu reads its meta and starts it
         // as a proper title rather than in the standalone mode it keeps for
         // loose programs. Given a .wua, Cemu starts the title `game_in_wua`
