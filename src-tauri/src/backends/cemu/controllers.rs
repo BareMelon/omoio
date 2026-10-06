@@ -19,10 +19,14 @@
 //! again before every game, with the pads plugged in then. Any other pad gets
 //! none in Cemu: its GUID would be a guess.
 //!
+//! Player 1 is the one every game answers, so they are never left without a
+//! pad while an XInput one is plugged in (`stand_in`), and Play says so before
+//! a game starts with nobody to answer it (`missing_first_player`).
+//!
 //! Cemu keeps one layout for every game. A game's own layout is RPCS3's alone.
 
 use super::sdl;
-use crate::core::pad_layout::{Player, PLAYERS};
+use crate::core::pad_layout::{self, Pad, Player, PLAYERS};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
@@ -216,17 +220,32 @@ impl Reader {
     }
 }
 
-/// How Cemu reads this player's pad, with `hid` the HID devices plugged in.
-/// `None` for a pad Cemu cannot be told about.
-fn reader_for(player: &Player, hid: &[sdl::HidPad]) -> Option<Reader> {
-    if let Some(slot) = xinput_slot(player) {
+/// A pad's USB vendor and product ids, with how many of that model come
+/// before it, by its device name, as `pads::usb_ids` gives them.
+type UsbIds<'a> = &'a dyn Fn(&str) -> Option<(u16, u16, usize)>;
+
+/// How Cemu reads this player's pad, with `hid` the HID devices plugged in
+/// and `ids` what gilrs knows of the pads it reads. `None` for a pad Cemu
+/// cannot be told about: neither XInput nor one sdl.rs finds.
+fn reader_for(player: &Player, hid: &[sdl::HidPad], ids: UsbIds) -> Option<Reader> {
+    if let Some(slot) = xinput_slot(&player.pad) {
         return Some(Reader::XInput(slot));
     }
     if player.pad.handler != "SDL" {
         return None;
     }
-    let (vendor, product, ordinal) = crate::pads::usb_ids(&player.pad.device)?;
+    let (vendor, product, ordinal) = ids(&player.pad.device)?;
     sdl::find(vendor, product, ordinal, hid).map(Reader::Sdl)
+}
+
+/// The HID devices plugged in, looked for only when someone plays on a pad
+/// gilrs reads: SDL's way of finding them opens every HID device.
+fn hid_for(players: &[Player]) -> Vec<sdl::HidPad> {
+    if players.iter().any(|p| p.pad.handler == "SDL") {
+        sdl::hid_pads()
+    } else {
+        Vec::new()
+    }
 }
 
 /// A pad's name as text inside an XML element.
@@ -234,15 +253,13 @@ fn escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-/// The XInput slot a player's pad is in, counted from zero, or `None` for a
-/// pad that is not read through XInput.
-fn xinput_slot(player: &Player) -> Option<u32> {
-    if player.pad.handler != "XInput" {
+/// The XInput slot a pad is in, counted from zero, or `None` for a pad that
+/// is not read through XInput.
+fn xinput_slot(pad: &Pad) -> Option<u32> {
+    if pad.handler != "XInput" {
         return None;
     }
-    player
-        .pad
-        .device
+    pad.device
         .strip_prefix("XInput Pad #")?
         .parse::<u32>()
         .ok()
@@ -307,6 +324,57 @@ fn profile(kind: Kind, player: &Player, reader: Option<&Reader>, stick_dpad: boo
     )
 }
 
+/// The players as Cemu gets them, with `plugged` the pads plugged in now and
+/// `usable` whether Cemu can read a player's pad: an XInput one, or one of the
+/// SDL pads sdl.rs finds. Player 1 on a pad Cemu cannot read would leave every game without anyone
+/// to answer it, so they play on an XInput pad that is plugged in instead,
+/// keeping their own buttons: one no other player has, else another player's,
+/// who takes player 1's pad in return, so no pad drives two players. A PS5
+/// pad run through DS4Windows is seen twice, by gilrs and as an XInput pad,
+/// and a layout made while DS4Windows was off has the PS5 pad as player 1 and
+/// its XInput twin, plugged in later, as player 2; this plays it. Only Cemu's
+/// files change; the layout Omoio keeps stays as it was chosen, since RPCS3
+/// reads the other pads itself.
+fn stand_in(players: &[Player], plugged: &[Pad], usable: &dyn Fn(&Player) -> bool) -> Vec<Player> {
+    let mut players = players.to_vec();
+    let Some(first) = players.first() else {
+        return players;
+    };
+    if usable(first) {
+        return players;
+    }
+    let mut xinput = plugged.iter().filter(|pad| xinput_slot(pad).is_some());
+    let free = xinput
+        .clone()
+        .find(|pad| !players.iter().any(|p| p.pad.device == pad.device));
+    if let Some(pad) = free.or_else(|| xinput.next()) {
+        let buttons = first.buttons.clone();
+        pad_layout::give(&mut players, 0, Player { pad: pad.clone(), buttons });
+    }
+    players
+}
+
+/// Why player 1 would have no pad in Cemu with these `players`, after
+/// `stand_in` has had its go with the pads `connected`, worded for the person
+/// about to press Play. `None` when they have one.
+pub fn missing_first_player(players: &[Player], connected: &[Pad]) -> Option<String> {
+    let hid = hid_for(players);
+    let ids = |device: &str| crate::pads::usb_ids(device);
+    missing(players, connected, &|player: &Player| reader_for(player, &hid, &ids).is_some())
+}
+
+fn missing(players: &[Player], connected: &[Pad], usable: &dyn Fn(&Player) -> bool) -> Option<String> {
+    let first = players.first()?;
+    if stand_in(players, connected, usable).first().is_some_and(usable) {
+        return None;
+    }
+    Some(format!(
+        "Cemu can't use player 1's controller, {}, so the game won't answer it. \
+         Plug in an Xbox controller, or one that works as one, or choose another for player 1 on the Controller screen.",
+        first.pad.name
+    ))
+}
+
 /// One file per player, counted from 0 as Cemu names them, and player 1's
 /// again as both kinds of controller. `readers` goes with `players`.
 fn write_all(dir: &Path, players: &[Player], readers: &[Option<Reader>]) -> std::io::Result<()> {
@@ -347,15 +415,12 @@ pub fn write(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), 
     if !title_id.is_empty() || !super::install_dir(app)?.join("Cemu.exe").is_file() {
         return Ok(());
     }
-    // Only looked for when someone plays on such a pad: SDL's way of finding
-    // them opens every HID device.
-    let hid = if players.iter().any(|p| p.pad.handler == "SDL") {
-        sdl::hid_pads()
-    } else {
-        Vec::new()
-    };
-    let readers: Vec<Option<Reader>> = players.iter().map(|player| reader_for(player, &hid)).collect();
-    write_all(&profile_dir(app)?, players, &readers)
+    let hid = hid_for(players);
+    let ids = |device: &str| crate::pads::usb_ids(device);
+    let usable = |player: &Player| reader_for(player, &hid, &ids).is_some();
+    let players = stand_in(players, &crate::pads::connected(), &usable);
+    let readers: Vec<Option<Reader>> = players.iter().map(|player| reader_for(player, &hid, &ids)).collect();
+    write_all(&profile_dir(app)?, &players, &readers)
         .map_err(|_| "Couldn't save the controller settings for Cemu.".to_string())
 }
 
@@ -409,7 +474,7 @@ mod tests {
 
     /// A player's file with their pad read through XInput, as `write` does.
     fn on_xinput(kind: Kind, player: &Player, stick_dpad: bool) -> String {
-        profile(kind, player, xinput_slot(player).map(Reader::XInput).as_ref(), stick_dpad)
+        profile(kind, player, xinput_slot(&player.pad).map(Reader::XInput).as_ref(), stick_dpad)
     }
 
     fn entry(mapping: u64, button: u64) -> String {
@@ -478,7 +543,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("omoio-cemu-pads-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let players: Vec<Player> = (1..=4).map(|slot| Player::on(xinput(slot))).collect();
-        let readers: Vec<Option<Reader>> = players.iter().map(|p| xinput_slot(p).map(Reader::XInput)).collect();
+        let readers: Vec<Option<Reader>> = players.iter().map(|p| xinput_slot(&p.pad).map(Reader::XInput)).collect();
         write_all(&dir, &players, &readers).unwrap();
         for index in 0..PLAYERS {
             assert!(dir.join(format!("controller{index}.xml")).is_file());
@@ -579,5 +644,120 @@ mod tests {
         let two = std::fs::read_to_string(dir.join("controller1.xml")).unwrap();
         assert!(two.contains("<api>XInput</api>"), "an Xbox pad beside it stays XInput: {two}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("omoio-cemu-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn devices(players: &[Player]) -> Vec<&str> {
+        players.iter().map(|p| p.pad.device.as_str()).collect()
+    }
+
+    /// A DualSense on USB, as Windows reports it, for sdl.rs to find.
+    fn dualsense_hid() -> sdl::HidPad {
+        sdl::HidPad {
+            vendor: 0x054C,
+            product: 0x0CE6,
+            version: 0x0100,
+            manufacturer: Some("Sony Interactive Entertainment".to_string()),
+            product_name: Some("Wireless Controller".to_string()),
+        }
+    }
+
+    /// What gilrs knows of `dualsense()` while it is plugged in.
+    fn dualsense_ids(device: &str) -> Option<(u16, u16, usize)> {
+        (device == "PS5 Controller 0").then_some((0x054C, 0x0CE6, 0))
+    }
+
+    /// Whether Cemu can use a player's pad, with `hid` the HID devices
+    /// plugged in, as `write` asks it.
+    fn usable_with(hid: &[sdl::HidPad]) -> impl Fn(&Player) -> bool + '_ {
+        move |player| reader_for(player, hid, &dualsense_ids).is_some()
+    }
+
+    #[test]
+    fn a_ps5_pad_through_ds4windows_plays_player_one_as_its_xinput_twin() {
+        // Set up while DS4Windows was off, then played with it on: the PS5
+        // pad is player 1 and the XInput pad DS4Windows makes of it player 2.
+        // DS4Windows can hide the PS5 pad itself, so SDL finds none here.
+        let buttons = BTreeMap::from([
+            ("East".to_string(), "South".to_string()),
+            ("South".to_string(), "East".to_string()),
+        ]);
+        let mut players = vec![Player::with_buttons(dualsense(), buttons.clone())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let plugged = [xinput(1), dualsense()];
+        let usable = usable_with(&[]);
+        let cemu = stand_in(&players, &plugged, &usable);
+        assert_eq!(devices(&cemu), ["XInput Pad #1", "PS5 Controller 0", "XInput Pad #2", "XInput Pad #3"]);
+        assert_eq!(cemu[0].buttons, buttons, "player 1 keeps their own buttons");
+        assert!(cemu[1].buttons.is_empty(), "and player 2 theirs");
+        assert_eq!(devices(&players)[0], "PS5 Controller 0", "the layout Omoio keeps is untouched");
+
+        let dir = scratch("ds4windows");
+        let readers: Vec<Option<Reader>> = cemu.iter().map(|p| reader_for(p, &[], &dualsense_ids)).collect();
+        write_all(&dir, &cemu, &readers).unwrap();
+        let one = std::fs::read_to_string(dir.join("controller0.xml")).unwrap();
+        assert!(one.contains("<api>XInput</api>") && one.contains("<uuid>0</uuid>"), "{one}");
+        assert!(one.contains(&entry(1, 12)), "A as player 1 set it: {one}");
+        let two = std::fs::read_to_string(dir.join("controller1.xml")).unwrap();
+        assert!(!two.contains("<controller>"), "the same pad does not drive player 2 too: {two}");
+        let pro = std::fs::read_to_string(dir.join(FIRST_AS_PRO)).unwrap();
+        assert!(pro.contains("<uuid>0</uuid>"), "Trap Team's player 1 gets it as well: {pro}");
+        assert!(pro.contains(&entry(12, 39)), "d-pad from the stick: {pro}");
+        assert_eq!(missing(&players, &plugged, &usable), None, "so Play says nothing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_ps5_pad_cemu_can_find_keeps_player_one() {
+        // With SDL pads in Cemu, the PS5 pad is player 1's in Cemu too, and
+        // its XInput twin from DS4Windows is not swapped in for it.
+        let mut players = vec![Player::on(dualsense())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let plugged = [xinput(1), dualsense()];
+        let hid = [dualsense_hid()];
+        let usable = usable_with(&hid);
+        assert_eq!(stand_in(&players, &plugged, &usable), players);
+        assert_eq!(missing(&players, &plugged, &usable), None, "so Play says nothing");
+        let reader = reader_for(&players[0], &hid, &dualsense_ids);
+        assert_eq!(reader, Some(sdl_dualsense()), "and its file names it as an SDL pad");
+    }
+
+    #[test]
+    fn an_xinput_pad_no_one_has_is_taken_first() {
+        let mut players = vec![Player::on(dualsense())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let cemu = stand_in(&players, &[xinput(1), dualsense(), xinput(4)], &usable_with(&[]));
+        assert_eq!(devices(&cemu), ["XInput Pad #4", "XInput Pad #1", "XInput Pad #2", "XInput Pad #3"]);
+    }
+
+    #[test]
+    fn player_one_on_xinput_is_left_alone() {
+        let players = vec![Player::on(xinput(2)), Player::on(dualsense())];
+        let cemu = stand_in(&players, &[xinput(1), dualsense()], &usable_with(&[]));
+        assert_eq!(cemu, players, "even with their own pad not plugged in");
+    }
+
+    #[test]
+    fn with_no_pad_cemu_can_use_play_says_why_nothing_will_answer() {
+        let mut players = vec![Player::on(dualsense())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let usable = usable_with(&[]);
+        assert_eq!(stand_in(&players, &[dualsense()], &usable), players);
+        let why = missing(&players, &[dualsense()], &usable).expect("player 1 has no pad in Cemu");
+        assert!(why.starts_with("Cemu can't use player 1's controller, PS5 Controller,"), "{why}");
+        assert!(why.contains("Controller screen"), "{why}");
+    }
+
+    #[test]
+    fn player_one_on_xinput_is_never_warned_about() {
+        // An XInput slot is named in Cemu's file even with nothing in it, so
+        // a pad switched on late still plays.
+        let players = vec![Player::on(xinput(1)), Player::on(dualsense())];
+        assert_eq!(missing(&players, &[], &usable_with(&[])), None);
     }
 }
