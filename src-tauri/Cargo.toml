@@ -26,7 +26,11 @@ serde_json = "1"
 sysinfo = "0.39"
 # UI Automation, with the COM pieces it needs, reaches RPCS3's Qt windows,
 # whose widgets are not windows of their own. See backends/rpcs3/portal.rs.
+# The HID and device-setup pieces read pads the way Cemu's SDL does, to name
+# them in its profiles. See backends/cemu/sdl.rs.
 windows = { version = "0.62", features = [
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_HumanInterfaceDevice",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Gdi",
     "Win32_Foundation",
