@@ -22,17 +22,18 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 /// Games whose first player has to be a Wii U Pro Controller rather than the
-/// GamePad until they have saved once, by their title ids. Skylanders Trap
-/// Team asks for a language the first time it starts, and that screen answers
-/// the GamePad's touch screen and a Pro Controller's buttons but never the
-/// GamePad's buttons, so a pad standing in for the GamePad was stuck on the
-/// flags. As a Pro Controller the same pad picked a flag and went on through
-/// the logos, the save slots and into the opening film (European disc, 5
-/// October 2026; 000500001017c600 is the American one). Only until then:
-/// Cemu turns the stick into the presses menus move by for the GamePad but
-/// not for a Pro Controller (`VPADController.cpp` against
-/// `WPADController::KPADRead`, v2.6), so the stick moved nothing in the
-/// menus.
+/// GamePad, by their title ids. Skylanders Trap Team asks for a language as
+/// it starts, every time and not only the first (6 October 2026), and that
+/// screen answers the GamePad's touch screen and a Pro Controller's buttons
+/// but never the GamePad's buttons, so a pad standing in for the GamePad was
+/// stuck on the flags. As a Pro Controller the same pad picked a flag and went
+/// on through the logos, the save slots and into the opening film (European
+/// disc, 5 October 2026; 000500001017c600 is the American one). Cemu turns
+/// the stick into the presses menus move by for the GamePad but not for a
+/// Pro Controller (`VPADController.cpp` against `WPADController::KPADRead`,
+/// v2.6), so this Pro Controller takes its d-pad from the stick
+/// (`dpad_from_stick`). Omoio shows only the TV picture, so nothing of the
+/// GamePad's screen is lost.
 pub const PRO_FIRST: [&str; 2] = ["0005000010181f00", "000500001017c600"];
 
 /// Player 1's file as each kind of controller, kept beside the others so the
@@ -161,16 +162,33 @@ fn xinput_slot(player: &Player) -> Option<u32> {
         .map(|number| number - 1)
 }
 
-/// A player's file, as the `kind` of controller. A player Cemu cannot read
-/// the pad of still gets the file, with no pad in it, so one left from before
-/// does not keep driving them.
-fn profile(kind: Kind, player: &Player) -> String {
+/// The left stick's direction to take a d-pad direction from, for a Pro
+/// Controller standing in for the GamePad. Two of Cemu's buttons may share
+/// one of the pad's, so the stick still steers as a stick; the pad's own
+/// d-pad then does nothing, which costs nothing in Trap Team, where it has no
+/// job of its own (darkspyro.net's controls for the Wii U).
+fn dpad_from_stick(place: &str) -> &str {
+    match place {
+        "Up" => "LS Y+",
+        "Down" => "LS Y-",
+        "Left" => "LS X-",
+        "Right" => "LS X+",
+        other => other,
+    }
+}
+
+/// A player's file, as the `kind` of controller, with the d-pad taken from
+/// the stick when `stick_dpad`. A player Cemu cannot read the pad of still
+/// gets the file, with no pad in it, so one left from before does not keep
+/// driving them.
+fn profile(kind: Kind, player: &Player, stick_dpad: bool) -> String {
     let controller = xinput_slot(player)
         .map(|slot| {
             let entries: String = WII_U
                 .iter()
                 .enumerate()
                 .filter_map(|(at, (place, _))| {
+                    let place = if stick_dpad { dpad_from_stick(place) } else { place };
                     let number = xinput_number(player.input(place))?;
                     Some(format!(
                         "\t\t\t<entry>\n\t\t\t\t<mapping>{}</mapping>\n\t\t\t\t<button>{number}</button>\n\t\t\t</entry>\n",
@@ -206,44 +224,18 @@ fn profile(kind: Kind, player: &Player) -> String {
 fn write_all(dir: &Path, players: &[Player]) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
     for (index, player) in players.iter().enumerate().take(PLAYERS) {
-        std::fs::write(dir.join(format!("controller{index}.xml")), profile(Kind::for_player(index), player))?;
+        std::fs::write(dir.join(format!("controller{index}.xml")), profile(Kind::for_player(index), player, false))?;
     }
     if let Some(first) = players.first() {
-        std::fs::write(dir.join(FIRST_AS_GAMEPAD), profile(Kind::GamePad, first))?;
-        std::fs::write(dir.join(FIRST_AS_PRO), profile(Kind::Pro, first))?;
+        std::fs::write(dir.join(FIRST_AS_GAMEPAD), profile(Kind::GamePad, first, false))?;
+        std::fs::write(dir.join(FIRST_AS_PRO), profile(Kind::Pro, first, true))?;
     }
     Ok(())
 }
 
-/// Whether the game with this title id has saved in Cemu, which puts its
-/// first start behind it.
-pub fn has_saved(app: &AppHandle, title_id: &str) -> bool {
-    super::install_dir(app).is_ok_and(|dir| saved_in(&dir.join("portable").join("mlc01"), title_id))
-}
-
-/// Whether there is any file in the game's save folder under `mlc`, which
-/// Cemu keeps by the two halves of the title id.
-fn saved_in(mlc: &Path, title_id: &str) -> bool {
-    if title_id.len() != 16 {
-        return false;
-    }
-    let (high, low) = title_id.split_at(8);
-    has_file(&mlc.join("usr").join("save").join(high).join(low).join("user"))
-}
-
-fn has_file(dir: &Path) -> bool {
-    std::fs::read_dir(dir).is_ok_and(|entries| {
-        entries.flatten().any(|entry| {
-            let path = entry.path();
-            path.is_file() || (path.is_dir() && has_file(&path))
-        })
-    })
-}
-
 /// Makes player 1 the kind of controller the game about to start needs: a
-/// Pro Controller for one in `PRO_FIRST` that hasn't saved yet, the GamePad
-/// otherwise. Cemu reads `controller0.xml` as the game starts, and each start
-/// sets it again.
+/// Pro Controller for one in `PRO_FIRST`, the GamePad for any other. Cemu
+/// reads `controller0.xml` as the game starts, and each start sets it again.
 pub fn first_player(app: &AppHandle, pro: bool) -> Result<(), String> {
     let dir = profile_dir(app)?;
     let from = dir.join(if pro { FIRST_AS_PRO } else { FIRST_AS_GAMEPAD });
@@ -302,14 +294,14 @@ mod tests {
 
     #[test]
     fn player_one_is_the_gamepad_and_the_rest_are_pro_controllers() {
-        let one = profile(Kind::for_player(0), &Player::on(xinput(1)));
+        let one = profile(Kind::for_player(0), &Player::on(xinput(1)), false);
         assert!(one.contains("<type>Wii U GamePad</type>"));
         assert!(one.contains("<api>XInput</api>"));
         assert!(one.contains("<uuid>0</uuid>"));
         assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A is the right button");
         assert!(one.contains("<mapping>2</mapping>\n\t\t\t\t<button>12</button>"), "B, which games jump with, is the bottom one");
 
-        let two = profile(Kind::for_player(1), &Player::on(xinput(2)));
+        let two = profile(Kind::for_player(1), &Player::on(xinput(2)), false);
         assert!(two.contains("<type>Wii U Pro Controller</type>"));
         assert!(two.contains("<uuid>1</uuid>"));
         assert!(two.contains("<display_name>Controller 2</display_name>"));
@@ -322,14 +314,14 @@ mod tests {
             ("East".to_string(), "South".to_string()),
             ("South".to_string(), "East".to_string()),
         ]);
-        let text = profile(Kind::for_player(0), &Player::with_buttons(xinput(1), buttons));
+        let text = profile(Kind::for_player(0), &Player::with_buttons(xinput(1), buttons), false);
         assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A now on the bottom button");
     }
 
     #[test]
     fn guide_is_never_written_since_cemu_cannot_read_it() {
         let buttons = BTreeMap::from([("Start".to_string(), "Guide".to_string())]);
-        let text = profile(Kind::for_player(1), &Player::with_buttons(xinput(2), buttons));
+        let text = profile(Kind::for_player(1), &Player::with_buttons(xinput(2), buttons), false);
         assert_eq!(text.matches("<entry>").count(), 23);
     }
 
@@ -341,24 +333,9 @@ mod tests {
             handler: "SDL".to_string(),
             family: "playstation".to_string(),
         };
-        let text = profile(Kind::for_player(1), &Player::on(pad));
+        let text = profile(Kind::for_player(1), &Player::on(pad), false);
         assert!(text.contains("<type>Wii U Pro Controller</type>"));
         assert!(!text.contains("<controller>"));
-    }
-
-    #[test]
-    fn a_game_has_saved_once_its_save_folder_holds_a_file() {
-        let mlc = std::env::temp_dir().join(format!("omoio-cemu-mlc-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&mlc);
-        let user = mlc.join("usr").join("save").join("00050000").join("10181f00").join("user");
-        assert!(!saved_in(&mlc, "0005000010181f00"));
-        std::fs::create_dir_all(user.join("80000001")).unwrap();
-        assert!(!saved_in(&mlc, "0005000010181f00"), "an empty folder is no save");
-        std::fs::write(user.join("80000001").join("Save_Header"), b"x").unwrap();
-        assert!(saved_in(&mlc, "0005000010181f00"));
-        assert!(!saved_in(&mlc, "000500001017c600"));
-        assert!(!saved_in(&mlc, "short"));
-        let _ = std::fs::remove_dir_all(&mlc);
     }
 
     #[test]
@@ -373,7 +350,11 @@ mod tests {
         let pro = std::fs::read_to_string(dir.join(FIRST_AS_PRO)).unwrap();
         assert!(pro.contains("<type>Wii U Pro Controller</type>"));
         assert!(pro.contains("<uuid>0</uuid>"), "player 1's own pad");
-        assert!(pro.contains("<mapping>12</mapping>\n\t\t\t\t<button>0</button>"), "D-pad up after Home: {pro}");
+        // D-pad up, numbered after Home, is taken from the stick, which still
+        // steers as a stick too.
+        assert!(pro.contains("<mapping>12</mapping>\n\t\t\t\t<button>39</button>"), "d-pad up from the stick: {pro}");
+        assert!(pro.contains("<mapping>18</mapping>\n\t\t\t\t<button>39</button>"), "stick up: {pro}");
+        assert!(!pro.contains("<button>0</button>"), "the pad's own d-pad has no button: {pro}");
         let gamepad = std::fs::read_to_string(dir.join(FIRST_AS_GAMEPAD)).unwrap();
         assert_eq!(gamepad, std::fs::read_to_string(dir.join("controller0.xml")).unwrap());
         let _ = std::fs::remove_dir_all(&dir);

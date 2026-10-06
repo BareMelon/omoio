@@ -822,11 +822,8 @@ impl super::EmulatorBackend for Cemu {
         }
         // Known by name as well as by id: a disc image's id is known only once
         // Cemu has run it, and a game's first start is when it needs this.
-        let title_id = title_id_for(app, game);
-        let first_start = !title_id.as_deref().is_some_and(|id| controllers::has_saved(app, id));
-        let pro = first_start
-            && (crate::core::figures::game_from_title(&game.title) == Some(crate::core::figures::Game::TrapTeam)
-                || title_id.as_deref().is_some_and(|id| controllers::PRO_FIRST.contains(&id)));
+        let pro = crate::core::figures::game_from_title(&game.title) == Some(crate::core::figures::Game::TrapTeam)
+            || title_id_for(app, game).is_some_and(|id| controllers::PRO_FIRST.contains(&id.as_str()));
         let _ = controllers::first_player(app, pro);
         // The game's own folder, so Cemu reads its meta and starts it as a
         // proper title rather than in the standalone mode it keeps for loose

@@ -17,12 +17,16 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 use windows::core::BOOL;
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, WPARAM};
+use windows::Win32::System::Threading::{
+    GetThreadPriority, OpenThread, SetThreadPriority, THREAD_PRIORITY, THREAD_PRIORITY_HIGHEST,
+    THREAD_QUERY_LIMITED_INFORMATION, THREAD_SET_LIMITED_INFORMATION,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, GetClassNameW, GetDlgCtrlID, GetDlgItem, GetMenu, GetMenuItemCount, GetMenuItemID,
-    GetMenuStringW, GetParent, GetSubMenu, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, SendMessageTimeoutW,
-    SetMenu, SetWindowPos, HMENU, MF_BYPOSITION, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
-    WM_CLOSE, WM_COMMAND, WM_GETTEXT, WM_SETTEXT,
+    GetMenuStringW, GetParent, GetSubMenu, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
+    SendMessageTimeoutW, SetMenu, SetWindowPos, HMENU, MF_BYPOSITION, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOSIZE,
+    SWP_NOZORDER, WM_CLOSE, WM_COMMAND, WM_GETTEXT, WM_SETTEXT,
 };
 
 /// How many figures Cemu's portal holds (`MAX_SKYLANDERS`).
@@ -105,12 +109,12 @@ fn command_when_ready(pid: u32, label: &str) -> Option<u32> {
     }
 }
 
-/// Waits up to `limit` for Cemu's window titled `title` and puts it out of
+/// Waits up to `limit` for Cemu's window titled `wanted` and puts it out of
 /// sight. Looked for often, so it is gone before it can be seen over the game.
-fn arrives(pid: u32, title: &str, limit: Duration) -> Option<HWND> {
+fn arrives(pid: u32, wanted: &str, limit: Duration) -> Option<HWND> {
     let until = Instant::now() + limit;
     while Instant::now() < until {
-        if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == title) {
+        if let Some(window) = windows_of(pid).into_iter().find(|&w| title(w) == wanted) {
             out_of_sight(window);
             return Some(window);
         }
@@ -136,6 +140,49 @@ fn text(window: HWND) -> String {
         )
     };
     String::from_utf16_lossy(&buffer[..copied.min(buffer.len())])
+}
+
+/// A window's title as Windows keeps it, asked without sending Cemu
+/// anything, so a busy Cemu never holds up a look at its windows. Only for
+/// Cemu's windows themselves; a box or button inside one answers `text`.
+fn title(window: HWND) -> String {
+    let mut buffer = [0u16; 256];
+    let length = unsafe { GetWindowTextW(window, &mut buffer) };
+    String::from_utf16_lossy(&buffer[..length.max(0) as usize])
+}
+
+/// Cemu's window thread at a higher priority for as long as this is kept,
+/// and back as it was when dropped, however the wait ends. Cemu's figure
+/// maker fills its list on that thread in a way that grows with the square
+/// of the list (`CreateSkylanderDialog`, wxWidgets' `wxChoice`), and while a
+/// game runs the thread shares the processor with it: 5.5 s to open against
+/// 0.4 s with no game.
+struct Hurried {
+    thread: HANDLE,
+    was: i32,
+}
+
+impl Hurried {
+    fn new(window: HWND) -> Option<Self> {
+        let id = unsafe { GetWindowThreadProcessId(window, None) };
+        let thread =
+            unsafe { OpenThread(THREAD_SET_LIMITED_INFORMATION | THREAD_QUERY_LIMITED_INFORMATION, false, id) }.ok()?;
+        let was = unsafe { GetThreadPriority(thread) };
+        if unsafe { SetThreadPriority(thread, THREAD_PRIORITY_HIGHEST) }.is_err() {
+            let _ = unsafe { CloseHandle(thread) };
+            return None;
+        }
+        Some(Self { thread, was })
+    }
+}
+
+impl Drop for Hurried {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = SetThreadPriority(self.thread, THREAD_PRIORITY(self.was));
+            let _ = CloseHandle(self.thread);
+        }
+    }
 }
 
 fn set_text(window: HWND, value: &str) {
@@ -309,7 +356,7 @@ fn main_window(pid: u32) -> Option<HWND> {
     all.into_iter().find(|&window| {
         let mut owner = 0u32;
         unsafe { GetWindowThreadProcessId(window, Some(&mut owner)) };
-        owner == pid && (!unsafe { GetMenu(window) }.is_invalid() || text(window).starts_with("Cemu"))
+        owner == pid && (!unsafe { GetMenu(window) }.is_invalid() || title(window).starts_with("Cemu"))
     })
 }
 
@@ -350,7 +397,7 @@ pub fn tidy(pid: u32) {
 /// game, 27 September 2026). It is a dialog of the same kind as Cemu's
 /// messages, so `is_message` has to leave it out.
 pub fn hush(pid: u32, hushed: bool) -> Result<(), String> {
-    let open_now = windows_of(pid).into_iter().find(|&w| text(w) == INPUT_SETTINGS);
+    let open_now = windows_of(pid).into_iter().find(|&w| title(w) == INPUT_SETTINGS);
     if !hushed {
         if let Some(window) = open_now {
             close(window);
@@ -373,7 +420,7 @@ pub fn hush(pid: u32, hushed: bool) -> Result<(), String> {
 /// of sight. Its menu command is sent again each `RESEND` until it shows;
 /// Cemu only shows the window again when it is open already.
 fn open(pid: u32) -> Result<HWND, String> {
-    if let Some(window) = windows_of(pid).into_iter().find(|&w| text(w) == WINDOW) {
+    if let Some(window) = windows_of(pid).into_iter().find(|&w| title(w) == WINDOW) {
         out_of_sight(window);
         return Ok(window);
     }
@@ -400,7 +447,7 @@ fn show_devices(pid: u32, main: HWND, devices: u32, limit: Duration) -> Option<H
 /// opens, and the window stays open after.
 pub fn ready(pid: u32) {
     let _turn = turn();
-    let open_now = windows_of(pid).into_iter().map(text).collect::<Vec<_>>();
+    let open_now = windows_of(pid).into_iter().map(title).collect::<Vec<_>>();
     if open_now.iter().any(|title| title == WINDOW || title == INPUT_SETTINGS) {
         return;
     }
@@ -469,8 +516,8 @@ fn check(slot: usize) -> Result<(), String> {
 /// while a menu is over the game it is Omoio's: taken for a message, it made
 /// every figure look as if it had failed.
 fn is_message(window: HWND, expected: &[&str]) -> bool {
-    let title = text(window);
-    class(window) == "#32770" && title != INPUT_SETTINGS && !expected.contains(&title.as_str())
+    let name = title(window);
+    class(window) == "#32770" && name != INPUT_SETTINGS && !expected.contains(&name.as_str())
 }
 
 /// Clicks OK on a message Cemu put up, so it does not sit over the game, and
@@ -508,7 +555,7 @@ pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
         .ok_or("Cemu's portal looks different from what Omoio knows.")?;
     press(load);
 
-    let picker = wait_up_to(SAVE_WAIT, pid, |w| class(w) == "#32770" && text(w) == OPEN_FIGURE)
+    let picker = wait_up_to(SAVE_WAIT, pid, |w| class(w) == "#32770" && title(w) == OPEN_FIGURE)
         .ok_or("Cemu didn't ask for the figure. Try again.")?;
     finish_file_window(pid, picker, file)?;
     // Cemu reads the file once its window has closed, then names it in the
@@ -582,11 +629,12 @@ fn send(window: HWND, message: u32, wparam: usize, lparam: isize) -> usize {
 
 /// Cemu's figure maker, opened from the Create button of `slot` and put
 /// out of sight. While a game runs it takes over five seconds to appear
-/// (5.4 s in Swap Force, against 0.4 s with no game), so it gets a longer
-/// wait than other windows, and one still open from a try that gave up is
-/// used rather than a second opened over it.
+/// (5.4 s in Swap Force, against 0.4 s with no game), so Cemu's window
+/// thread is hurried while it opens, it gets a longer wait than other
+/// windows, and one still open from a try that gave up is used rather than
+/// a second opened over it.
 fn open_creator(pid: u32, window: HWND, slot: usize) -> Result<HWND, String> {
-    if let Some(creator) = windows_of(pid).into_iter().find(|&w| text(w) == CREATOR) {
+    if let Some(creator) = windows_of(pid).into_iter().find(|&w| title(w) == CREATOR) {
         out_of_sight(creator);
         return Ok(creator);
     }
@@ -594,9 +642,10 @@ fn open_creator(pid: u32, window: HWND, slot: usize) -> Result<HWND, String> {
         .into_iter()
         .nth(slot)
         .ok_or(LOOKS_DIFFERENT)?;
+    let _hurried = Hurried::new(window);
     press(create);
     let creator =
-        wait_up_to(MAKER_WAIT, pid, |w| text(w) == CREATOR).ok_or("Cemu's figure maker didn't open. Try again.")?;
+        wait_up_to(MAKER_WAIT, pid, |w| title(w) == CREATOR).ok_or("Cemu's figure maker didn't open. Try again.")?;
     out_of_sight(creator);
     Ok(creator)
 }
@@ -673,7 +722,7 @@ pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Resu
     // and the figure maker is closed either way: left open it is modal, and
     // every later try would find the portal window unable to answer.
     let saver = wait_up_to(SAVE_WAIT, pid, |w| is_message(w, &[CREATOR, WINDOW]));
-    let Some(saver) = saver.filter(|&w| text(w) == SAVE_FIGURE) else {
+    let Some(saver) = saver.filter(|&w| title(w) == SAVE_FIGURE) else {
         let said = dismiss_message(pid, &[CREATOR, WINDOW, SAVE_FIGURE]);
         std::thread::sleep(Duration::from_millis(300));
         cancel_creator(creator);
