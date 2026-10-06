@@ -15,6 +15,7 @@ import {
   portalMenuFamily,
   villains as listVillains,
   type Figure,
+  type FigureClass,
   type FigureElement,
   type FigureKind,
   type Movement,
@@ -129,6 +130,23 @@ const MARKS: Record<string, string> = {
   vehicle: `<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/>`,
   trophy: `<path d="M7 3h10v5a5 5 0 0 1-10 0zM7 5H4a3 3 0 0 0 3.3 4M17 5h3a3 3 0 0 1-3.3 4M12 13v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`,
   figure: `<circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/>`,
+};
+
+/// Omoio's own marks for the kinds the game's checklists mark apart, with
+/// their names and where they sort in an element: a crown with a Traptanium
+/// crystal at its heart for a Trap Master, first, and a small figure in a
+/// ring for a Mini, last.
+const CLASSES: Record<FigureClass, { words: string; order: number; shape: string }> = {
+  trap_master: {
+    words: "Trap Master",
+    order: 0,
+    shape: `<path d="M3 18.5h18l-1.4-10-4.4 4.2L12 4.5l-3.2 8.2-4.4-4.2z" fill="currentColor" opacity=".55"/><path d="M12 4.5 8.8 12.7l3.2 5.8 3.2-5.8z" fill="currentColor"/><rect x="3" y="19.5" width="18" height="2.2" rx="1.1" fill="currentColor"/>`,
+  },
+  mini: {
+    words: "Mini",
+    order: 2,
+    shape: `<circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9.6" r="2.6" fill="currentColor"/><path d="M7.9 17.2a4.1 4.1 0 0 1 8.2 0z" fill="currentColor"/>`,
+  },
 };
 
 /// The corner of a tile says when its figure is on the portal, saved, or
@@ -284,9 +302,21 @@ function holdsTrap(slot: number): boolean {
   return offers.some((offer) => offer.kind === "trap" && offer.name === onPortal[slot]);
 }
 
+/// The marked kind a tile's figure is, if any.
+function classOf(entry: Entry): FigureClass | null {
+  return entry.offer?.class ?? entry.figure?.class ?? null;
+}
+
+/// Where a tile sorts among its element: Trap Masters first and Minis last,
+/// as on the game's own checklist.
+function rank(entry: Entry): number {
+  const kind = classOf(entry);
+  return kind ? CLASSES[kind].order : 1;
+}
+
 function buildTabs() {
   const kept = tabs[tab]?.label;
-  const byName = (a: Entry, b: Entry) => a.name.localeCompare(b.name);
+  const byName = (a: Entry, b: Entry) => rank(a) - rank(b) || a.name.localeCompare(b.name);
   const entry = (offer: Offer): Entry => ({
     name: offer.name,
     element: offer.element,
@@ -446,6 +476,12 @@ function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
   } else {
     emblem(spot, entry.element, entry.kind);
   }
+  const kind = classOf(entry);
+  if (kind) {
+    const corner = node("span", `portal-class-corner ${kind}`);
+    corner.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${CLASSES[kind].shape}</svg>`;
+    spot.appendChild(corner);
+  }
   if (badge) {
     const [words, shape] = BADGES[badge];
     const corner = node("span", `portal-badge ${badge}`);
@@ -468,6 +504,13 @@ function kindLine(entry: Entry): HTMLElement {
     const own = kindIcon(entry.kind);
     if (own) line.appendChild(icon(own));
     line.append(KIND_NAMES[entry.kind] ?? "");
+  }
+  const kind = classOf(entry);
+  if (kind) {
+    const named = node("span", `portal-class ${kind}`);
+    named.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${CLASSES[kind].shape}</svg>`;
+    named.append(CLASSES[kind].words);
+    line.appendChild(named);
   }
   const series = entry.offer?.series ?? entry.figure?.series;
   if (series) line.appendChild(node("span", "portal-series", `Series ${series}`));

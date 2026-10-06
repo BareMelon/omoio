@@ -306,6 +306,29 @@ pub fn movement(id: u16) -> Option<Movement> {
     BOTTOMS.get(usize::from(id.checked_sub(1000)?)).copied()
 }
 
+/// The kinds of Skylander the game's own checklists mark apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Class {
+    /// Trap Team's Trap Masters, who carry a Traptanium weapon.
+    TrapMaster,
+    /// The small ones: Trap Team's Minis, and the Sidekicks of Giants they
+    /// came back as.
+    Mini,
+}
+
+/// Which marked kind a figure is, from its id, variants included (Cemu
+/// 2.6's list). Trap Masters are the first two of each element's four from
+/// 450, then Knight Light and Knight Mare.
+pub fn class(id: u16) -> Option<Class> {
+    match id {
+        450..=481 if (id - 450) % 4 < 2 => Some(Class::TrapMaster),
+        482 | 484 => Some(Class::TrapMaster),
+        502..=510 | 514 | 519 | 526 | 540..=543 => Some(Class::Mini),
+        _ => None,
+    }
+}
+
 /// Seven traps Cemu's figure maker lists with a variant Trap Team doesn't
 /// use, so the game reads them as another trap or not at all (Cemu issue
 /// #1816): name, id, Cemu's variant, the game's. The game's own Collection
@@ -349,6 +372,7 @@ pub struct Offer {
     pub half: Option<Half>,
     pub series: Option<u8>,
     pub movement: Option<Movement>,
+    pub class: Option<Class>,
 }
 
 /// The characters `game` reads, each with its element and kind. Every one
@@ -367,6 +391,7 @@ pub fn offers(characters: Vec<Character>, game: Option<Game>) -> Vec<Offer> {
                 half: half(character.id),
                 series: series(variant),
                 movement: movement(character.id),
+                class: class(character.id),
                 character: Character { name, id: character.id, variant },
             }
         })
@@ -484,6 +509,24 @@ mod tests {
         assert_eq!(game_from_title("Skylanders: Trap Team"), Some(Game::TrapTeam));
         assert_eq!(game_from_title("Skylanders SuperChargers"), Some(Game::SuperChargers));
         assert_eq!(game_from_title("LittleBigPlanet 3"), None);
+    }
+
+    #[test]
+    fn trap_masters_and_minis_are_told_by_their_id() {
+        let master = Some(Class::TrapMaster);
+        let mini = Some(Class::Mini);
+        assert_eq!(class(450), master); // Gusto
+        assert_eq!(class(451), master); // Thunderbolt
+        assert_eq!(class(452), None); // Fling Kong
+        assert_eq!(class(470), master); // Jawbreaker, and Legendary Jawbreaker
+        assert_eq!(class(481), None); // Funny Bone
+        assert_eq!(class(482), master); // Knight Light
+        assert_eq!(class(483), None); // Spotlight
+        assert_eq!(class(484), master); // Knight Mare
+        assert_eq!(class(485), None); // Blackout
+        assert_eq!(class(503), mini); // Spry
+        assert_eq!(class(542), mini); // Mini Jini
+        assert_eq!(class(108), None); // Pop Fizz
     }
 
     #[test]

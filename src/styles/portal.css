@@ -269,6 +269,43 @@ body {
   color: var(--brand-text);
 }
 
+/* The mark of a Trap Master or a Mini: in the picture's other top corner,
+   and again by its element under the name. Trap Masters in the traps'
+   colour, Minis plain. */
+.portal-class-corner {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--glass);
+}
+
+.portal-class-corner svg {
+  width: 22px;
+  height: 22px;
+}
+
+.portal-class {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.portal-class-corner.trap_master,
+.portal-class.trap_master {
+  color: var(--kind-trap);
+}
+
+.portal-class-corner.mini,
+.portal-class.mini {
+  color: var(--ink);
+}
+
 .portal-name {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -740,6 +740,7 @@ export interface Figure {
   /// Force's new poses of older Skylanders (series 3).
   series: number | null;
   movement: Movement | null;
+  class: FigureClass | null;
   /// The villain a Trap Team trap holds, read from the trap's own data.
   holds: Trapped | null;
 }
@@ -825,7 +826,12 @@ export interface Offer extends Character {
   series: number | null;
   /// Set on a bottom half.
   movement: Movement | null;
+  class: FigureClass | null;
 }
+
+/// The kinds of Skylander the game's checklists mark apart: Trap Team's Trap
+/// Masters, and the Minis.
+export type FigureClass = "trap_master" | "mini";
 
 export function figureCharacters(): Promise<Offer[]> {
   return invoke("figure_characters");
