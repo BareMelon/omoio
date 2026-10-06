@@ -100,6 +100,11 @@ It doesn't need admin rights. On first start it asks which emulators you want.
 PS3 games also need Sony's free firmware: Omoio opens Sony's download page and
 installs the file you pick.
 
+From 0.2.2 on, Omoio updates itself. It downloads a new version in the
+background and asks before it restarts, never while a game is running. If you
+have an older version, install the newest one once by hand; it keeps your
+library.
+
 The installer isn't code signed yet, so Windows SmartScreen may warn you. Click
 More info, then Run anyway.
 
