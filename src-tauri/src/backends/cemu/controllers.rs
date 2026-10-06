@@ -9,14 +9,19 @@
 //!   Pro Controller in the few games that need one (`PRO_FIRST`).
 //! - Players 2 to 4 are Wii U Pro Controllers, which multiplayer games take.
 //!
-//! Each is an XInput pad, named by its slot. Cemu's XInput pad is known by the
-//! slot number alone, so a file can name a slot before a pad is in it. A
-//! player on any other kind of pad gets none in Cemu for now: Cemu knows those
-//! by an SDL GUID that has not been checked against a real pad. Cemu reads
-//! XInput without the Guide button, so Home is not offered.
+//! An Xbox-style pad is an XInput one, named by its slot. Cemu's XInput pad is
+//! known by the slot number alone, so a file can name a slot before a pad is
+//! in it. Cemu reads XInput without the Guide button.
+//!
+//! A PlayStation pad or a Switch Pro Controller is one of Cemu's SDL pads,
+//! named by the GUID SDL gives it (sdl.rs), which is worked out from the pad
+//! itself, so it is named only while it is plugged in. Omoio writes the files
+//! again before every game, with the pads plugged in then. Any other pad gets
+//! none in Cemu: its GUID would be a guess.
 //!
 //! Cemu keeps one layout for every game. A game's own layout is RPCS3's alone.
 
+use super::sdl;
 use crate::core::pad_layout::{Player, PLAYERS};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
@@ -75,6 +80,45 @@ pub const WII_U: [(&str, &str); 24] = [
     ("RS X-", "Right stick left"),
     ("RS X+", "Right stick right"),
 ];
+
+/// Cemu's number for an input on an SDL pad: the `SDL_GameControllerButton`
+/// SDL reports it as (`SDLController::raw_state`), and for the sticks and
+/// triggers the same `Buttons2` entries as XInput, where SDL counts down as
+/// positive, so a stick pushed up is the negative entry (Cemu's own SDL layout
+/// in `VPADController::set_default_mapping`). SDL 2.30 reports the face
+/// buttons of a Switch pad by their letters (`RemapButton` in its Switch
+/// driver, which Cemu leaves as it is), Nintendo's A sitting where an Xbox
+/// pad has B, so `by_label` puts those by letter.
+fn sdl_number(input: &str, by_label: bool) -> Option<u64> {
+    Some(match (input, by_label) {
+        ("South", false) | ("East", true) => 0,
+        ("East", false) | ("South", true) => 1,
+        ("West", false) | ("North", true) => 2,
+        ("North", false) | ("West", true) => 3,
+        ("Back", _) => 4,
+        ("Guide", _) => 5,
+        ("Start", _) => 6,
+        ("LS", _) => 7,
+        ("RS", _) => 8,
+        ("LB", _) => 9,
+        ("RB", _) => 10,
+        ("Up", _) => 11,
+        ("Down", _) => 12,
+        ("Left", _) => 13,
+        ("Right", _) => 14,
+        ("LS X+", _) => 38,
+        ("LS Y-", _) => 39,
+        ("RS X+", _) => 40,
+        ("RS Y-", _) => 41,
+        ("LT", _) => 42,
+        ("RT", _) => 43,
+        ("LS X-", _) => 44,
+        ("LS Y+", _) => 45,
+        ("RS X-", _) => 46,
+        ("RS Y+", _) => 47,
+        _ => return None,
+    })
+}
 
 /// Cemu's number for an input on an XInput pad, its `Buttons2` in
 /// `Controller.h`. Buttons are the bits of `XINPUT_GAMEPAD.wButtons`; the
@@ -146,6 +190,50 @@ impl Kind {
     }
 }
 
+/// How Cemu reads a player's pad.
+#[derive(Debug, Clone, PartialEq)]
+enum Reader {
+    /// An XInput slot, counted from zero.
+    XInput(u32),
+    /// One of Cemu's SDL pads.
+    Sdl(sdl::Found),
+}
+
+impl Reader {
+    fn number(&self, input: &str) -> Option<u64> {
+        match self {
+            Reader::XInput(_) => xinput_number(input),
+            Reader::Sdl(found) => sdl_number(input, found.by_label),
+        }
+    }
+
+    /// The `<api>`, `<uuid>` and `<display_name>` a profile gives the pad.
+    fn names(&self, player: &Player) -> (&'static str, String, String) {
+        match self {
+            Reader::XInput(slot) => ("XInput", slot.to_string(), format!("Controller {}", slot + 1)),
+            Reader::Sdl(found) => ("SDLController", found.uuid.clone(), escape(&player.pad.name)),
+        }
+    }
+}
+
+/// How Cemu reads this player's pad, with `hid` the HID devices plugged in.
+/// `None` for a pad Cemu cannot be told about.
+fn reader_for(player: &Player, hid: &[sdl::HidPad]) -> Option<Reader> {
+    if let Some(slot) = xinput_slot(player) {
+        return Some(Reader::XInput(slot));
+    }
+    if player.pad.handler != "SDL" {
+        return None;
+    }
+    let (vendor, product, ordinal) = crate::pads::usb_ids(&player.pad.device)?;
+    sdl::find(vendor, product, ordinal, hid).map(Reader::Sdl)
+}
+
+/// A pad's name as text inside an XML element.
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 /// The XInput slot a player's pad is in, counted from zero, or `None` for a
 /// pad that is not read through XInput.
 fn xinput_slot(player: &Player) -> Option<u32> {
@@ -177,35 +265,35 @@ fn dpad_from_stick(place: &str) -> &str {
     }
 }
 
-/// A player's file, as the `kind` of controller, with the d-pad taken from
-/// the stick when `stick_dpad`. A player Cemu cannot read the pad of still
-/// gets the file, with no pad in it, so one left from before does not keep
-/// driving them.
-fn profile(kind: Kind, player: &Player, stick_dpad: bool) -> String {
-    let controller = xinput_slot(player)
-        .map(|slot| {
+/// A player's file, as the `kind` of controller, with their pad read by
+/// `reader` and the d-pad taken from the stick when `stick_dpad`. A player
+/// Cemu cannot read the pad of still gets the file, with no pad in it, so one
+/// left from before does not keep driving them.
+fn profile(kind: Kind, player: &Player, reader: Option<&Reader>, stick_dpad: bool) -> String {
+    let controller = reader
+        .map(|reader| {
             let entries: String = WII_U
                 .iter()
                 .enumerate()
                 .filter_map(|(at, (place, _))| {
                     let place = if stick_dpad { dpad_from_stick(place) } else { place };
-                    let number = xinput_number(player.input(place))?;
+                    let number = reader.number(player.input(place))?;
                     Some(format!(
                         "\t\t\t<entry>\n\t\t\t\t<mapping>{}</mapping>\n\t\t\t\t<button>{number}</button>\n\t\t\t</entry>\n",
                         kind.button_id(at)
                     ))
                 })
                 .collect();
+            let (api, uuid, display_name) = reader.names(player);
             format!(
                 "\t<controller>\n\
-                 \t\t<api>XInput</api>\n\
-                 \t\t<uuid>{slot}</uuid>\n\
-                 \t\t<display_name>Controller {}</display_name>\n\
+                 \t\t<api>{api}</api>\n\
+                 \t\t<uuid>{uuid}</uuid>\n\
+                 \t\t<display_name>{display_name}</display_name>\n\
                  \t\t<mappings>\n\
                  {entries}\
                  \t\t</mappings>\n\
-                 \t</controller>\n",
-                slot + 1
+                 \t</controller>\n"
             )
         })
         .unwrap_or_default();
@@ -220,15 +308,17 @@ fn profile(kind: Kind, player: &Player, stick_dpad: bool) -> String {
 }
 
 /// One file per player, counted from 0 as Cemu names them, and player 1's
-/// again as both kinds of controller.
-fn write_all(dir: &Path, players: &[Player]) -> std::io::Result<()> {
+/// again as both kinds of controller. `readers` goes with `players`.
+fn write_all(dir: &Path, players: &[Player], readers: &[Option<Reader>]) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
+    let reader = |index: usize| readers.get(index).and_then(Option::as_ref);
     for (index, player) in players.iter().enumerate().take(PLAYERS) {
-        std::fs::write(dir.join(format!("controller{index}.xml")), profile(Kind::for_player(index), player, false))?;
+        let text = profile(Kind::for_player(index), player, reader(index), false);
+        std::fs::write(dir.join(format!("controller{index}.xml")), text)?;
     }
     if let Some(first) = players.first() {
-        std::fs::write(dir.join(FIRST_AS_GAMEPAD), profile(Kind::GamePad, first, false))?;
-        std::fs::write(dir.join(FIRST_AS_PRO), profile(Kind::Pro, first, true))?;
+        std::fs::write(dir.join(FIRST_AS_GAMEPAD), profile(Kind::GamePad, first, reader(0), false))?;
+        std::fs::write(dir.join(FIRST_AS_PRO), profile(Kind::Pro, first, reader(0), true))?;
     }
     Ok(())
 }
@@ -257,7 +347,15 @@ pub fn write(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), 
     if !title_id.is_empty() || !super::install_dir(app)?.join("Cemu.exe").is_file() {
         return Ok(());
     }
-    write_all(&profile_dir(app)?, players)
+    // Only looked for when someone plays on such a pad: SDL's way of finding
+    // them opens every HID device.
+    let hid = if players.iter().any(|p| p.pad.handler == "SDL") {
+        sdl::hid_pads()
+    } else {
+        Vec::new()
+    };
+    let readers: Vec<Option<Reader>> = players.iter().map(|player| reader_for(player, &hid)).collect();
+    write_all(&profile_dir(app)?, players, &readers)
         .map_err(|_| "Couldn't save the controller settings for Cemu.".to_string())
 }
 
@@ -274,6 +372,48 @@ mod tests {
             handler: "XInput".to_string(),
             family: "xbox".to_string(),
         }
+    }
+
+    fn dualsense() -> Pad {
+        Pad {
+            device: "PS5 Controller 0".to_string(),
+            name: "PS5 Controller".to_string(),
+            handler: "SDL".to_string(),
+            family: "playstation".to_string(),
+        }
+    }
+
+    fn switch_pro() -> Pad {
+        Pad {
+            device: "Nintendo Switch Pro Controller 0".to_string(),
+            name: "Nintendo Switch Pro Controller".to_string(),
+            handler: "SDL".to_string(),
+            family: "nintendo".to_string(),
+        }
+    }
+
+    /// Cemu's SDL pad as sdl.rs finds a DualSense on USB.
+    fn sdl_dualsense() -> Reader {
+        Reader::Sdl(sdl::Found {
+            uuid: "0_030057564c050000e60c000000016800".to_string(),
+            by_label: false,
+        })
+    }
+
+    fn sdl_switch_pro() -> Reader {
+        Reader::Sdl(sdl::Found {
+            uuid: "0_0300bb977e0500000920000010026803".to_string(),
+            by_label: true,
+        })
+    }
+
+    /// A player's file with their pad read through XInput, as `write` does.
+    fn on_xinput(kind: Kind, player: &Player, stick_dpad: bool) -> String {
+        profile(kind, player, xinput_slot(player).map(Reader::XInput).as_ref(), stick_dpad)
+    }
+
+    fn entry(mapping: u64, button: u64) -> String {
+        format!("<mapping>{mapping}</mapping>\n\t\t\t\t<button>{button}</button>")
     }
 
     fn id_of(kind: Kind, name: &str) -> u64 {
@@ -294,14 +434,14 @@ mod tests {
 
     #[test]
     fn player_one_is_the_gamepad_and_the_rest_are_pro_controllers() {
-        let one = profile(Kind::for_player(0), &Player::on(xinput(1)), false);
+        let one = on_xinput(Kind::for_player(0), &Player::on(xinput(1)), false);
         assert!(one.contains("<type>Wii U GamePad</type>"));
         assert!(one.contains("<api>XInput</api>"));
         assert!(one.contains("<uuid>0</uuid>"));
         assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>13</button>"), "A is the right button");
         assert!(one.contains("<mapping>2</mapping>\n\t\t\t\t<button>12</button>"), "B, which games jump with, is the bottom one");
 
-        let two = profile(Kind::for_player(1), &Player::on(xinput(2)), false);
+        let two = on_xinput(Kind::for_player(1), &Player::on(xinput(2)), false);
         assert!(two.contains("<type>Wii U Pro Controller</type>"));
         assert!(two.contains("<uuid>1</uuid>"));
         assert!(two.contains("<display_name>Controller 2</display_name>"));
@@ -314,26 +454,21 @@ mod tests {
             ("East".to_string(), "South".to_string()),
             ("South".to_string(), "East".to_string()),
         ]);
-        let text = profile(Kind::for_player(0), &Player::with_buttons(xinput(1), buttons), false);
+        let text = on_xinput(Kind::for_player(0), &Player::with_buttons(xinput(1), buttons), false);
         assert!(text.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A now on the bottom button");
     }
 
     #[test]
-    fn guide_is_never_written_since_cemu_cannot_read_it() {
+    fn guide_is_never_written_for_xinput_since_cemu_cannot_read_it() {
         let buttons = BTreeMap::from([("Start".to_string(), "Guide".to_string())]);
-        let text = profile(Kind::for_player(1), &Player::with_buttons(xinput(2), buttons), false);
+        let text = on_xinput(Kind::for_player(1), &Player::with_buttons(xinput(2), buttons), false);
         assert_eq!(text.matches("<entry>").count(), 23);
     }
 
     #[test]
-    fn a_pad_cemu_cannot_read_leaves_the_player_without_one() {
-        let pad = Pad {
-            device: "DualSense Wireless Controller 0".to_string(),
-            name: "DualSense Wireless Controller".to_string(),
-            handler: "SDL".to_string(),
-            family: "playstation".to_string(),
-        };
-        let text = profile(Kind::for_player(1), &Player::on(pad), false);
+    fn a_pad_cemu_cannot_find_leaves_the_player_without_one() {
+        // A pad that is not plugged in, or not one SDL's HID drivers take.
+        let text = profile(Kind::for_player(1), &Player::on(dualsense()), None, false);
         assert!(text.contains("<type>Wii U Pro Controller</type>"));
         assert!(!text.contains("<controller>"));
     }
@@ -343,7 +478,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("omoio-cemu-pads-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let players: Vec<Player> = (1..=4).map(|slot| Player::on(xinput(slot))).collect();
-        write_all(&dir, &players).unwrap();
+        let readers: Vec<Option<Reader>> = players.iter().map(|p| xinput_slot(p).map(Reader::XInput)).collect();
+        write_all(&dir, &players, &readers).unwrap();
         for index in 0..PLAYERS {
             assert!(dir.join(format!("controller{index}.xml")).is_file());
         }
@@ -357,6 +493,91 @@ mod tests {
         assert!(!pro.contains("<button>0</button>"), "the pad's own d-pad has no button: {pro}");
         let gamepad = std::fs::read_to_string(dir.join(FIRST_AS_GAMEPAD)).unwrap();
         assert_eq!(gamepad, std::fs::read_to_string(dir.join("controller0.xml")).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_playstation_pad_is_one_of_cemus_sdl_pads_with_buttons_by_place() {
+        let text = profile(Kind::for_player(0), &Player::on(dualsense()), Some(&sdl_dualsense()), false);
+        assert!(text.contains("<type>Wii U GamePad</type>"));
+        assert!(text.contains("<api>SDLController</api>"));
+        assert!(text.contains("<uuid>0_030057564c050000e60c000000016800</uuid>"));
+        assert!(text.contains("<display_name>PS5 Controller</display_name>"));
+        assert!(text.contains(&entry(1, 1)), "A on the right button, Circle: {text}");
+        assert!(text.contains(&entry(2, 0)), "B on the bottom one, Cross: {text}");
+        assert!(text.contains(&entry(3, 3)), "X on the top one, Triangle: {text}");
+        assert!(text.contains(&entry(4, 2)), "Y on the left one, Square: {text}");
+        assert!(text.contains(&entry(9, 6)), "Plus on Options: {text}");
+        assert!(text.contains(&entry(11, 11)), "d-pad up: {text}");
+        assert!(text.contains(&entry(17, 45)), "left stick up, which SDL counts as negative: {text}");
+        assert!(text.contains(&entry(18, 39)), "left stick down: {text}");
+        assert!(text.contains(&entry(21, 47)), "right stick up: {text}");
+        assert!(text.contains(&entry(7, 42)), "ZL on L2: {text}");
+        assert_eq!(text.matches("<entry>").count(), 24);
+    }
+
+    #[test]
+    fn a_switch_pads_buttons_go_by_place_too() {
+        // SDL calls the right button A on a Switch pad, so the Wii U's A, on
+        // the right, is SDL's A there, and B, at the bottom, SDL's B.
+        let text = profile(Kind::for_player(1), &Player::on(switch_pro()), Some(&sdl_switch_pro()), false);
+        assert!(text.contains("<type>Wii U Pro Controller</type>"));
+        assert!(text.contains("<uuid>0_0300bb977e0500000920000010026803</uuid>"));
+        assert!(text.contains(&entry(1, 0)), "A: {text}");
+        assert!(text.contains(&entry(2, 1)), "B: {text}");
+        assert!(text.contains(&entry(3, 2)), "X, on top: {text}");
+        assert!(text.contains(&entry(4, 3)), "Y, on the left: {text}");
+    }
+
+    #[test]
+    fn a_changed_layout_moves_the_button_on_an_sdl_pad() {
+        let buttons = BTreeMap::from([
+            ("East".to_string(), "South".to_string()),
+            ("South".to_string(), "East".to_string()),
+        ]);
+        let player = Player::with_buttons(dualsense(), buttons);
+        let text = profile(Kind::for_player(0), &player, Some(&sdl_dualsense()), false);
+        assert!(text.contains(&entry(1, 0)), "A now on Cross: {text}");
+        assert!(text.contains(&entry(2, 1)), "B now on Circle: {text}");
+    }
+
+    #[test]
+    fn guide_is_written_for_an_sdl_pad_since_cemu_reads_it() {
+        let buttons = BTreeMap::from([("Start".to_string(), "Guide".to_string())]);
+        let player = Player::with_buttons(dualsense(), buttons);
+        let text = profile(Kind::for_player(1), &player, Some(&sdl_dualsense()), false);
+        assert_eq!(text.matches("<entry>").count(), 24);
+        assert!(text.contains(&entry(9, 5)), "Plus on the PS button: {text}");
+    }
+
+    #[test]
+    fn a_pads_name_is_kept_as_text() {
+        let mut pad = dualsense();
+        pad.name = "Pads & <Co>".to_string();
+        let text = profile(Kind::for_player(1), &Player::on(pad), Some(&sdl_dualsense()), false);
+        assert!(text.contains("<display_name>Pads &amp; &lt;Co&gt;</display_name>"));
+    }
+
+    #[test]
+    fn trap_team_on_a_playstation_pad_takes_the_d_pad_from_the_stick() {
+        let dir = std::env::temp_dir().join(format!("omoio-cemu-sdl-pads-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let players = vec![Player::on(dualsense()), Player::on(xinput(1))];
+        let readers = vec![Some(sdl_dualsense()), Some(Reader::XInput(0))];
+        write_all(&dir, &players, &readers).unwrap();
+        let pro = std::fs::read_to_string(dir.join(FIRST_AS_PRO)).unwrap();
+        assert!(pro.contains("<type>Wii U Pro Controller</type>"));
+        assert!(pro.contains("<api>SDLController</api>"));
+        // D-pad up, numbered after Home, is the stick pushed up, which SDL
+        // counts as negative, and the stick still steers as a stick too.
+        assert!(pro.contains(&entry(12, 45)), "d-pad up from the stick: {pro}");
+        assert!(pro.contains(&entry(18, 45)), "stick up: {pro}");
+        assert!(pro.contains(&entry(13, 39)), "d-pad down from the stick: {pro}");
+        assert!(!pro.contains("<button>11</button>"), "the pad's own d-pad has no button: {pro}");
+        let gamepad = std::fs::read_to_string(dir.join(FIRST_AS_GAMEPAD)).unwrap();
+        assert!(gamepad.contains(&entry(11, 11)), "as the GamePad the d-pad is the d-pad: {gamepad}");
+        let two = std::fs::read_to_string(dir.join("controller1.xml")).unwrap();
+        assert!(two.contains("<api>XInput</api>"), "an Xbox pad beside it stays XInput: {two}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

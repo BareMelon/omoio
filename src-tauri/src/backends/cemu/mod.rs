@@ -9,6 +9,7 @@ pub mod game_profile;
 pub mod keys;
 pub mod packs;
 pub mod portal;
+pub mod sdl;
 pub mod wua;
 
 use crate::core::console::{Console, Features};
