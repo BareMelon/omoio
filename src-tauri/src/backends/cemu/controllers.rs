@@ -15,9 +15,13 @@
 //! by an SDL GUID that has not been checked against a real pad. Cemu reads
 //! XInput without the Guide button, so Home is not offered.
 //!
+//! Player 1 is the one every game answers, so they are never left without a
+//! pad while an XInput one is plugged in (`stand_in`), and a game does not
+//! start with nobody to answer it (`nobody_answers`).
+//!
 //! Cemu keeps one layout for every game. A game's own layout is RPCS3's alone.
 
-use crate::core::pad_layout::{Player, PLAYERS};
+use crate::core::pad_layout::{self, Pad, Player, PLAYERS};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
@@ -146,15 +150,13 @@ impl Kind {
     }
 }
 
-/// The XInput slot a player's pad is in, counted from zero, or `None` for a
-/// pad that is not read through XInput.
-fn xinput_slot(player: &Player) -> Option<u32> {
-    if player.pad.handler != "XInput" {
+/// The XInput slot a pad is in, counted from zero, or `None` for a pad that
+/// is not read through XInput.
+fn xinput_slot(pad: &Pad) -> Option<u32> {
+    if pad.handler != "XInput" {
         return None;
     }
-    player
-        .pad
-        .device
+    pad.device
         .strip_prefix("XInput Pad #")?
         .parse::<u32>()
         .ok()
@@ -182,7 +184,7 @@ fn dpad_from_stick(place: &str) -> &str {
 /// gets the file, with no pad in it, so one left from before does not keep
 /// driving them.
 fn profile(kind: Kind, player: &Player, stick_dpad: bool) -> String {
-    let controller = xinput_slot(player)
+    let controller = xinput_slot(&player.pad)
         .map(|slot| {
             let entries: String = WII_U
                 .iter()
@@ -217,6 +219,62 @@ fn profile(kind: Kind, player: &Player, stick_dpad: bool) -> String {
          </emulated_controller>\n",
         kind.cemu_name()
     )
+}
+
+/// The players as Cemu gets them, with `plugged` the pads plugged in now.
+/// Player 1 on a pad Cemu cannot read would leave every game without anyone
+/// to answer it, so they play on an XInput pad that is plugged in instead,
+/// keeping their own buttons: one no other player has, else another player's,
+/// who takes player 1's pad in return, so no pad drives two players. A PS5
+/// pad run through DS4Windows is seen twice, by gilrs and as an XInput pad,
+/// and a layout made while DS4Windows was off has the PS5 pad as player 1 and
+/// its XInput twin, plugged in later, as player 2; this plays it. Only Cemu's
+/// files change; the layout Omoio keeps stays as it was chosen, since RPCS3
+/// reads the other pads itself.
+fn stand_in(players: &[Player], plugged: &[Pad]) -> Vec<Player> {
+    let mut players = players.to_vec();
+    let Some(first) = players.first() else {
+        return players;
+    };
+    if xinput_slot(&first.pad).is_some() {
+        return players;
+    }
+    let mut xinput = plugged.iter().filter(|pad| xinput_slot(pad).is_some());
+    let free = xinput
+        .clone()
+        .find(|pad| !players.iter().any(|p| p.pad.device == pad.device));
+    if let Some(pad) = free.or_else(|| xinput.next()) {
+        let buttons = first.buttons.clone();
+        pad_layout::give(&mut players, 0, Player { pad: pad.clone(), buttons });
+    }
+    players
+}
+
+/// Why a game started now would have nobody answering it: player 1's file,
+/// `controller0.xml` in `dir`, names no pad. `first` is player 1 as Omoio
+/// keeps them, for the pad's name. `None` when there is a pad.
+fn nobody_answers(dir: &Path, first: Option<&Player>) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join("controller0.xml")).unwrap_or_default();
+    if text.contains("<controller>") {
+        return None;
+    }
+    let whose = match first {
+        Some(player) if player.pad.handler != "XInput" => {
+            format!("Player 1's controller, {}, doesn't work in Wii U games yet.", player.pad.name)
+        }
+        _ => "Player 1 has no controller in Wii U games.".to_string(),
+    };
+    Some(format!(
+        "{whose} Plug in an Xbox controller, or one that works as one, or choose another for player 1 on the Controller screen, then press Play again."
+    ))
+}
+
+/// Says why player 1 would have no pad in the game about to start, after
+/// `first_player` has set their file. `None` when they have one.
+pub fn missing_first_player(app: &AppHandle) -> Option<String> {
+    let dir = profile_dir(app).ok()?;
+    let players = crate::controllers::current(app, "", &crate::pads::connected()).players;
+    nobody_answers(&dir, players.first())
 }
 
 /// One file per player, counted from 0 as Cemu names them, and player 1's
@@ -257,7 +315,7 @@ pub fn write(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), 
     if !title_id.is_empty() || !super::install_dir(app)?.join("Cemu.exe").is_file() {
         return Ok(());
     }
-    write_all(&profile_dir(app)?, players)
+    write_all(&profile_dir(app)?, &stand_in(players, &crate::pads::connected()))
         .map_err(|_| "Couldn't save the controller settings for Cemu.".to_string())
 }
 
@@ -358,5 +416,89 @@ mod tests {
         let gamepad = std::fs::read_to_string(dir.join(FIRST_AS_GAMEPAD)).unwrap();
         assert_eq!(gamepad, std::fs::read_to_string(dir.join("controller0.xml")).unwrap());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn ps5() -> Pad {
+        Pad {
+            device: "PS5 Controller 0".to_string(),
+            name: "PS5 Controller".to_string(),
+            handler: "SDL".to_string(),
+            family: "playstation".to_string(),
+        }
+    }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("omoio-cemu-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn devices(players: &[Player]) -> Vec<&str> {
+        players.iter().map(|p| p.pad.device.as_str()).collect()
+    }
+
+    #[test]
+    fn a_ps5_pad_through_ds4windows_plays_player_one_as_its_xinput_twin() {
+        // Set up while DS4Windows was off, then played with it on: the PS5
+        // pad is player 1 and the XInput pad DS4Windows makes of it player 2.
+        let buttons = BTreeMap::from([
+            ("East".to_string(), "South".to_string()),
+            ("South".to_string(), "East".to_string()),
+        ]);
+        let mut players = vec![Player::with_buttons(ps5(), buttons.clone())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let cemu = stand_in(&players, &[xinput(1), ps5()]);
+        assert_eq!(devices(&cemu), ["XInput Pad #1", "PS5 Controller 0", "XInput Pad #2", "XInput Pad #3"]);
+        assert_eq!(cemu[0].buttons, buttons, "player 1 keeps their own buttons");
+        assert!(cemu[1].buttons.is_empty(), "and player 2 theirs");
+        assert_eq!(devices(&players)[0], "PS5 Controller 0", "the layout Omoio keeps is untouched");
+
+        let dir = scratch("ds4windows");
+        write_all(&dir, &cemu).unwrap();
+        let one = std::fs::read_to_string(dir.join("controller0.xml")).unwrap();
+        assert!(one.contains("<api>XInput</api>") && one.contains("<uuid>0</uuid>"), "{one}");
+        assert!(one.contains("<mapping>1</mapping>\n\t\t\t\t<button>12</button>"), "A as player 1 set it: {one}");
+        let two = std::fs::read_to_string(dir.join("controller1.xml")).unwrap();
+        assert!(!two.contains("<controller>"), "the same pad does not drive player 2 too: {two}");
+        let pro = std::fs::read_to_string(dir.join(FIRST_AS_PRO)).unwrap();
+        assert!(pro.contains("<uuid>0</uuid>"), "Trap Team's player 1 gets it as well: {pro}");
+        assert!(pro.contains("<mapping>12</mapping>\n\t\t\t\t<button>39</button>"), "d-pad from the stick: {pro}");
+        assert_eq!(nobody_answers(&dir, players.first()), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_xinput_pad_no_one_has_is_taken_first() {
+        let mut players = vec![Player::on(ps5())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let cemu = stand_in(&players, &[xinput(1), ps5(), xinput(4)]);
+        assert_eq!(devices(&cemu), ["XInput Pad #4", "XInput Pad #1", "XInput Pad #2", "XInput Pad #3"]);
+    }
+
+    #[test]
+    fn player_one_on_xinput_is_left_alone() {
+        let players = vec![Player::on(xinput(2)), Player::on(ps5())];
+        assert_eq!(stand_in(&players, &[xinput(1), ps5()]), players, "even with their own pad not plugged in");
+    }
+
+    #[test]
+    fn with_no_xinput_pad_plugged_in_the_game_says_why_it_cannot_start() {
+        let mut players = vec![Player::on(ps5())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let cemu = stand_in(&players, &[ps5()]);
+        assert_eq!(cemu, players);
+        let dir = scratch("no-xinput");
+        write_all(&dir, &cemu).unwrap();
+        let why = nobody_answers(&dir, players.first()).expect("player 1 has no pad in Cemu");
+        assert!(why.starts_with("Player 1's controller, PS5 Controller, doesn't work in Wii U games yet."), "{why}");
+        assert!(why.contains("Controller screen"), "{why}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_cemu_with_no_files_yet_has_nobody_to_answer() {
+        let dir = scratch("no-files");
+        let why = nobody_answers(&dir, Some(&Player::on(xinput(1)))).unwrap();
+        assert!(why.starts_with("Player 1 has no controller in Wii U games."), "{why}");
     }
 }
