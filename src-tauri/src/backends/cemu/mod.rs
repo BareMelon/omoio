@@ -7,6 +7,7 @@ pub mod compat;
 pub mod controllers;
 pub mod game_profile;
 pub mod keys;
+pub mod own_cemu;
 pub mod packs;
 pub mod portal;
 pub mod wua;

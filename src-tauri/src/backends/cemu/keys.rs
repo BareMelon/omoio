@@ -25,7 +25,7 @@ const HEADER: &str = "# this file contains keys needed for decryption of disc fi
 /// 32 hex characters is a key. Other lengths Cemu ignores, and so does this.
 /// A line that is not hex Cemu shows in an error box, possibly over a game, so
 /// the first one is returned to be refused rather than passed on.
-fn read(text: &str) -> (Vec<String>, Option<usize>) {
+pub(super) fn read(text: &str) -> (Vec<String>, Option<usize>) {
     let mut keys = Vec::new();
     let mut bad = None;
     for (number, line) in text.lines().enumerate() {
@@ -74,7 +74,7 @@ pub fn add(app: &AppHandle, from: &Path) -> Result<usize, String> {
     merged(path(app)?.as_path(), &text)
 }
 
-fn merged(file: &Path, text: &str) -> Result<usize, String> {
+pub(super) fn merged(file: &Path, text: &str) -> Result<usize, String> {
     let (new, bad) = read(text);
     if let Some(line) = bad {
         return Err(format!(
