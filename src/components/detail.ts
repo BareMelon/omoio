@@ -8,6 +8,7 @@ import {
   gameSettings,
   gameUpdates,
   launchGame,
+  launchWarning,
   listGames,
   padsHeld,
   portalButton,
@@ -280,7 +281,7 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       }
     };
   }
-  play.onclick = async () => {
+  const start = async () => {
     play.disabled = true;
     note.textContent = "Starting…";
     try {
@@ -290,6 +291,19 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
       note.textContent = typeof err === "string" ? err : "Couldn't start this game.";
       play.disabled = false;
     }
+  };
+  play.onclick = async () => {
+    play.disabled = true;
+    // A game nobody can answer says so first, and starts only if asked to.
+    const warning = await launchWarning(game.title_id).catch(() => null);
+    if (!warning) return start();
+    note.textContent = warning;
+    const anyway = document.createElement("button");
+    anyway.className = "link-btn";
+    anyway.textContent = "Start anyway";
+    anyway.onclick = () => void start();
+    note.append(" ", anyway);
+    play.disabled = false;
   };
 
   // The sheet asks Sony when it opens. Opening a game should not quietly

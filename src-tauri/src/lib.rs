@@ -56,6 +56,7 @@ pub fn run() {
             commands::import_check,
             commands::game_warning,
             commands::launch_game,
+            commands::launch_warning,
             commands::game_settings,
             commands::set_game_settings,
             commands::stop_game,

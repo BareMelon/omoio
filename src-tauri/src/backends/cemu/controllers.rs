@@ -16,8 +16,8 @@
 //! XInput without the Guide button, so Home is not offered.
 //!
 //! Player 1 is the one every game answers, so they are never left without a
-//! pad while an XInput one is plugged in (`stand_in`), and a game does not
-//! start with nobody to answer it (`nobody_answers`).
+//! pad while an XInput one is plugged in (`stand_in`), and Play says so before
+//! a game starts with nobody to answer it (`missing_first_player`).
 //!
 //! Cemu keeps one layout for every game. A game's own layout is RPCS3's alone.
 
@@ -250,31 +250,19 @@ fn stand_in(players: &[Player], plugged: &[Pad]) -> Vec<Player> {
     players
 }
 
-/// Why a game started now would have nobody answering it: player 1's file,
-/// `controller0.xml` in `dir`, names no pad. `first` is player 1 as Omoio
-/// keeps them, for the pad's name. `None` when there is a pad.
-fn nobody_answers(dir: &Path, first: Option<&Player>) -> Option<String> {
-    let text = std::fs::read_to_string(dir.join("controller0.xml")).unwrap_or_default();
-    if text.contains("<controller>") {
+/// Why player 1 would have no pad in Cemu with these `players`, after
+/// `stand_in` has had its go with the pads `connected`, worded for the person
+/// about to press Play. `None` when they have one.
+pub fn missing_first_player(players: &[Player], connected: &[Pad]) -> Option<String> {
+    let first = players.first()?;
+    if stand_in(players, connected).first().is_some_and(|p| xinput_slot(&p.pad).is_some()) {
         return None;
     }
-    let whose = match first {
-        Some(player) if player.pad.handler != "XInput" => {
-            format!("Player 1's controller, {}, doesn't work in Wii U games yet.", player.pad.name)
-        }
-        _ => "Player 1 has no controller in Wii U games.".to_string(),
-    };
     Some(format!(
-        "{whose} Plug in an Xbox controller, or one that works as one, or choose another for player 1 on the Controller screen, then press Play again."
+        "Player 1's controller, {}, doesn't work in Wii U games yet, so the game won't answer it. \
+         Plug in an Xbox controller, or one that works as one, or choose another for player 1 on the Controller screen.",
+        first.pad.name
     ))
-}
-
-/// Says why player 1 would have no pad in the game about to start, after
-/// `first_player` has set their file. `None` when they have one.
-pub fn missing_first_player(app: &AppHandle) -> Option<String> {
-    let dir = profile_dir(app).ok()?;
-    let players = crate::controllers::current(app, "", &crate::pads::connected()).players;
-    nobody_answers(&dir, players.first())
 }
 
 /// One file per player, counted from 0 as Cemu names them, and player 1's
@@ -463,7 +451,7 @@ mod tests {
         let pro = std::fs::read_to_string(dir.join(FIRST_AS_PRO)).unwrap();
         assert!(pro.contains("<uuid>0</uuid>"), "Trap Team's player 1 gets it as well: {pro}");
         assert!(pro.contains("<mapping>12</mapping>\n\t\t\t\t<button>39</button>"), "d-pad from the stick: {pro}");
-        assert_eq!(nobody_answers(&dir, players.first()), None);
+        assert_eq!(missing_first_player(&players, &[xinput(1), ps5()]), None, "so Play says nothing");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -482,23 +470,20 @@ mod tests {
     }
 
     #[test]
-    fn with_no_xinput_pad_plugged_in_the_game_says_why_it_cannot_start() {
+    fn with_no_xinput_pad_plugged_in_play_says_why_nothing_will_answer() {
         let mut players = vec![Player::on(ps5())];
         players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
-        let cemu = stand_in(&players, &[ps5()]);
-        assert_eq!(cemu, players);
-        let dir = scratch("no-xinput");
-        write_all(&dir, &cemu).unwrap();
-        let why = nobody_answers(&dir, players.first()).expect("player 1 has no pad in Cemu");
-        assert!(why.starts_with("Player 1's controller, PS5 Controller, doesn't work in Wii U games yet."), "{why}");
+        assert_eq!(stand_in(&players, &[ps5()]), players);
+        let why = missing_first_player(&players, &[ps5()]).expect("player 1 has no pad in Cemu");
+        assert!(why.starts_with("Player 1's controller, PS5 Controller, doesn't work in Wii U games yet"), "{why}");
         assert!(why.contains("Controller screen"), "{why}");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn a_cemu_with_no_files_yet_has_nobody_to_answer() {
-        let dir = scratch("no-files");
-        let why = nobody_answers(&dir, Some(&Player::on(xinput(1)))).unwrap();
-        assert!(why.starts_with("Player 1 has no controller in Wii U games."), "{why}");
+    fn player_one_on_xinput_is_never_warned_about() {
+        // An XInput slot is named in Cemu's file even with nothing in it, so
+        // a pad switched on late still plays.
+        let players = vec![Player::on(xinput(1)), Player::on(ps5())];
+        assert_eq!(missing_first_player(&players, &[]), None);
     }
 }
