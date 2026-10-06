@@ -21,7 +21,7 @@ import {
   CONSOLE_SHORT,
   type Game,
 } from "../api";
-import { placeholderArt } from "./art";
+import { fitCovers, placeholderArt } from "./art";
 import { nameOf } from "./padNames";
 import type { CatalogueSelection } from "../state";
 import { openGameSettings } from "./gameSettingsSheet";
@@ -67,8 +67,9 @@ function listRow(id: string, paths: string, label: string): string {
 
 function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   hero.innerHTML = game.cover
-    ? `<img src="${convertFileSrc(game.cover)}" alt="">`
+    ? `<img class="cover" src="${convertFileSrc(game.cover)}" alt="">`
     : placeholderArt(game.title_id, game.title);
+  fitCovers(hero);
   if (game.cover_source === "rawg") hero.appendChild(rawgCredit());
 
   body.innerHTML = `

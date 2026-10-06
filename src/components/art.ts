@@ -24,3 +24,26 @@ export function placeholderArt(titleId: string, name: string): string {
             font-family="system-ui" font-size="20" font-weight="700">${initials}</text>
     </svg>`;
 }
+
+/// Narrower than this, a picture filling a 16:9 tile would lose too much of
+/// itself. A Wii U game's icon is square; a PS3 icon, a Wii U boot picture
+/// and RAWG's art are all wider and still fill the tile.
+const NARROWEST_FILLING = 4 / 3;
+
+/// Shows each cover in `root` that is narrower than its tile whole, centred
+/// on a blurred, darkened copy of itself, rather than cut down to a strip.
+/// A picture's shape is known only once it has loaded, so it is decided then.
+export function fitCovers(root: ParentNode): void {
+  for (const img of root.querySelectorAll<HTMLImageElement>("img.cover")) {
+    const fit = () => {
+      if (img.classList.contains("whole")) return;
+      if (!img.naturalWidth || img.naturalWidth / img.naturalHeight >= NARROWEST_FILLING) return;
+      const behind = img.cloneNode() as HTMLImageElement;
+      behind.className = "cover-behind";
+      img.classList.add("whole");
+      img.before(behind);
+    };
+    if (img.complete) fit();
+    else img.addEventListener("load", fit, { once: true });
+  }
+}

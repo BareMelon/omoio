@@ -21,7 +21,7 @@ import {
   type Pad,
   type PadFamily,
 } from "../api";
-import { placeholderArt, tint } from "../components/art";
+import { fitCovers, placeholderArt, tint } from "../components/art";
 import { store } from "../state";
 import { focusables, nearest, remember, revealInColumn, revealInRow } from "./focus";
 import { listen, untilLetGo, type Action, type Source } from "./input";
@@ -60,12 +60,16 @@ const LIBRARY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 const SETTINGS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.2" fill="var(--raise)"/><circle cx="15" cy="12" r="2.2" fill="var(--raise)"/><circle cx="10" cy="17" r="2.2" fill="var(--raise)"/></svg>`;
 const SYSTEM_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg>`;
 
+/// The narrowest picture shown sharp behind a game, in its own pixels.
+const SHARP_WIDTH = 1280;
+
 // ---- small helpers ----
 
-function artFor(game: Game): string {
-  return game.cover
-    ? `<img src="${convertFileSrc(game.cover)}" alt="" decoding="async">`
+function fillArt(box: HTMLElement, game: Game): void {
+  box.innerHTML = game.cover
+    ? `<img class="cover" src="${convertFileSrc(game.cover)}" alt="" decoding="async">`
     : placeholderArt(game.title_id, game.title);
+  fitCovers(box);
 }
 
 function formatSize(bytes: number): string {
@@ -195,14 +199,15 @@ function showBackdrop(titleId: string): void {
 async function swapBackdrop(titleId: string): Promise<void> {
   const game = gameById(titleId);
   const incoming = layers[1 - backdropAt];
-  // RAWG's pictures are large enough to show sharp across a TV; a dump's
-  // own icon is 320 pixels wide and is only ever shown blurred.
-  incoming.classList.toggle("sharp", game?.cover_source === "rawg");
   if (game?.cover) {
     const img = h("img");
     img.alt = "";
     img.src = convertFileSrc(game.cover);
     await img.decode().catch(() => {});
+    // RAWG's pictures and a Wii U game's boot picture are large enough to
+    // show sharp across a TV. A PS3 icon, 320 pixels wide, or a Wii U icon,
+    // 128, is only ever shown blurred.
+    incoming.classList.toggle("sharp", game.cover_source === "rawg" || img.naturalWidth >= SHARP_WIDTH);
     incoming.replaceChildren(img);
     incoming.style.background = "";
   } else {
@@ -626,7 +631,7 @@ function drawStarting(): void {
   }
   const card = h("div", "bp-starting-card");
   const art = h("div", "bp-starting-art");
-  art.innerHTML = artFor(starting);
+  fillArt(art, starting);
   const cancel = navButton("bp-btn", "starting:cancel", () => void cancelStart());
   cancel.textContent = stopping ? "Stopping…" : "Cancel";
   cancel.setAttribute("aria-disabled", String(stopping));
@@ -748,7 +753,7 @@ function tile(game: Game, group: string, withMeta: boolean): HTMLButtonElement {
   card.dataset.hint = "Open";
   card.title = game.title;
   const art = h("span", "bp-art");
-  art.innerHTML = artFor(game);
+  fillArt(art, game);
   const badge =
     playing?.title_id === game.title_id
       ? ["Playing", "go"]
@@ -817,7 +822,7 @@ function nowPlaying(): HTMLElement | null {
   const game = gameById(playing.title_id);
   const banner = h("section", "bp-now-banner");
   const art = h("div", "bp-now-art");
-  if (game) art.innerHTML = artFor(game);
+  if (game) fillArt(art, game);
   const words = h("div", "bp-now-words");
   words.append(h("div", "bp-now-label", "Now playing"), h("div", "bp-now-title", playing.title));
   const actions = h("div", "bp-now-actions");
@@ -995,7 +1000,7 @@ function gamePage(titleId: string, section: Section): Screen {
       const running = playing?.title_id === titleId;
 
       const art = h("div", "bp-page-art");
-      art.innerHTML = artFor(game);
+      fillArt(art, game);
 
       const info = h("div", "bp-page-info");
       const meta = h("div", "bp-page-meta");

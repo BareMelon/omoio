@@ -1,6 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CONSOLE_SHORT, type Game } from "../api";
-import { placeholderArt } from "../components/art";
+import { fitCovers, placeholderArt } from "../components/art";
 import { rawgCredit } from "../components/rawgCredit";
 import { openImportSheet } from "../components/importSheet";
 import { store } from "../state";
@@ -18,9 +18,10 @@ function gameCard(game: Game, mixed: boolean, selected: boolean): HTMLElement {
 
   // The pictures games have are wide: a dump's ICON0 is 320x176 and RAWG's
   // art is landscape too. So the tile is wide and the picture fills it,
-  // where a portrait tile left a letterbox around every one of them.
+  // where a portrait tile left a letterbox around every one of them. The
+  // odd square one is shown whole instead (fitCovers).
   const art = game.cover
-    ? `<img src="${convertFileSrc(game.cover)}" alt="" loading="lazy">`
+    ? `<img class="cover" src="${convertFileSrc(game.cover)}" alt="" loading="lazy">`
     : placeholderArt(game.title_id, game.title);
 
   // Three states, and only one of them is a problem. A game with no files yet
@@ -48,6 +49,7 @@ function gameCard(game: Game, mixed: boolean, selected: boolean): HTMLElement {
   `;
   // Set through textContent so a game's own title can never be markup.
   card.querySelector<HTMLElement>(".card-name")!.textContent = game.title;
+  fitCovers(card);
 
   // Opens the game rather than starting it: what it is, whether it can run,
   // and a Play button live in the panel.
