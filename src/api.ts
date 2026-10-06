@@ -860,11 +860,14 @@ export function onPortalMenu(handler: (state: { open: boolean; family: string })
 
 /// The figures' pictures a game has so far: where they are, and each one's
 /// name without `.png`, `<id>-<variant>` with the variant as four hex digits.
-/// The game's element symbols are `element-<element>` and its Swap Zone
-/// badges `movement-<movement>`.
+/// The game's element symbols are `element-<element>`, its Swap Zone badges
+/// `movement-<movement>` and a kind of figure's badge `class-<kind>`.
 export interface FigurePictures {
   folder: string;
   names: string[];
+  /// Badges this game lacks that another of the user's games had, by name,
+  /// with the file.
+  elsewhere: Record<string, string>;
 }
 
 /// Without a title id, the running game's, which is how the portal menu asks.

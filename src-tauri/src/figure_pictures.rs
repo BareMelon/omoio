@@ -8,6 +8,7 @@
 use crate::backends::EmulatorBackend;
 use crate::core::library::Game;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -47,22 +48,42 @@ pub struct Pictures {
     /// Each picture's name without `.png`: `<id>-<variant>`, the variant as
     /// four hex digits.
     names: Vec<String>,
+    /// Badges this game lacks that another of the user's games had, by name,
+    /// with the file: Giants keeps the Giant badge, and a Giant goes on
+    /// Trap Team's portal too.
+    elsewhere: BTreeMap<String, String>,
 }
 
-/// The pictures a game has so far.
-pub fn pictures(app: &AppHandle, title_id: &str) -> Result<Pictures, String> {
-    let folder = folder(app, title_id)?;
-    let names = std::fs::read_dir(&folder)
+/// A badge for a kind of figure, which every game shows the same way.
+const BADGE: &str = "class-";
+
+fn png_names(folder: &Path) -> Vec<String> {
+    std::fs::read_dir(folder)
         .map(|entries| {
             entries
                 .flatten()
                 .filter_map(|entry| entry.file_name().to_str()?.strip_suffix(".png").map(str::to_string))
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+/// The pictures a game has so far.
+pub fn pictures(app: &AppHandle, title_id: &str) -> Result<Pictures, String> {
+    let folder = folder(app, title_id)?;
+    let names = png_names(&folder);
+    let mut elsewhere = BTreeMap::new();
+    let others = folder.parent().and_then(|all| std::fs::read_dir(all).ok());
+    for other in others.into_iter().flatten().flatten().map(|entry| entry.path()) {
+        for name in png_names(&other).into_iter().filter(|name| name.starts_with(BADGE) && !names.contains(name)) {
+            let file = other.join(format!("{name}.png"));
+            elsewhere.entry(name).or_insert_with(|| file.to_string_lossy().into_owned());
+        }
+    }
     Ok(Pictures {
         folder: folder.to_string_lossy().into_owned(),
         names,
+        elsewhere,
     })
 }
 

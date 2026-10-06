@@ -219,9 +219,15 @@ let chip = 0;
 let ready = false;
 /// The top half picked for a swapper, while waiting for its bottom.
 let pickedTop: { name: string; top: Offer } | null = null;
-/// The figures' pictures Omoio has read out of this game, by name, and for
-/// each figure id the picture of its lowest variant.
-let pictures: { folder: string; names: Set<string>; firstOf: Map<number, string> } | null = null;
+/// The figures' pictures Omoio has read out of this game, by name, for each
+/// figure id the picture of its lowest variant, and the badges this game
+/// lacks that another of the user's games had.
+let pictures: {
+  folder: string;
+  names: Set<string>;
+  firstOf: Map<number, string>;
+  elsewhere: Record<string, string>;
+} | null = null;
 
 /// A figure's picture, or its plain version's when its variant has none of
 /// its own, or failing that any version's: Trap Team names its pictures by
@@ -243,9 +249,13 @@ function firstPictures(names: string[]): Map<number, string> {
   return first;
 }
 
-/// One of the pictures Omoio read out of the game, by name, when it has it.
+/// One of the pictures Omoio read out of the game, by name, when it has it,
+/// or a badge from another of the user's games.
 function fileOf(name: string): string | null {
-  return pictures?.names.has(name) ? convertFileSrc(`${pictures.folder}\\${name}.png`) : null;
+  if (!pictures) return null;
+  if (pictures.names.has(name)) return convertFileSrc(`${pictures.folder}\\${name}.png`);
+  const elsewhere = pictures.elsewhere[name];
+  return elsewhere ? convertFileSrc(elsewhere) : null;
 }
 
 function placed(): { name: string; slot: number }[] {
@@ -310,6 +320,18 @@ function holdsTrap(slot: number): boolean {
 /// The marked kind a tile's figure is, if any.
 function classOf(entry: Entry): FigureClass | null {
   return entry.offer?.class ?? entry.figure?.class ?? null;
+}
+
+/// A kind's mark: the game's own badge when Omoio has read it out of the
+/// game, Omoio's own drawing when not, or nothing.
+function classMark(kind: FigureClass): HTMLElement | null {
+  const badge = fileOf(`class-${kind}`);
+  if (badge) return image(badge);
+  const shape = CLASSES[kind].shape;
+  if (!shape) return null;
+  const drawn = node("span", "portal-class-shape");
+  drawn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${shape}</svg>`;
+  return drawn;
 }
 
 /// Where a tile sorts among its element: Trap Masters first and Minis last,
@@ -482,10 +504,10 @@ function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
     emblem(spot, entry.element, entry.kind);
   }
   const kind = classOf(entry);
-  const shape = kind ? CLASSES[kind].shape : null;
-  if (kind && shape) {
+  const mark = kind && classMark(kind);
+  if (mark) {
     const corner = node("span", `portal-class-corner ${kind}`);
-    corner.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${shape}</svg>`;
+    corner.appendChild(mark);
     spot.appendChild(corner);
   }
   if (badge) {
@@ -514,8 +536,8 @@ function kindLine(entry: Entry): HTMLElement {
   const kind = classOf(entry);
   if (kind) {
     const named = node("span", `portal-class ${kind}`);
-    const shape = CLASSES[kind].shape;
-    if (shape) named.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${shape}</svg>`;
+    const mark = classMark(kind);
+    if (mark) named.appendChild(mark);
     named.append(CLASSES[kind].words);
     line.appendChild(named);
   }
@@ -1346,7 +1368,12 @@ async function show() {
     shown = true;
     // Read again each time, since pictures can be got while the game runs.
     pictures = await figurePictures()
-      .then((found) => ({ folder: found.folder, names: new Set(found.names), firstOf: firstPictures(found.names) }))
+      .then((found) => ({
+        folder: found.folder,
+        names: new Set(found.names),
+        firstOf: firstPictures(found.names),
+        elsewhere: found.elsewhere,
+      }))
       .catch(() => null);
     await refresh();
     await loadOffers();

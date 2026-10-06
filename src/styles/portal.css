@@ -296,6 +296,22 @@ body {
   margin-left: 8px;
 }
 
+.portal-class-shape {
+  display: contents;
+}
+
+/* The game's own badge, as the game draws it. */
+.portal-class-corner img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.portal-class img {
+  width: auto;
+  height: 20px;
+}
+
 .portal-class-corner.giant,
 .portal-class.giant {
   color: var(--kind-giant);
