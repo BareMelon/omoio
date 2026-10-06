@@ -76,7 +76,7 @@ function sheet(dropped?: string[]): void {
     busy = false;
     sheet.innerHTML = `
       <div class="sheet-h">Import a game</div>
-      <div class="sheet-p">Point Omoio at a folder you've already unpacked, a .7z or .zip archive, or a Wii U disc image.</div>
+      <div class="sheet-p">Point Omoio at a folder you've already unpacked, a .7z or .zip archive, or a Wii U .wua or disc image.</div>
       ${note ? `<div class="notice" style="margin-top:16px">${note}</div>` : ""}
       <div class="sheet-actions">
         <button class="btn ghost" id="pick-folder">Choose a folder</button>
@@ -260,12 +260,12 @@ function sheet(dropped?: string[]): void {
     const picked = await open({
       multiple: false,
       directory: false,
-      title: "Choose a game archive or disc image",
-      filters: [{ name: "Game archive or disc image", extensions: ["7z", "zip", "wud", "wux"] }],
+      title: "Choose a game file",
+      filters: [{ name: "Game archive, .wua or disc image", extensions: ["7z", "zip", "wua", "wud", "wux"] }],
     });
     if (typeof picked !== "string") return;
-    // A disc image is played where it is, as an unpacked folder is.
-    if (/\.(wud|wux)$/i.test(picked)) {
+    // A .wua or disc image is played where it is, as an unpacked folder is.
+    if (/\.(wua|wud|wux)$/i.test(picked)) {
       await importOne(picked, "other");
       return;
     }

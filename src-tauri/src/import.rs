@@ -475,7 +475,8 @@ mod tests {
 const SCAN_DEPTH: usize = 4;
 
 /// Every dump under a folder, found by walking rather than by asking the user
-/// to point at each one.
+/// to point at each one: PS3 dumps, and files an emulator takes as a whole
+/// game, such as a Wii U .wua.
 ///
 /// A folder that is itself a dump is not descended into: a game contains no
 /// other game, and `PS3_GAME` sitting inside would otherwise be offered twice.
@@ -504,8 +505,13 @@ pub fn find_dumps(
             continue;
         };
         for entry in entries.flatten() {
-            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-                stack.push((entry.path(), depth + 1));
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() => stack.push((entry.path(), depth + 1)),
+                Ok(kind) if kind.is_file() && crate::backends::is_game_file(&entry.file_name().to_string_lossy()) => {
+                    found(&entry.path());
+                    dumps.push(entry.path());
+                }
+                _ => {}
             }
         }
     }
@@ -600,6 +606,21 @@ mod scan_tests {
 
         let found = scan(&tree.0);
         assert_eq!(found.len(), 1, "the same game was found twice: {found:?}");
+    }
+
+    #[test]
+    fn finds_a_wii_u_wua_beside_the_ps3_games() {
+        let tree = Tree::new("wua");
+        tree.disc_dump("PS3/Game A");
+        tree.folder("Wii U/Game C (Europe)");
+        std::fs::write(tree.0.join("Wii U").join("Game B.WUA"), b"x").unwrap();
+        std::fs::write(tree.0.join("Wii U").join("notes.txt"), b"x").unwrap();
+        std::fs::write(tree.0.join("Wii U/Game C (Europe)/Game C.wua"), b"x").unwrap();
+
+        let found = scan(&tree.0);
+        assert_eq!(found.len(), 3, "{found:?}");
+        assert!(found.iter().any(|path| path.ends_with("Game B.WUA")));
+        assert!(found.iter().any(|path| path.ends_with("Game C.wua")));
     }
 
     #[test]

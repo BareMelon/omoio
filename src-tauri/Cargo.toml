@@ -74,6 +74,10 @@ md-5 = "0.11"
 # 0.17 is the version Tauri's build uses; 0.18 is in Cargo.lock only for
 # macOS. See core/tga.rs.
 png = "0.17"
+# Already in the build through zip, the same version, so naming it adds no
+# new crate. A Wii U game kept as a .wua, Cemu's own archive, has its files
+# in zstd blocks, and its meta.xml is read from there. See backends/cemu/wua.rs.
+zstd = "0.13"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

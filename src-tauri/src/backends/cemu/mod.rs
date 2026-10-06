@@ -9,6 +9,7 @@ pub mod game_profile;
 pub mod keys;
 pub mod packs;
 pub mod portal;
+pub mod wua;
 
 use crate::core::console::{Console, Features};
 use crate::core::import_warning::Imported;
@@ -209,9 +210,9 @@ fn is_download(name: &str) -> bool {
 
 /// Why a dump with these file names cannot be taken, if it cannot. A
 /// readable game in there wins, so a `title.tmd` or an image left beside an
-/// unpacked copy never turns the copy away.
+/// unpacked copy or a .wua never turns the copy away.
 fn refusal(names: &[String], have_keys: bool) -> Option<String> {
-    if names.iter().any(|name| readable_meta(name)) {
+    if names.iter().any(|name| readable_meta(name) || is_archive(name)) {
         return None;
     }
     if names.iter().any(|name| is_download(name)) {
@@ -234,7 +235,16 @@ fn refusal(names: &[String], have_keys: bool) -> Option<String> {
 /// or one level down, which is where an archive unpacks it. Two or more is
 /// not clear, so none.
 fn disc_image(picked: &Path) -> Option<PathBuf> {
-    let is_image = |path: &Path| path.is_file() && is_disc_image(&path.to_string_lossy());
+    one_file(picked, is_disc_image)
+}
+
+/// The one .wua picked, or found where `disc_image` looks.
+fn wua_file(picked: &Path) -> Option<PathBuf> {
+    one_file(picked, is_archive)
+}
+
+fn one_file(picked: &Path, kind: fn(&str) -> bool) -> Option<PathBuf> {
+    let is_image = |path: &Path| path.is_file() && kind(&path.to_string_lossy());
     if is_image(picked) {
         return Some(picked.to_path_buf());
     }
@@ -372,11 +382,12 @@ fn is_archive(name: &str) -> bool {
 }
 
 /// A decrypted copy of the game whose files Omoio can read: the game itself
-/// when it is unpacked, or else a .wua Cemu made of it, looked for beside the
-/// game and one folder up and known by its title id. A disc image's own
-/// files stay out of reach: they are encrypted, and Omoio never decrypts.
+/// when it is unpacked or a .wua, or else a .wua Cemu made of it, looked for
+/// beside the game and one folder up and known by its title id. A disc
+/// image's own files stay out of reach: they are encrypted, and Omoio never
+/// decrypts.
 fn readable_copy(app: &AppHandle, game: &Game, title_of: &dyn Fn(&Path) -> Option<String>) -> Option<PathBuf> {
-    if game.path.is_dir() {
+    if game.path.is_dir() || is_wua(&game.path) {
         return Some(game.path.clone());
     }
     let wanted = title_id_for(app, game)?;
@@ -478,14 +489,29 @@ fn tga_as_png(file: &Path) -> Option<Vec<u8>> {
 
 /// The game's own picture as a PNG: the one the Wii U shows on the TV as the
 /// game starts, which is wide like the library's tiles, or else its menu
-/// icon. Only an unpacked game's can be read. A disc image's are encrypted.
+/// icon. An unpacked game's and a .wua's can be read. A disc image's are
+/// encrypted.
 fn own_picture(root: &Path) -> Option<Vec<u8>> {
+    if is_wua(root) {
+        return wua_picture(root);
+    }
     if !root.is_dir() {
         return None;
     }
-    ["bootTvTex.tga", "iconTex.tga"]
+    PICTURES
         .into_iter()
         .find_map(|name| tga_as_png(&root.join("meta").join(name)))
+}
+
+const PICTURES: [&str; 2] = ["bootTvTex.tga", "iconTex.tga"];
+
+fn wua_picture(file: &Path) -> Option<Vec<u8>> {
+    let mut archive = wua::Archive::open(file).ok()?;
+    let game = game_in_wua(&archive.folders()).ok()?.to_string();
+    PICTURES.into_iter().find_map(|name| {
+        let data = archive.read(&format!("{game}/meta/{name}"))?;
+        crate::core::tga::to_png(&crate::core::tga::decode(&data)?)
+    })
 }
 
 /// Where Cemu keeps the Wii U's own storage, saves included: the folder
@@ -550,6 +576,7 @@ fn identify(picked: &Path) -> Result<Game, String> {
 /// Which game an archive holds, before anything is unpacked: from its
 /// meta.xml, or from a disc image's file name. The places `find_root` and
 /// `disc_image` look, the top or one folder down, and only when there is one.
+/// A .wua in there is told only once it is out: its meta.xml is inside it.
 fn identify_packed(names: &[String], read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Imported> {
     let depth = |name: &str| name.split(['/', '\\']).filter(|part| !part.is_empty()).count();
     let metas: Vec<&String> = names.iter().filter(|name| readable_meta(name) && depth(name) <= 3).collect();
@@ -557,7 +584,7 @@ fn identify_packed(names: &[String], read: &dyn Fn(&str) -> Option<Vec<u8>>) -> 
         let (title_id, title, _) = read_meta(&String::from_utf8_lossy(&read(meta)?)).ok()?;
         return Some(Imported { console: Console::WiiU, title_id, title });
     }
-    if !metas.is_empty() {
+    if !metas.is_empty() || names.iter().any(|name| is_archive(name) && depth(name) <= 2) {
         return None;
     }
     let images: Vec<&String> = names.iter().filter(|name| is_disc_image(name) && depth(name) <= 2).collect();
@@ -570,6 +597,56 @@ fn identify_packed(names: &[String], read: &dyn Fn(&str) -> Option<Vec<u8>>) -> 
         console: Console::WiiU,
         title_id: disc_id(file),
         title: title_from_file(stem),
+    })
+}
+
+fn is_wua(path: &Path) -> bool {
+    path.is_file() && is_archive(&path.to_string_lossy())
+}
+
+/// A title's folder in a .wua, which Cemu names `<title id>_v<version>`
+/// (`TitleInfo::ParseWuaTitleFolderName`, v2.6), as the title id.
+fn wua_title(folder: &str) -> Option<&str> {
+    let (id, version) = folder.split_once("_v")?;
+    let id_ok = id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit());
+    let version_ok = version.parse::<u16>().is_ok() && (version == "0" || !version.starts_with('0'));
+    (id_ok && version_ok).then_some(id)
+}
+
+/// Which of a .wua's titles is the game: the first game or demo, the one
+/// Cemu starts when it is given the file (`TitleInfo::DetectFormat`, v2.6).
+/// An update or add-on beside it belongs to the game and is not a game.
+fn game_in_wua(folders: &[String]) -> Result<&str, String> {
+    let titles: Vec<(&str, u8)> = folders
+        .iter()
+        .filter_map(|folder| Some((folder.as_str(), title_type(wua_title(folder)?)?)))
+        .collect();
+    if let Some((folder, _)) = titles.iter().find(|(_, kind)| matches!(kind, 0x00 | 0x02)) {
+        return Ok(folder);
+    }
+    Err(match titles.first().map(|(_, kind)| kind) {
+        Some(0x0E) => "This .wua holds a game update, not the game. Import the game itself first.",
+        Some(0x0C) => "This .wua holds add-on content, not the game. Import the game itself first.",
+        _ => "Couldn't find a Wii U game inside this .wua file.",
+    }
+    .to_string())
+}
+
+fn identify_wua(file: &Path) -> Result<Game, String> {
+    let mut archive = wua::Archive::open(file)?;
+    let game = game_in_wua(&archive.folders())?.to_string();
+    let xml = archive
+        .read(&format!("{game}/meta/meta.xml"))
+        .ok_or("Couldn't read meta.xml inside this .wua file. Have Cemu make it again.")?;
+    let (title_id, title, version) = read_meta(&String::from_utf8_lossy(&xml))?;
+    Ok(Game {
+        console: Console::WiiU,
+        title_id,
+        title,
+        version,
+        update_version: None,
+        size_bytes: std::fs::metadata(file).map(|m| m.len()).unwrap_or(0),
+        path: file.to_path_buf(),
     })
 }
 
@@ -783,13 +860,25 @@ impl super::EmulatorBackend for Cemu {
     }
 
     fn recognises(&self, path: &Path) -> bool {
-        find_root(path).is_some() || disc_image(path).is_some()
+        find_root(path).is_some() || wua_file(path).is_some() || disc_image(path).is_some()
     }
 
+    fn is_game_file(&self, name: &str) -> bool {
+        is_archive(name)
+    }
+
+    /// A readable copy first: an unpacked folder, then a .wua, and a disc
+    /// image only when there is neither.
     fn identify(&self, path: &Path) -> Result<Game, String> {
-        match (find_root(path), disc_image(path)) {
-            (None, Some(image)) => Ok(identify_disc(&image)),
-            _ => identify(path),
+        if find_root(path).is_some() {
+            return identify(path);
+        }
+        if let Some(file) = wua_file(path) {
+            return identify_wua(&file);
+        }
+        match disc_image(path) {
+            Some(image) => Ok(identify_disc(&image)),
+            None => identify(path),
         }
     }
 
@@ -914,9 +1003,10 @@ impl super::EmulatorBackend for Cemu {
         let pro = crate::core::figures::game_from_title(&game.title) == Some(crate::core::figures::Game::TrapTeam)
             || title_id_for(app, game).is_some_and(|id| controllers::PRO_FIRST.contains(&id.as_str()));
         let _ = controllers::first_player(app, pro);
-        // The game's own folder, so Cemu reads its meta and starts it as a
-        // proper title rather than in the standalone mode it keeps for loose
-        // programs. Not `-f`: Omoio places the picture itself, in its window
+        // The game's own folder or .wua, so Cemu reads its meta and starts it
+        // as a proper title rather than in the standalone mode it keeps for
+        // loose programs. Given a .wua, Cemu starts the title `game_in_wua`
+        // picks (checked with Trap Team, 6 October 2026). Not `-f`: Omoio places the picture itself, in its window
         // or across the screen, the same as it does for RPCS3.
         let child = command(&exe)
             .arg("-g")
@@ -1220,6 +1310,109 @@ Deluxe");
         std::fs::write(dir.join("Second.wud"), b"x").unwrap();
         assert!(disc_image(&dir).is_none(), "two images is not clear");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn folders(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn a_wua_titles_folder_is_named_by_its_id_and_version() {
+        assert_eq!(wua_title("0005000010181f00_v1"), Some("0005000010181f00"));
+        assert_eq!(wua_title("0005000E10181F00_v80"), Some("0005000E10181F00"));
+        assert_eq!(wua_title("0005000010181f00_v0"), Some("0005000010181f00"));
+        assert_eq!(wua_title("0005000010181f00_v01"), None, "Cemu allows no leading zero");
+        assert_eq!(wua_title("0005000010181f00_v70000"), None, "past a 16-bit version");
+        assert_eq!(wua_title("0005000010181f00"), None);
+        assert_eq!(wua_title("code"), None);
+    }
+
+    #[test]
+    fn the_game_in_a_wua_is_its_first_game_whatever_comes_with_it() {
+        let game = "0005000010abcd00_v16";
+        let with = folders(&["0005000e10abcd00_v80", "0005000c10abcd00_v0", game]);
+        assert_eq!(game_in_wua(&with), Ok(game));
+        assert_eq!(game_in_wua(&folders(&["notes", "0005000210abcd00_v0"])), Ok("0005000210abcd00_v0"), "a demo");
+        assert!(game_in_wua(&folders(&["0005000e10abcd00_v80"])).unwrap_err().contains("update"));
+        assert!(game_in_wua(&folders(&["0005000c10abcd00_v0"])).unwrap_err().contains("add-on"));
+        assert!(game_in_wua(&folders(&[])).is_err());
+    }
+
+    /// A .wua the way Cemu makes one of a game with its update and DLC.
+    fn wua_of(at: &Path, with_picture: bool) {
+        let update = META.replace("0005000010abcd00", "0005000e10abcd00").replace(">16<", ">80<");
+        let picture = tga_file(16, 9);
+        let mut files: Vec<(&str, &[u8])> = vec![
+            ("0005000e10abcd00_v80/meta/meta.xml", update.as_bytes()),
+            ("0005000010abcd00_v16/code/app.xml", b"<app/>"),
+            ("0005000010abcd00_v16/meta/meta.xml", META.as_bytes()),
+            ("0005000c10abcd00_v0/meta/meta.xml", b"dlc"),
+        ];
+        if with_picture {
+            files.push(("0005000010abcd00_v16/meta/bootTvTex.tga", &picture));
+        }
+        std::fs::write(at, wua::build::archive(&files)).unwrap();
+    }
+
+    #[test]
+    fn a_wua_is_imported_as_its_game_picked_or_in_a_folder() {
+        use crate::backends::EmulatorBackend;
+        let dir = scratch("wua");
+        let file = dir.join("Example (EU).wua");
+        wua_of(&file, true);
+
+        for picked in [file.clone(), dir.clone()] {
+            assert!(Cemu.recognises(&picked));
+            let game = Cemu.identify(&picked).unwrap();
+            assert_eq!(game.console, Console::WiiU);
+            assert_eq!(game.title_id, "0005000010ABCD00", "the game, not its update");
+            assert_eq!(game.title, "Example Game & Friends Deluxe");
+            assert_eq!(game.version.as_deref(), Some("16"));
+            assert_eq!(game.path, file);
+            assert_eq!(game.size_bytes, std::fs::metadata(&file).unwrap().len());
+        }
+        assert_eq!(png_size(&own_picture(&file).unwrap()), (16, 9), "the tile from inside the .wua");
+
+        let nested = scratch("wua-nested");
+        std::fs::create_dir_all(nested.join("Unpacked")).unwrap();
+        wua_of(&nested.join("Unpacked").join("Example.wua"), false);
+        assert!(Cemu.identify(&nested).unwrap().path.ends_with("Example.wua"));
+        assert_eq!(own_picture(&nested.join("Unpacked").join("Example.wua")), None, "no picture, so the drawn tile");
+
+        std::fs::write(dir.join("Example (EU).wux"), b"x").unwrap();
+        assert!(Cemu.identify(&dir).unwrap().path.ends_with("Example (EU).wua"), "the readable copy wins");
+        assert!(refusal(&crate::backends::names_in(&dir), false).is_none(), "and needs no keys");
+
+        std::fs::write(dir.join("broken.wua"), b"not an archive").unwrap();
+        assert!(Cemu.identify(&dir.join("broken.wua")).unwrap_err().contains(".wua"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&nested);
+    }
+
+    #[test]
+    fn a_wua_inside_an_archive_is_told_once_it_is_out() {
+        let names = folders(&["Game/Game.wua", "Game/Game.wux"]);
+        let nothing = |_: &str| -> Option<Vec<u8>> { None };
+        assert_eq!(identify_packed(&names, &nothing), None, "not by the image's name");
+        assert!(refusal(&names, false).is_none());
+    }
+
+    /// Checks a real .wua, which is the only thing that proves the reader.
+    /// Game files are not committed, so point this at one to run it:
+    ///   set OMOIO_WUA=D:\games\some-game.wua
+    ///   cargo test real_wua -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs OMOIO_WUA pointing at a real .wua"]
+    fn identifies_a_real_wua() {
+        use crate::backends::EmulatorBackend;
+        let picked = PathBuf::from(std::env::var("OMOIO_WUA").expect("set OMOIO_WUA"));
+        let archive = wua::Archive::open(&picked).unwrap();
+        println!("titles: {:?}", archive.folders());
+        let game = Cemu.identify(&picked).expect("should identify the .wua");
+        println!("game:   {} {} v{}", game.title_id, game.title, game.version.as_deref().unwrap_or("-"));
+        let picture = own_picture(&picked).expect("its own picture");
+        println!("tile:   {:?}", png_size(&picture));
+        assert_eq!(game.title_id.len(), 16);
     }
 
     #[test]

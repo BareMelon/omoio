@@ -2916,6 +2916,7 @@ dependencies = [
  "windows 0.62.2",
  "yaml-rust2",
  "zip",
+ "zstd",
 ]
 
 [[package]]

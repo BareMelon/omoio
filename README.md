@@ -35,8 +35,8 @@ really appreciated, so open an issue.
   Skylanders SWAP Force.
 - For PS3 games, official updates, save backups and RPCS3's settings for each
   game. Homebrew installs from a .pkg you already have.
-- For Wii U games, Cemu's settings for each game, and disc images read with your
-  own keys.
+- For Wii U games, Cemu's settings for each game. Unpacked folders and .wua
+  files work as they are, and disc images are read with your own keys.
 - A catalogue of PS3 and Wii U games that tells you how well each one runs.
   If a game you import may not run well, Omoio says so first and points to
   another console's version that runs better, when there is one.
@@ -82,9 +82,10 @@ each, and picking a villain puts its trap on. Omoio reads the villain from what
 the game saved in the trap. It only reads, and never writes to your figures.
 
 Omoio doesn't come with the figures' pictures. It reads them from your own copy
-of the game when you press Get pictures once in the game's panel: a .wua file
-that Cemu packed or an unpacked folder for the Wii U games, and the game's folder
-for Giants on PS3. A small separate program,
+of the game when you press Get pictures once in the game's panel. A Wii U game
+imported as an unpacked folder or a .wua file is read as it is, and for a disc
+image Omoio reads a .wua file that Cemu packed beside it. For Giants on PS3 it
+reads the game's folder. A small separate program,
 [omoio-portraits](https://github.com/Bertrram/omoio-portraits), does the reading.
 Omoio downloads it only when you ask and checks it before it runs. The pictures
 stay on your computer, and the screenshots above show them as they look once
@@ -167,8 +168,8 @@ Omoio installs the one you pick. It never fetches firmware by itself.
 
 Wii U disc images (.wud and .wux) are encrypted, and Cemu needs your disc's key
 to read one. Add your own keys file on the Emulators screen. Omoio hands the keys
-to Cemu and never supplies any. Unpacked game folders need no keys. Downloads in
-NUS form aren't supported.
+to Cemu and never supplies any. Unpacked game folders and .wua files (Cemu's own
+archive) need no keys. Downloads in NUS form aren't supported.
 
 </details>
 

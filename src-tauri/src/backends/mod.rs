@@ -38,6 +38,13 @@ pub trait EmulatorBackend: Sync {
 
     fn identify(&self, path: &Path) -> Result<Game, String>;
 
+    /// Whether a file, by its name alone, is a whole game of this console's
+    /// that a scan of a drive should take, such as a Wii U .wua. A scan meets
+    /// thousands of files, so this must not open them.
+    fn is_game_file(&self, _name: &str) -> bool {
+        false
+    }
+
     /// Which of this console's games an archive holds, from the one small
     /// file in it that says, so it is known before anything is unpacked.
     /// `read` gives a file by its name in `names`, or `None` when getting it
@@ -236,6 +243,11 @@ pub fn identify(path: &Path) -> Result<Game, String> {
         Some(backend) => backend.identify(path),
         None => Err(unknown_dump(all().iter().map(|backend| backend.console().short()))),
     }
+}
+
+/// Whether any emulator takes this one file as a whole game.
+pub fn is_game_file(name: &str) -> bool {
+    all().iter().any(|backend| backend.is_game_file(name))
 }
 
 /// Which game an archive holds, by whichever emulator can tell, before it is
