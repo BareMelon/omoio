@@ -124,7 +124,7 @@ pub trait EmulatorBackend: Sync {
     /// Why player 1 would have no pad in the emulator if a game started with
     /// these `players`, with `connected` the pads plugged in, worded for the
     /// person about to play. `None` when they have one.
-    fn missing_first_player(&self, _players: &[Player], _connected: &[Pad]) -> Option<String> {
+    fn missing_first_player(&self, _app: &AppHandle, _players: &[Player], _connected: &[Pad]) -> Option<String> {
         None
     }
 

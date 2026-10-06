@@ -15,9 +15,10 @@
 //!
 //! A PlayStation pad or a Switch Pro Controller is one of Cemu's SDL pads,
 //! named by the GUID SDL gives it (sdl.rs), which is worked out from the pad
-//! itself, so it is named only while it is plugged in. Omoio writes the files
-//! again before every game, with the pads plugged in then. Any other pad gets
-//! none in Cemu: its GUID would be a guess.
+//! itself, so it is named only while it is plugged in, and only in the Cemu
+//! release sdl.rs was read against (release.rs). Omoio writes the files again
+//! before every game, with the pads plugged in then. Any other pad gets none
+//! in Cemu: its GUID would be a guess.
 //!
 //! Player 1 is the one every game answers, so they are never left without a
 //! pad while an XInput one is plugged in (`stand_in`), and Play says so before
@@ -25,7 +26,7 @@
 //!
 //! Cemu keeps one layout for every game. A game's own layout is RPCS3's alone.
 
-use super::sdl;
+use super::{release, sdl};
 use crate::core::pad_layout::{self, Pad, Player, PLAYERS};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
@@ -238,11 +239,15 @@ fn reader_for(player: &Player, hid: &[sdl::HidPad], ids: UsbIds) -> Option<Reade
     sdl::find(vendor, product, ordinal, hid).map(Reader::Sdl)
 }
 
-/// The HID devices plugged in, looked for only when someone plays on a pad
-/// gilrs reads: SDL's way of finding them opens every HID device.
-fn hid_for(players: &[Player]) -> Vec<sdl::HidPad> {
-    if players.iter().any(|p| p.pad.handler == "SDL") {
-        sdl::hid_pads()
+/// The HID devices plugged in, as `find` lists them, for naming SDL pads in
+/// the Cemu installed, `cemu` by its version. None when that Cemu is not the
+/// release sdl.rs was read against (release.rs): its SDL may name the pads
+/// otherwise, so they are left to stand in for or warn about instead. Looked
+/// for only when someone plays on a pad gilrs reads, since SDL's way of
+/// finding them opens every HID device.
+fn hid_for(players: &[Player], cemu: Option<&str>, find: fn() -> Vec<sdl::HidPad>) -> Vec<sdl::HidPad> {
+    if release::names_sdl_pads_as_checked(cemu) && players.iter().any(|p| p.pad.handler == "SDL") {
+        find()
     } else {
         Vec::new()
     }
@@ -357,8 +362,8 @@ fn stand_in(players: &[Player], plugged: &[Pad], usable: &dyn Fn(&Player) -> boo
 /// Why player 1 would have no pad in Cemu with these `players`, after
 /// `stand_in` has had its go with the pads `connected`, worded for the person
 /// about to press Play. `None` when they have one.
-pub fn missing_first_player(players: &[Player], connected: &[Pad]) -> Option<String> {
-    let hid = hid_for(players);
+pub fn missing_first_player(app: &AppHandle, players: &[Player], connected: &[Pad]) -> Option<String> {
+    let hid = hid_for(players, super::detect_version(app).as_deref(), sdl::hid_pads);
     let ids = |device: &str| crate::pads::usb_ids(device);
     missing(players, connected, &|player: &Player| reader_for(player, &hid, &ids).is_some())
 }
@@ -415,7 +420,7 @@ pub fn write(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), 
     if !title_id.is_empty() || !super::install_dir(app)?.join("Cemu.exe").is_file() {
         return Ok(());
     }
-    let hid = hid_for(players);
+    let hid = hid_for(players, super::detect_version(app).as_deref(), sdl::hid_pads);
     let ids = |device: &str| crate::pads::usb_ids(device);
     let usable = |player: &Player| reader_for(player, &hid, &ids).is_some();
     let players = stand_in(players, &crate::pads::connected(), &usable);
@@ -759,5 +764,44 @@ mod tests {
         // a pad switched on late still plays.
         let players = vec![Player::on(xinput(1)), Player::on(dualsense())];
         assert_eq!(missing(&players, &[], &usable_with(&[])), None);
+    }
+
+    fn plugged_dualsense() -> Vec<sdl::HidPad> {
+        vec![dualsense_hid()]
+    }
+
+    fn not_looked_for() -> Vec<sdl::HidPad> {
+        panic!("the HID devices were looked at")
+    }
+
+    #[test]
+    fn only_the_checked_cemu_has_its_sdl_pads_named() {
+        let mut players = vec![Player::on(dualsense())];
+        players.extend((1..=3).map(|slot| Player::on(xinput(slot))));
+        let plugged = [xinput(1), dualsense()];
+
+        // Cemu v2.6, which sdl.rs was read against, plays the PS5 pad itself.
+        let hid = hid_for(&players, Some("2.6"), plugged_dualsense);
+        assert_eq!(hid, [dualsense_hid()]);
+        assert_eq!(stand_in(&players, &plugged, &usable_with(&hid)), players);
+
+        // A later Cemu, built with another SDL, is not told about it: its
+        // XInput twin from DS4Windows stands in, ...
+        let hid = hid_for(&players, Some("2.7"), plugged_dualsense);
+        assert!(hid.is_empty());
+        assert_eq!(devices(&stand_in(&players, &plugged, &usable_with(&hid)))[0], "XInput Pad #1");
+        // ... and with no XInput pad plugged in, Play says so.
+        let why = missing(&players, &[dualsense()], &usable_with(&hid));
+        assert!(why.is_some_and(|why| why.contains("PS5 Controller")));
+
+        assert!(hid_for(&players, None, plugged_dualsense).is_empty(), "nor a Cemu of no known version");
+    }
+
+    #[test]
+    fn hid_devices_are_only_looked_at_for_a_pad_gilrs_reads() {
+        let players = vec![Player::on(xinput(1)), Player::on(xinput(2))];
+        assert!(hid_for(&players, Some("2.6"), not_looked_for).is_empty());
+        let later = vec![Player::on(dualsense())];
+        assert!(hid_for(&later, Some("2.7"), not_looked_for).is_empty(), "nor for a Cemu it would not name");
     }
 }
