@@ -240,6 +240,14 @@ h3 {
   color: var(--brand-text);
 }
 
+.guide {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.guide .guide-lede { margin-bottom: 18px; }
+.guide .caption { margin: 12px 0 0; font-size: 13px; color: var(--dim); }
+
 .features {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

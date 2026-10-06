@@ -1,5 +1,3 @@
-const VIDEO_ID = "wWmthRdoImE";
-
 // The API answers cross-origin requests and the download links don't, so the
 // newest installer is found here and the button points straight at it. Until
 // then, or if GitHub doesn't answer, the button opens the releases page.
@@ -31,13 +29,14 @@ async function findInstaller() {
   }
 }
 
-// Nothing from YouTube loads until the video is pressed.
+// Nothing from YouTube loads until a video is pressed. Each video's link
+// carries its YouTube id and the title its player gets.
 function playVideoInPlace(event) {
   event.preventDefault();
   const frame = event.currentTarget;
   const player = document.createElement("iframe");
-  player.src = `https://www.youtube-nocookie.com/embed/${VIDEO_ID}?autoplay=1&rel=0`;
-  player.title = "The Omoio video";
+  player.src = `https://www.youtube-nocookie.com/embed/${frame.dataset.video}?autoplay=1&rel=0`;
+  player.title = frame.dataset.title;
   player.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
   player.allowFullscreen = true;
 
@@ -65,5 +64,7 @@ if (!/Windows/.test(navigator.userAgent)) {
   document.getElementById("elsewhere").hidden = false;
 }
 
-document.getElementById("video").addEventListener("click", playVideoInPlace);
+for (const frame of document.querySelectorAll("a[data-video]")) {
+  frame.addEventListener("click", playVideoInPlace);
+}
 findInstaller();
