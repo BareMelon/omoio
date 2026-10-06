@@ -13,7 +13,7 @@ use crate::core::game_settings::{Chosen, GameSettings};
 use crate::core::import_warning::Imported;
 use crate::core::library::Game;
 use crate::core::figures::Character;
-use crate::core::pad_layout::Player;
+use crate::core::pad_layout::{Pad, Player};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use tauri::AppHandle;
@@ -120,6 +120,13 @@ pub trait EmulatorBackend: Sync {
     /// Writes the players' layout into the emulator's own files. An empty
     /// `title_id` is the layout for every game.
     fn write_layout(&self, app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), String>;
+
+    /// Why player 1 would have no pad in the emulator if a game started with
+    /// these `players`, with `connected` the pads plugged in, worded for the
+    /// person about to play. `None` when they have one.
+    fn missing_first_player(&self, _players: &[Player], _connected: &[Pad]) -> Option<String> {
+        None
+    }
 
     /// Takes a game's own layout out of the emulator's files.
     fn forget_layout(&self, _app: &AppHandle, _title_id: &str) -> Result<(), String> {
