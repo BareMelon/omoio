@@ -288,24 +288,13 @@ fn free_space(_path: &Path) -> Option<u64> {
     None
 }
 
-/// Keeps the dump's own picture under our own folder. Done once per game, and
-/// only while the drive is there, so the library keeps its art after the
-/// drive goes away. A game imported before its backend could read its picture
-/// gets it here, on the next load of the library.
+/// The game's own picture, kept under our own folder. A game imported before
+/// its picture could be read gets it here, on a later load of the library.
 fn cached_cover(app: &AppHandle, game: &crate::core::library::Game) -> Option<String> {
     let covers = omoio_data_dir(app).ok()?.join("covers");
-    let cached = covers.join(format!("{}.png", game.title_id));
-
-    if !cached.is_file() {
-        let picture = crate::backends::for_console(game.console)?.icon(game)?;
-        std::fs::create_dir_all(&covers).ok()?;
-        // Written beside it and then renamed, so a write cut short never
-        // leaves a broken picture that would be kept from then on.
-        let part = cached.with_extension("png.part");
-        std::fs::write(&part, picture).ok()?;
-        std::fs::rename(&part, &cached).ok()?;
-    }
-    Some(cached.to_string_lossy().into_owned())
+    let backend = crate::backends::for_console(game.console)?;
+    let kept = crate::covers::keep_own(&covers, &game.title_id, || backend.icon(app, game))?;
+    Some(kept.to_string_lossy().into_owned())
 }
 
 /// The picture for a game: RAWG's cover when the user has switched that on

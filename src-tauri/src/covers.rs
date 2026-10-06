@@ -13,6 +13,9 @@
 //! name its own metadata gives, and a result only counts when RAWG lists it
 //! for the game's own console. Each game is asked about once and the answer kept, found
 //! or not, so the monthly allowance lasts.
+//!
+//! The game's own picture is kept in the same folder, by `keep_own`. It needs
+//! no key and nothing from the internet.
 
 use crate::core::console::Console;
 use std::path::{Path, PathBuf};
@@ -32,6 +35,28 @@ fn platform(console: Console) -> &'static str {
 /// own ICON0, so switching RAWG off goes straight back to that.
 pub fn cached_path(covers: &Path, title_id: &str) -> PathBuf {
     covers.join(format!("{title_id}.rawg.jpg"))
+}
+
+/// Keeps the game's own picture in `covers`, made by `picture` the first time
+/// there is one, so the library keeps it after the drive goes away. Until
+/// then `picture` is asked on every call, because one can turn up later:
+/// Cemu writes a Wii U game's icon beside its first save. Once kept, it is
+/// never made again.
+pub fn keep_own(covers: &Path, title_id: &str, picture: impl FnOnce() -> Option<Vec<u8>>) -> Option<PathBuf> {
+    if !is_plain_id(title_id) {
+        return None;
+    }
+    let kept = covers.join(format!("{title_id}.png"));
+    if !kept.is_file() {
+        let picture = picture()?;
+        std::fs::create_dir_all(covers).ok()?;
+        // Written beside it and then renamed, so a write cut short never
+        // leaves a broken picture that would be kept from then on.
+        let part = kept.with_extension("png.part");
+        std::fs::write(&part, picture).ok()?;
+        std::fs::rename(&part, &kept).ok()?;
+    }
+    Some(kept)
 }
 
 /// Marks a title RAWG had nothing for, so it is not asked again.
@@ -199,6 +224,26 @@ mod tests {
             "background_image": image,
             "platforms": [{ "platform": { "name": platform } }]
         })
+    }
+
+    #[test]
+    fn the_own_picture_is_asked_for_until_there_is_one_and_then_kept() {
+        let covers = std::env::temp_dir().join(format!("omoio-covers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&covers);
+
+        assert_eq!(keep_own(&covers, "WUD87E51FD0F7F95", || None), None, "not played yet");
+        assert!(!covers.join("WUD87E51FD0F7F95.png").exists());
+
+        let kept = keep_own(&covers, "WUD87E51FD0F7F95", || Some(b"first".to_vec())).unwrap();
+        assert_eq!(kept, covers.join("WUD87E51FD0F7F95.png"));
+        assert_eq!(std::fs::read(&kept).unwrap(), b"first");
+
+        let again = keep_own(&covers, "WUD87E51FD0F7F95", || panic!("made again")).unwrap();
+        assert_eq!(std::fs::read(again).unwrap(), b"first");
+        assert!(!covers.join("WUD87E51FD0F7F95.png.part").exists());
+
+        assert_eq!(keep_own(&covers, "../outside", || Some(b"x".to_vec())), None);
+        let _ = std::fs::remove_dir_all(&covers);
     }
 
     #[test]

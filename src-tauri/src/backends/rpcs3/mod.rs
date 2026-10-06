@@ -400,7 +400,7 @@ impl super::EmulatorBackend for Rpcs3 {
         crate::import::identify(path).map_err(|e| e.to_string())
     }
 
-    fn icon(&self, game: &crate::core::library::Game) -> Option<Vec<u8>> {
+    fn icon(&self, _app: &AppHandle, game: &crate::core::library::Game) -> Option<Vec<u8>> {
         std::fs::read(crate::import::icon_path(&game.path)?).ok()
     }
 

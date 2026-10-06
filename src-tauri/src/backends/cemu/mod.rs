@@ -470,18 +470,57 @@ fn parse_meta(xml: &str) -> Meta {
     }
 }
 
+fn tga_as_png(file: &Path) -> Option<Vec<u8>> {
+    let data = std::fs::read(file).ok()?;
+    crate::core::tga::to_png(&crate::core::tga::decode(&data)?)
+}
+
 /// The game's own picture as a PNG: the one the Wii U shows on the TV as the
 /// game starts, which is wide like the library's tiles, or else its menu
-/// icon. Only an unpacked game's can be read. A disc image's are encrypted,
-/// so it keeps the drawn tile.
+/// icon. Only an unpacked game's can be read. A disc image's are encrypted.
 fn own_picture(root: &Path) -> Option<Vec<u8>> {
     if !root.is_dir() {
         return None;
     }
-    ["bootTvTex.tga", "iconTex.tga"].into_iter().find_map(|name| {
-        let file = std::fs::read(root.join("meta").join(name)).ok()?;
-        crate::core::tga::to_png(&crate::core::tga::decode(&file)?)
-    })
+    ["bootTvTex.tga", "iconTex.tga"]
+        .into_iter()
+        .find_map(|name| tga_as_png(&root.join("meta").join(name)))
+}
+
+/// Where Cemu keeps the Wii U's own storage, saves included: the folder
+/// named in its settings, or `mlc01` in its portable folder when none is
+/// (`ActiveSettings.cpp`, v2.6). Omoio never starts Cemu with `--mlc`.
+fn mlc_folder(portable: &Path) -> PathBuf {
+    std::fs::read_to_string(portable.join("settings.xml"))
+        .ok()
+        .and_then(|text| setting(&text, &[], "mlc_path"))
+        .map(|raw| {
+            quick_xml::escape::unescape(&raw)
+                .map(|text| text.into_owned())
+                .unwrap_or_else(|_| raw.clone())
+        })
+        .filter(|path| !path.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| portable.join("mlc01"))
+}
+
+/// The icon a game keeps beside its save, as the Wii U lays its storage out:
+/// usr/save, then the title id's two halves, then meta.
+fn save_icon(mlc: &Path, title_id: &str) -> Option<PathBuf> {
+    let id = title_id.to_ascii_lowercase();
+    if id.len() != 16 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(mlc.join("usr").join("save").join(&id[..8]).join(&id[8..]).join("meta").join("iconTex.tga"))
+}
+
+/// A game whose dump can't be read, such as a disc image, still gets its
+/// icon once it has been played and saved: Cemu writes it beside the save,
+/// decrypted, as the console does. Omoio only reads what Cemu wrote.
+fn played_picture(app: &AppHandle, game: &Game) -> Option<Vec<u8>> {
+    let title_id = title_id_for(app, game)?;
+    let mlc = mlc_folder(&install_dir(app).ok()?.join("portable"));
+    tga_as_png(&save_icon(&mlc, &title_id)?)
 }
 
 /// A title's type is the low byte of the high half of its id, per Cemu's
@@ -724,8 +763,8 @@ impl super::EmulatorBackend for Cemu {
         refusal(names, keys::count(app) > 0)
     }
 
-    fn icon(&self, game: &Game) -> Option<Vec<u8>> {
-        own_picture(&game.path)
+    fn icon(&self, app: &AppHandle, game: &Game) -> Option<Vec<u8>> {
+        own_picture(&game.path).or_else(|| played_picture(app, game))
     }
 
     fn prepare(&self, app: &AppHandle, game: &Game) {
@@ -1003,6 +1042,47 @@ Deluxe");
         std::fs::write(&image, b"x").unwrap();
         assert_eq!(own_picture(&image), None, "a disc image's pictures are encrypted");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_saves_are_where_cemus_settings_say_or_in_its_portable_folder() {
+        let portable = scratch("mlc");
+        assert_eq!(mlc_folder(&portable), portable.join("mlc01"), "no settings yet");
+
+        write_first_settings(&portable).unwrap();
+        assert_eq!(mlc_folder(&portable), portable.join("mlc01"), "no mlc_path in them");
+
+        let settings = portable.join("settings.xml");
+        std::fs::write(&settings, CEMU_SETTINGS.replace("<content>", "<content><mlc_path></mlc_path>")).unwrap();
+        assert_eq!(mlc_folder(&portable), portable.join("mlc01"), "an empty mlc_path is Cemu's default");
+
+        std::fs::write(
+            &settings,
+            CEMU_SETTINGS.replace("<content>", "<content><mlc_path>D:\\Wii U &amp; more\\mlc</mlc_path>"),
+        )
+        .unwrap();
+        assert_eq!(mlc_folder(&portable), PathBuf::from("D:\\Wii U & more\\mlc"));
+        let _ = std::fs::remove_dir_all(&portable);
+    }
+
+    #[test]
+    fn a_save_icon_is_found_under_the_title_ids_two_halves() {
+        let mlc = Path::new("mlc01");
+        assert_eq!(
+            save_icon(mlc, "0005000010101E00"),
+            Some(mlc.join("usr").join("save").join("00050000").join("10101e00").join("meta").join("iconTex.tga"))
+        );
+        assert_eq!(save_icon(mlc, "WUD87E51FD0F7F95"), None, "a disc image's own id is no title id");
+        assert_eq!(save_icon(mlc, "00050000"), None);
+
+        let portable = scratch("save-icon");
+        let meta = portable.join("mlc01/usr/save/00050000/10140400/meta");
+        std::fs::create_dir_all(&meta).unwrap();
+        let found = || tga_as_png(&save_icon(&mlc_folder(&portable), "0005000010140400")?);
+        assert_eq!(found(), None, "played, but not saved yet");
+        std::fs::write(meta.join("iconTex.tga"), tga_file(8, 8)).unwrap();
+        assert_eq!(png_size(&found().unwrap()), (8, 8));
+        let _ = std::fs::remove_dir_all(&portable);
     }
 
     #[test]
