@@ -38,8 +38,9 @@ really appreciated, so open an issue.
 - For Wii U games, Cemu's settings for each game, and disc images read with your
   own keys.
 - A catalogue of PS3 and Wii U games that tells you how well each one runs.
-- Real covers from RAWG if you add a free key. Without one, Omoio draws its own
-  tiles.
+- Real covers from RAWG if you add a free key. Without one, Omoio shows the
+  game's own picture from your dump (ICON0 for PS3, the boot picture for
+  Wii U), and draws a tile when there is none.
 
 ## Big Picture
 
@@ -217,8 +218,11 @@ fix, and then it says why it's on.
 <summary>Where do the covers come from?</summary>
 <br>
 
-By default Omoio draws its own tiles. Turn covers on in Settings and add a free
-RAWG key, and Omoio shows RAWG's pictures with a credit wherever they appear.
+Without a RAWG key, Omoio shows the game's own picture from your dump: ICON0
+for PS3 games and the boot picture for Wii U games. When there is none, as with
+a Wii U disc image, whose files are encrypted, Omoio draws a tile. Turn covers
+on in Settings and add a free RAWG key, and Omoio shows RAWG's pictures with a
+credit wherever they appear.
 
 </details>
 
@@ -245,8 +249,8 @@ lot.
 Omoio doesn't come with games and won't help you find any, so bring your own
 dumps of games you own. It doesn't crack anything: Wii U disc images need your
 own keys file, and Cemu does the decrypting. PS3 firmware comes from Sony's page,
-downloaded by you. Covers come only from RAWG, and the Skylanders pictures only
-from your own copy of the game. Omoio has no connection with Activision, who
+downloaded by you. Covers come only from RAWG or your own dump, and the Skylanders
+pictures only from your own copy of the game. Omoio has no connection with Activision, who
 publish Skylanders. RPCS3 and Cemu are separate projects, run as
 their official builds, and all credit for the emulation goes to them. The
 Emulators screen shows each emulator's own icon, unchanged, under its project's
