@@ -68,6 +68,12 @@ gilrs = "0.11"
 # See core/figure_data.rs.
 aes = "0.9"
 md-5 = "0.11"
+# Already in the build: Tauri uses it to read the app's icons as it builds,
+# so naming it here adds no new crate. A Wii U dump's own picture is a TGA,
+# which the webview can't show, so it is written out as a PNG for its tile.
+# 0.17 is the version Tauri's build uses; 0.18 is in Cargo.lock only for
+# macOS. See core/tga.rs.
+png = "0.17"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

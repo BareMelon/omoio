@@ -2897,6 +2897,7 @@ dependencies = [
  "futures-util",
  "gilrs",
  "md-5",
+ "png 0.17.16",
  "quick-xml",
  "reqwest",
  "rustls",
