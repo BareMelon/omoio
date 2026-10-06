@@ -327,7 +327,11 @@ mod tests {
             let Ok(figure) = <[u8; SIZE]>::try_from(bytes.as_slice()) else { continue };
             read += 1;
             assert!(number_ok(&figure), "{:?}", entry.file_name());
-            if figure[8 * BLOCK..].iter().any(|&byte| byte != 0) {
+            // Written by a game once an area's first block is: RPCS3's figure
+            // maker fills in each sector's last block, with the tag's keys,
+            // before any game has played the figure.
+            let starts = AREA_STARTS.map(|start| &figure[start * BLOCK..(start + 1) * BLOCK]);
+            if starts.iter().any(|block| block.iter().any(|&byte| byte != 0)) {
                 written += 1;
                 // Characters keep less under the third checksum than traps do, so
                 // the two that every figure has are checked.
