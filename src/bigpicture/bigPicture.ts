@@ -5,6 +5,7 @@ import {
   gameCompatibility,
   getSettings,
   launchGame,
+  launchWarning,
   listSessions,
   onGameStopped,
   padsConnected,
@@ -375,7 +376,19 @@ async function play(game: Game): Promise<void> {
   await start(game);
 }
 
+/// A game nobody can answer says so first, and starts only if asked to.
 async function start(game: Game): Promise<void> {
+  const warning = await launchWarning(game.title_id).catch(() => null);
+  if (!warning) return begin(game);
+  ask({
+    title: "No controller for player 1",
+    text: warning,
+    confirm: "Start anyway",
+    run: () => void begin(game),
+  });
+}
+
+async function begin(game: Game): Promise<void> {
   starting = game;
   stopping = false;
   drawStarting();

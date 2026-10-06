@@ -974,6 +974,14 @@ impl super::EmulatorBackend for Cemu {
         &controllers::WII_U
     }
 
+    fn missing_first_player(
+        &self,
+        players: &[crate::core::pad_layout::Player],
+        connected: &[crate::core::pad_layout::Pad],
+    ) -> Option<String> {
+        controllers::missing_first_player(players, connected)
+    }
+
     fn write_layout(
         &self,
         app: &AppHandle,

@@ -532,6 +532,20 @@ pub async fn import_game(app: AppHandle, path: String) -> Result<GameEntry, Stri
     .map_err(|e| e.to_string())?
 }
 
+/// Why the game would start with nobody answering player 1, asked before
+/// Play so the person can plug a pad in, or start it anyway. `None` when all
+/// is well.
+#[tauri::command]
+pub fn launch_warning(app: AppHandle, title_id: String) -> Option<String> {
+    let game = Library::load(&library_path(&app).ok()?)
+        .games()
+        .iter()
+        .find(|g| g.title_id == title_id)
+        .cloned()?;
+    let backend = crate::backends::for_console(game.console)?;
+    crate::controllers::launch_warning(&app, backend, &game.title_id)
+}
+
 #[tauri::command]
 pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     let library = Library::load(&library_path(&app)?);
