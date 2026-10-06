@@ -132,15 +132,15 @@ const MARKS: Record<string, string> = {
   figure: `<circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/>`,
 };
 
-/// Omoio's own marks for the kinds the games' checklists mark apart, with
-/// their names and where they sort in an element: a horned head for a
-/// Giant and a crown with a Traptanium crystal at its heart for a Trap
-/// Master, first, and a small figure in a ring for a Mini, last.
-const CLASSES: Record<FigureClass, { words: string; order: number; shape: string }> = {
+/// The kinds the games' checklists mark apart, with their names, where they
+/// sort in an element, and Omoio's own mark where it has one: Giants and
+/// Trap Masters first, with a crown with a Traptanium crystal at its heart
+/// for a Trap Master, and Minis last, with a small figure in a ring.
+const CLASSES: Record<FigureClass, { words: string; order: number; shape: string | null }> = {
   giant: {
     words: "Giant",
     order: 0,
-    shape: `<path fill="currentColor" fill-rule="evenodd" d="M6.6 9.2C3.9 8.6 2.4 6.3 2.8 2.8c1.1 2 2.7 3 4.9 3.2.9-.4 2.3-.8 4.3-.8s3.4.4 4.3.8c2.2-.2 3.8-1.2 4.9-3.2.4 3.5-1.1 5.8-3.8 6.4.3.6.4 1.3.4 2v3.4c0 3.6-2.6 6.6-5.8 6.6s-5.8-3-5.8-6.6v-3.4c0-.7.1-1.4.4-2zM8.6 12.4l2.6 1v1.3l-2.6-.6zm6.8 0-2.6 1v1.3l2.6-.6z"/>`,
+    shape: null,
   },
   trap_master: {
     words: "Trap Master",
@@ -482,9 +482,10 @@ function picture(entry: Entry, badge: keyof typeof BADGES | null): HTMLElement {
     emblem(spot, entry.element, entry.kind);
   }
   const kind = classOf(entry);
-  if (kind) {
+  const shape = kind ? CLASSES[kind].shape : null;
+  if (kind && shape) {
     const corner = node("span", `portal-class-corner ${kind}`);
-    corner.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${CLASSES[kind].shape}</svg>`;
+    corner.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${shape}</svg>`;
     spot.appendChild(corner);
   }
   if (badge) {
@@ -513,7 +514,8 @@ function kindLine(entry: Entry): HTMLElement {
   const kind = classOf(entry);
   if (kind) {
     const named = node("span", `portal-class ${kind}`);
-    named.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${CLASSES[kind].shape}</svg>`;
+    const shape = CLASSES[kind].shape;
+    if (shape) named.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${shape}</svg>`;
     named.append(CLASSES[kind].words);
     line.appendChild(named);
   }
