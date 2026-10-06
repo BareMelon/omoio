@@ -470,6 +470,20 @@ fn parse_meta(xml: &str) -> Meta {
     }
 }
 
+/// The game's own picture as a PNG: the one the Wii U shows on the TV as the
+/// game starts, which is wide like the library's tiles, or else its menu
+/// icon. Only an unpacked game's can be read. A disc image's are encrypted,
+/// so it keeps the drawn tile.
+fn own_picture(root: &Path) -> Option<Vec<u8>> {
+    if !root.is_dir() {
+        return None;
+    }
+    ["bootTvTex.tga", "iconTex.tga"].into_iter().find_map(|name| {
+        let file = std::fs::read(root.join("meta").join(name)).ok()?;
+        crate::core::tga::to_png(&crate::core::tga::decode(&file)?)
+    })
+}
+
 /// A title's type is the low byte of the high half of its id, per Cemu's
 /// TitleId.h: 00 a game, 02 a demo, 0C add-on content, 0E an update.
 fn title_type(title_id: &str) -> Option<u8> {
@@ -710,10 +724,8 @@ impl super::EmulatorBackend for Cemu {
         refusal(names, keys::count(app) > 0)
     }
 
-    fn icon(&self, _game: &Game) -> Option<PathBuf> {
-        // The dump's own icon is a TGA, which the interface cannot show. A
-        // RAWG cover or the drawn tile stands in for it.
-        None
+    fn icon(&self, game: &Game) -> Option<Vec<u8>> {
+        own_picture(&game.path)
     }
 
     fn prepare(&self, app: &AppHandle, game: &Game) {
@@ -955,6 +967,41 @@ Deluxe");
         assert_eq!(game.title_id, "0005000010ABCD00");
         assert_eq!(game.title, "Example Game & Friends Deluxe");
         assert_eq!(game.version.as_deref(), Some("16"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An uncompressed 24 bit TGA of one grey.
+    fn tga_file(width: u16, height: u16) -> Vec<u8> {
+        let mut file = vec![0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        file.extend_from_slice(&width.to_le_bytes());
+        file.extend_from_slice(&height.to_le_bytes());
+        file.extend_from_slice(&[24, 0]);
+        file.resize(file.len() + usize::from(width) * usize::from(height) * 3, 0x40);
+        file
+    }
+
+    fn png_size(file: &[u8]) -> (u32, u32) {
+        let reader = png::Decoder::new(file).read_info().unwrap();
+        (reader.info().width, reader.info().height)
+    }
+
+    #[test]
+    fn the_games_picture_is_its_boot_picture_or_else_its_icon() {
+        let dir = scratch("picture");
+        game_folder(&dir, META);
+        let meta = dir.join("meta");
+        assert_eq!(own_picture(&dir), None, "no picture, so the drawn tile");
+
+        std::fs::write(meta.join("iconTex.tga"), tga_file(4, 4)).unwrap();
+        assert_eq!(png_size(&own_picture(&dir).unwrap()), (4, 4));
+        std::fs::write(meta.join("bootTvTex.tga"), tga_file(16, 9)).unwrap();
+        assert_eq!(png_size(&own_picture(&dir).unwrap()), (16, 9));
+        std::fs::write(meta.join("bootTvTex.tga"), b"not a picture").unwrap();
+        assert_eq!(png_size(&own_picture(&dir).unwrap()), (4, 4), "a broken one is passed over");
+
+        let image = dir.join("Game (Europe).wux");
+        std::fs::write(&image, b"x").unwrap();
+        assert_eq!(own_picture(&image), None, "a disc image's pictures are encrypted");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

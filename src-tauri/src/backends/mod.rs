@@ -45,8 +45,11 @@ pub trait EmulatorBackend: Sync {
         None
     }
 
-    /// The picture the dump itself ships, if it has one.
-    fn icon(&self, game: &Game) -> Option<PathBuf>;
+    /// The picture the dump itself ships, as the bytes of a PNG file, if it
+    /// has one. Bytes rather than a path, because a dump's picture may be in
+    /// a form the webview can't show and is turned into a PNG first, as a
+    /// Wii U dump's is.
+    fn icon(&self, game: &Game) -> Option<Vec<u8>>;
 
     /// Gets anything the emulator needs ready before `game` starts, apart
     /// from the controller layout, which `write_layout` hands over.

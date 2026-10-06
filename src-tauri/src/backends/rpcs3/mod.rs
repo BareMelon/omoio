@@ -400,8 +400,8 @@ impl super::EmulatorBackend for Rpcs3 {
         crate::import::identify(path).map_err(|e| e.to_string())
     }
 
-    fn icon(&self, game: &crate::core::library::Game) -> Option<PathBuf> {
-        crate::import::icon_path(&game.path)
+    fn icon(&self, game: &crate::core::library::Game) -> Option<Vec<u8>> {
+        std::fs::read(crate::import::icon_path(&game.path)?).ok()
     }
 
     fn button_names(&self) -> &'static [(&'static str, &'static str)] {
