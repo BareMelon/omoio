@@ -117,7 +117,7 @@ pub fn forget(app: &AppHandle, title_id: &str) -> Result<(), String> {
 pub fn launch_warning(app: &AppHandle, backend: &dyn EmulatorBackend, title_id: &str) -> Option<String> {
     let connected = crate::pads::connected();
     warning(current(app, title_id, &connected), &connected, |players, connected| {
-        backend.missing_first_player(players, connected)
+        backend.missing_first_player(app, players, connected)
     })
 }
 
