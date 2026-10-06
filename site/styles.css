@@ -249,6 +249,7 @@ h3 {
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
+.features > .wide { grid-column: 1 / -1; }
 
 .questions { border-top: 1px solid var(--line); }
 .questions details { border-bottom: 1px solid var(--line); }

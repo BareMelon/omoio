@@ -28,6 +28,8 @@ really appreciated, so open an issue.
 - RPCS3 and Cemu installed for you and kept up to date.
 - One controller layout for every emulator, set by pressing the buttons, for up
   to four players.
+- A Skylanders portal menu that puts figures and traps on the portal from your
+  controller, in Giants on PS3 and in SWAP Force and Trap Team on Wii U.
 - Community packs for every game, downloaded with one press: RPCS3's patches
   for PS3 games and Cemu's graphic packs for Wii U games, like 60 fps for
   Skylanders SWAP Force.
@@ -52,23 +54,40 @@ two buttons take you back into the game.
 
 ![The portal menu over Skylanders SWAP Force, with a swapper going on the portal](design/screenshots/portal-menu.jpg)
 
-Skylanders games need figures on a portal. For now the portal menu is made and
-tested for Skylanders SWAP Force on Cemu. The other Skylanders games, and the
-other consoles, come later.
+Skylanders games need figures on a portal. Omoio opens a portal menu over the
+game instead, and three games have it so far:
 
-In SWAP Force, press the Guide button, or the button you picked for it, and
-Omoio's portal menu opens over the game. Choose a character with the controller
-and it goes on the portal. The first time, Cemu's own figure maker makes the
-figure, and Omoio saves it so the figure keeps what it has earned. Swappers can
-be mixed: pick a top, then a bottom, and each one shows how it moves.
+- Skylanders Giants, the PS3 version, through RPCS3
+- Skylanders SWAP Force, the Wii U version, through Cemu
+- Skylanders Trap Team, the Wii U version, through Cemu
+
+During the game, press your controller's home button (Guide, PS or Home) and
+the menu opens. You can pick another button in the game's panel. Choose a
+character and it goes on the portal, and the same menu takes it off again. The
+first time, the emulator's own figure maker makes the figure, and Omoio saves it
+so the figure keeps what it has earned. Giants and Trap Masters come first in
+each element and Minis last. Trap Masters and Minis carry a mark, and Giants
+show the game's own Giant badge once the pictures are read. In
+SWAP Force, swappers can be mixed: pick a top, then a bottom, and each one shows
+how it moves.
+
+![The Villains tab in Trap Team, with 31 of 46 villains caught and Golden Queen in a Rock Hawk trap](design/screenshots/portal-villains.jpg)
+
+In Trap Team, traps go on one at a time, as on a real portal. The Villains tab
+shows all 46 villains, which ones you've caught and which of your traps holds
+each, and picking a villain puts its trap on. Omoio reads the villain from what
+the game saved in the trap. It only reads, and never writes to your figures.
 
 Omoio doesn't come with the figures' pictures. It reads them from your own copy
-of SWAP Force, a .wua file that Cemu packed or an unpacked game folder, when you
-press Get pictures once. A small separate program,
+of the game when you press Get pictures once in the game's panel: a .wua file
+that Cemu packed or an unpacked folder for the Wii U games, and the game's folder
+for Giants on PS3. A small separate program,
 [omoio-portraits](https://github.com/Bertrram/omoio-portraits), does the reading.
 Omoio downloads it only when you ask and checks it before it runs. The pictures
-stay on your computer, and the screenshot above shows them as they look once
+stay on your computer, and the screenshots above show them as they look once
 read.
+
+The other Skylanders games aren't supported yet.
 
 ## Install
 
@@ -227,7 +246,8 @@ Omoio doesn't come with games and won't help you find any, so bring your own
 dumps of games you own. It doesn't crack anything: Wii U disc images need your
 own keys file, and Cemu does the decrypting. PS3 firmware comes from Sony's page,
 downloaded by you. Covers come only from RAWG, and the Skylanders pictures only
-from your own copy of the game. RPCS3 and Cemu are separate projects, run as
+from your own copy of the game. Omoio has no connection with Activision, who
+publish Skylanders. RPCS3 and Cemu are separate projects, run as
 their official builds, and all credit for the emulation goes to them. The
 Emulators screen shows each emulator's own icon, unchanged, under its project's
 licence; [the notice beside them](src/icons/emulators/NOTICE.md) lists which.
