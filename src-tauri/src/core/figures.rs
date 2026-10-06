@@ -306,10 +306,12 @@ pub fn movement(id: u16) -> Option<Movement> {
     BOTTOMS.get(usize::from(id.checked_sub(1000)?)).copied()
 }
 
-/// The kinds of Skylander the game's own checklists mark apart.
+/// The kinds of Skylander the games' own checklists mark apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Class {
+    /// The Giants of Skylanders Giants, twice the size of the rest.
+    Giant,
     /// Trap Team's Trap Masters, who carry a Traptanium weapon.
     TrapMaster,
     /// The small ones: Trap Team's Minis, and the Sidekicks of Giants they
@@ -318,10 +320,12 @@ pub enum Class {
 }
 
 /// Which marked kind a figure is, from its id, variants included (Cemu
-/// 2.6's list). Trap Masters are the first two of each element's four from
-/// 450, then Knight Light and Knight Mare.
+/// 2.6's list). Giants' new figures alternate between a core figure and a
+/// Giant from 100; Trap Masters are the first two of each element's four
+/// from 450, then Knight Light and Knight Mare.
 pub fn class(id: u16) -> Option<Class> {
     match id {
+        101 | 102 | 104 | 107 | 109 | 110 | 112 | 114 => Some(Class::Giant),
         450..=481 if (id - 450) % 4 < 2 => Some(Class::TrapMaster),
         482 | 484 => Some(Class::TrapMaster),
         502..=510 | 514 | 519 | 526 | 540..=543 => Some(Class::Mini),
@@ -512,9 +516,15 @@ mod tests {
     }
 
     #[test]
-    fn trap_masters_and_minis_are_told_by_their_id() {
+    fn giants_trap_masters_and_minis_are_told_by_their_id() {
+        let giant = Some(Class::Giant);
         let master = Some(Class::TrapMaster);
         let mini = Some(Class::Mini);
+        assert_eq!(class(112), giant); // Tree Rex, and Gnarly Tree Rex
+        assert_eq!(class(101), giant); // Swarm
+        assert_eq!(class(114), giant); // Eye Brawl
+        assert_eq!(class(100), None); // Jet Vac
+        assert_eq!(class(113), None); // Shroomboom
         assert_eq!(class(450), master); // Gusto
         assert_eq!(class(451), master); // Thunderbolt
         assert_eq!(class(452), None); // Fling Kong

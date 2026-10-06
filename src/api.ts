@@ -829,9 +829,9 @@ export interface Offer extends Character {
   class: FigureClass | null;
 }
 
-/// The kinds of Skylander the game's checklists mark apart: Trap Team's Trap
-/// Masters, and the Minis.
-export type FigureClass = "trap_master" | "mini";
+/// The kinds of Skylander the games' checklists mark apart: the Giants,
+/// Trap Team's Trap Masters, and the Minis.
+export type FigureClass = "giant" | "trap_master" | "mini";
 
 export function figureCharacters(): Promise<Offer[]> {
   return invoke("figure_characters");

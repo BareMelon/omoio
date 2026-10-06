@@ -269,9 +269,9 @@ body {
   color: var(--brand-text);
 }
 
-/* The mark of a Trap Master or a Mini: in the picture's other top corner,
-   and again by its element under the name. Trap Masters in the traps'
-   colour, Minis plain. */
+/* The mark of a Giant, a Trap Master or a Mini: in the picture's other top
+   corner, and again by its element under the name. Giants in stone, Trap
+   Masters in the traps' colour, Minis plain. */
 .portal-class-corner {
   position: absolute;
   top: 10px;
@@ -294,6 +294,11 @@ body {
   align-items: center;
   gap: 4px;
   margin-left: 8px;
+}
+
+.portal-class-corner.giant,
+.portal-class.giant {
+  color: var(--kind-giant);
 }
 
 .portal-class-corner.trap_master,

@@ -61,6 +61,8 @@
   --kind-adventure: #9b8ad2;
   --kind-swapper: #a8e2f4;
   --kind-trap: #7fd8e6;
+  /* The Giants' mark, in a warm stone colour. */
+  --kind-giant: #e3a36a;
 
   --ui: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
