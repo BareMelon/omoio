@@ -38,6 +38,8 @@ really appreciated, so open an issue.
 - For Wii U games, Cemu's settings for each game, and disc images read with your
   own keys.
 - A catalogue of PS3 and Wii U games that tells you how well each one runs.
+  If a game you import may not run well, Omoio says so first and points to
+  another console's version that runs better, when there is one.
 - Real covers from RAWG if you add a free key. Without one, Omoio shows the
   game's own picture (ICON0 for PS3, the boot picture or icon for Wii U), and
   draws a tile when there is none.
