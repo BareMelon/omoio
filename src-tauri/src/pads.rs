@@ -205,6 +205,7 @@ fn sdl_held(pad: &gilrs::Gamepad) -> Vec<&'static str> {
 struct Seen {
     pad: Pad,
     vendor: Option<u16>,
+    product: Option<u16>,
     held: Vec<&'static str>,
 }
 
@@ -244,6 +245,7 @@ fn watch() {
                                 family: family_of(pad.vendor_id()).to_string(),
                             },
                             vendor: pad.vendor_id(),
+                            product: pad.product_id(),
                             held: sdl_held(&pad),
                         }
                     })
@@ -302,6 +304,23 @@ pub fn held(device: &str) -> Option<Vec<&'static str>> {
         .iter()
         .find(|s| s.pad.device == device)
         .map(|s| s.held.clone())
+}
+
+/// A pad's USB vendor and product ids, with how many pads of that same model
+/// gilrs lists before it, which Cemu needs to find it among the HID devices.
+/// `None` for a pad gilrs does not have plugged in, or one whose ids it does
+/// not know.
+pub fn usb_ids(device: &str) -> Option<(u16, u16, usize)> {
+    watch();
+    let seen = seen().lock().unwrap();
+    let seen = seen.as_ref()?;
+    let at = seen.iter().position(|s| s.pad.device == device)?;
+    let (vendor, product) = (seen[at].vendor?, seen[at].product?);
+    let before = seen[..at]
+        .iter()
+        .filter(|s| s.vendor == Some(vendor) && s.product == Some(product))
+        .count();
+    Some((vendor, product, before))
 }
 
 /// Everything held on any pad plugged in, for a menu any player may use.
