@@ -13,7 +13,7 @@
 
 use crate::core::figures::{self, Character};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
@@ -70,6 +70,14 @@ const MAKER_WAIT: Duration = Duration::from_secs(20);
 /// and a window took longer than five seconds: a figure failed twice and
 /// went on at the third try (2 October 2026).
 const START_WAIT: Duration = Duration::from_secs(20);
+
+/// One errand in Cemu's portal window at a time. A second one finds the
+/// window the first is working in, uses it, and closes it under it.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
+fn turn() -> MutexGuard<'static, ()> {
+    ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// A command from Cemu's menu bar, waiting for the bar to be read if Cemu
 /// hasn't shown it yet.
@@ -355,9 +363,10 @@ fn controls(window: HWND, class_has: &str, label: Option<&str>) -> Vec<HWND> {
         .collect()
 }
 
-/// What each slot holds, empty where it holds nothing.
-fn read(window: HWND) -> Vec<String> {
-    controls(window, "Edit", None)
+/// What each slot holds, empty where it holds nothing. A window that closed
+/// while being read has no slots left, and is not taken for an empty portal.
+fn read(window: HWND) -> Result<Vec<String>, String> {
+    let names: Vec<String> = controls(window, "Edit", None)
         .into_iter()
         .take(SLOTS)
         .map(|slot| {
@@ -368,7 +377,12 @@ fn read(window: HWND) -> Vec<String> {
                 shown(&name)
             }
         })
-        .collect()
+        .collect();
+    if names.len() == SLOTS {
+        Ok(names)
+    } else {
+        Err(LOOKS_DIFFERENT.to_string())
+    }
 }
 
 /// A slot's name as the menu lists the character. Cemu calls a figure its
@@ -421,16 +435,18 @@ fn dismiss_message(pid: u32, expected: &[&str]) -> Option<String> {
 
 /// The figures on the portal, by slot.
 pub fn figures(pid: u32) -> Result<Vec<String>, String> {
+    let _turn = turn();
     let window = open(pid)?;
     let names = read(window);
     close(window);
-    Ok(names)
+    names
 }
 
 /// Puts the figure in `file` on the portal in `slot`, counted from 0, and
 /// returns what the portal holds afterwards.
 pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
     check(slot)?;
+    let _turn = turn();
     let window = open(pid)?;
     let load = controls(window, "Button", Some("Load"))
         .into_iter()
@@ -451,7 +467,23 @@ pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
     }
     let names = read(window);
     close(window);
-    Ok(names)
+    names
+}
+
+/// Takes the figure in `slot` off the portal, and returns what is left.
+pub fn clear(pid: u32, slot: usize) -> Result<Vec<String>, String> {
+    check(slot)?;
+    let _turn = turn();
+    let window = open(pid)?;
+    let button = controls(window, "Button", Some("Clear"))
+        .into_iter()
+        .nth(slot)
+        .ok_or("Cemu's portal looks different from what Omoio knows.")?;
+    press(button);
+    std::thread::sleep(Duration::from_millis(300));
+    let names = read(window);
+    close(window);
+    names
 }
 
 /// Fills in a Windows file window Cemu opened, out of sight, presses its
@@ -527,6 +559,7 @@ fn cancel_creator(creator: HWND) {
 /// each item shows and the id and variant it carries. The maker is closed
 /// again without making anything.
 pub fn characters(pid: u32) -> Result<Vec<Character>, String> {
+    let _turn = turn();
     let window = open(pid)?;
     let creator = open_creator(pid, window, 0)?;
     let found: Vec<Character> = children(creator)
@@ -564,6 +597,7 @@ pub fn characters(pid: u32) -> Result<Vec<Character>, String> {
 /// holds afterwards.
 pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Result<Vec<String>, String> {
     check(slot)?;
+    let _turn = turn();
     let window = open(pid)?;
     let creator = open_creator(pid, window, slot)?;
     // The id and variant boxes, not the typing box inside the list above them.
@@ -617,7 +651,7 @@ pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Resu
     }
     let names = read(window);
     close(window);
-    Ok(names)
+    names
 }
 
 #[cfg(test)]
@@ -650,19 +684,4 @@ mod tests {
         let cleared = clear(pid, 0).unwrap();
         assert!(cleared[0].is_empty(), "slot 1 is empty again: {cleared:?}");
     }
-}
-
-/// Takes the figure in `slot` off the portal, and returns what is left.
-pub fn clear(pid: u32, slot: usize) -> Result<Vec<String>, String> {
-    check(slot)?;
-    let window = open(pid)?;
-    let button = controls(window, "Button", Some("Clear"))
-        .into_iter()
-        .nth(slot)
-        .ok_or("Cemu's portal looks different from what Omoio knows.")?;
-    press(button);
-    std::thread::sleep(Duration::from_millis(300));
-    let names = read(window);
-    close(window);
-    Ok(names)
 }

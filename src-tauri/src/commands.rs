@@ -1577,6 +1577,14 @@ pub async fn figure_characters(app: AppHandle) -> Result<Vec<crate::core::figure
     Ok(crate::core::figures::offers(characters?, game))
 }
 
+/// A new figure on the portal: what the portal holds now, and the figure's
+/// file.
+#[derive(serde::Serialize)]
+pub struct Made {
+    names: Vec<String>,
+    path: String,
+}
+
 /// Has the emulator make a new figure of a character, kept in the figures
 /// folder, and put it on the portal in `slot`, counted from 0.
 #[tauri::command]
@@ -1584,7 +1592,7 @@ pub async fn portal_create(
     app: AppHandle,
     slot: usize,
     character: crate::core::figures::Character,
-) -> Result<Vec<String>, String> {
+) -> Result<Made, String> {
     let (backend, pid) = running_emulator(&app)?;
     let file = crate::portal_menu::new_figure(&app, &character.name)?;
     let path = file.clone();
@@ -1593,10 +1601,15 @@ pub async fn portal_create(
         .await
         .map_err(|e| e.to_string())?;
     crate::portal_menu::take_front(&app);
+    // The emulator can write the figure and only then run into a problem, so
+    // a file it wrote is recorded as its character either way.
+    if file.is_file() {
+        crate::portal_menu::made(&app, &file, &made);
+    }
     let names = names?;
-    crate::portal_menu::made(&app, &file, &made);
-    crate::portal_menu::used(&app, &file.to_string_lossy());
-    Ok(names)
+    let path = file.to_string_lossy().into_owned();
+    crate::portal_menu::used(&app, &path);
+    Ok(Made { names, path })
 }
 
 /// The pad button that opens the portal menu, as a place on the pad.

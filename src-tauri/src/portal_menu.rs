@@ -165,6 +165,8 @@ pub struct HeldIn {
     pub path: String,
     pub id: u16,
     pub variant: u16,
+    /// The trap's own element, `None` for the Kaos trap.
+    pub element: Option<Element>,
     /// The villain's variant form, such as Outlaw Brawl and Chain.
     pub variant_form: bool,
     pub evolved: bool,
@@ -203,6 +205,7 @@ pub fn villains(app: &AppHandle) -> Vec<VillainState> {
                     path: trap.path.clone(),
                     id: trap.id?,
                     variant: trap.variant?,
+                    element: trap.element,
                     variant_form: holds.variant,
                     evolved: holds.evolved,
                 })

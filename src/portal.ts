@@ -170,9 +170,12 @@ const root = document.getElementById("portal")!;
 
 let family: PadFamily = "generic";
 let shown = false;
-let busy = false;
 let asking = false;
 let onPortal: string[] = [];
+/// The file Omoio put in each slot, with the name the portal gave it then.
+/// A figure on the portal is known by its file: two files can carry one
+/// name, and the emulator names a file the user brought by its character.
+let slotFiles: ({ path: string; name: string } | null)[] = [];
 let mine: Figure[] = [];
 let offers: Offer[] = [];
 /// Trap Team's villains, which the user has caught and which trap holds each.
@@ -226,6 +229,18 @@ function placed(): { name: string; slot: number }[] {
   return onPortal.map((name, slot) => ({ name, slot })).filter((figure) => figure.name);
 }
 
+/// Takes in the portal as just read. A slot that has emptied, or holds
+/// another figure than the one Omoio put there, no longer holds that file.
+function readPortal(names: string[]) {
+  onPortal = names;
+  slotFiles = names.map((name, slot) => (name && slotFiles[slot]?.name === name ? slotFiles[slot] : null));
+}
+
+/// The slot Omoio put the file at `path` in, or -1.
+function slotOfFile(path: string | undefined): number {
+  return path ? slotFiles.findIndex((file) => file?.path === path) : -1;
+}
+
 /// The name the portal shows for a tile's figure, which is the emulator's
 /// name for the character rather than the file's.
 function portalName(entry: Entry): string {
@@ -244,9 +259,29 @@ function savedFor(offer: Offer): Figure | undefined {
   return mine.find((figure) => figure.id === offer.id && figure.variant === offer.variant);
 }
 
+/// The slot holding what a tile stands for, or -1: its saved figure's file
+/// when Omoio put that on, or a figure the portal names as it. A character
+/// is on whichever file brought it; a saved file goes by its name only in a
+/// slot whose file Omoio doesn't know.
+function slotOf(entry: Entry): number {
+  const byFile = slotOfFile(entry.figure?.path);
+  if (byFile >= 0) return byFile;
+  const name = portalName(entry);
+  return onPortal.findIndex((held, slot) => held === name && (Boolean(entry.offer) || !slotFiles[slot]));
+}
+
 function isOn(entry: Entry): boolean {
   if (entry.swap) return [entry.swap.top, entry.swap.bottom].some((half) => onPortal.includes(half.name));
-  return onPortal.includes(portalName(entry));
+  return slotOf(entry) >= 0;
+}
+
+/// Whether the figure in `slot` is a trap: by its file when Omoio put it
+/// there, otherwise by the name the portal gives it.
+function holdsTrap(slot: number): boolean {
+  const file = slotFiles[slot];
+  const figure = file ? mine.find((each) => each.path === file.path) : undefined;
+  if (figure?.kind) return figure.kind === "trap";
+  return offers.some((offer) => offer.kind === "trap" && offer.name === onPortal[slot]);
 }
 
 function buildTabs() {
@@ -455,7 +490,7 @@ function renderHead(): HTMLElement {
       node("span", "", figure.name)
     );
     // A trap says which villain it brings with it.
-    const villain = heldOnPortal(figure.name);
+    const villain = heldIn(figure.slot);
     if (villain) {
       button.append(node("span", "portal-with", "with"), node("span", "", villain.name));
       const face = fileOf(`villain-${villain.id}`);
@@ -468,7 +503,7 @@ function renderHead(): HTMLElement {
     button.onclick = () => {
       zone = "portal";
       chip = index;
-      void takeOff();
+      void act(takeOff);
     };
     row.appendChild(button);
   });
@@ -524,7 +559,7 @@ function renderBody(): HTMLElement {
     tile.onclick = () => {
       zone = "grid";
       at = index;
-      void choose();
+      void act(choose);
     };
     grid.appendChild(tile);
   });
@@ -555,14 +590,27 @@ function trapName(villain: Villain): string {
   return figure ? portalName({ name: figure.name, element: null, kind: null, figure }) : (villain.trap?.name ?? "");
 }
 
-function trapOn(villain: Villain): boolean {
-  return Boolean(villain.trap) && onPortal.includes(trapName(villain));
+/// The slot the trap holding a villain is in, or -1: by its file when Omoio
+/// put it on, by its name in a slot whose file Omoio doesn't know.
+function trapSlot(villain: Villain): number {
+  if (!villain.trap) return -1;
+  const byFile = slotOfFile(villain.trap.path);
+  if (byFile >= 0) return byFile;
+  const name = trapName(villain);
+  return onPortal.findIndex((held, slot) => held === name && !slotFiles[slot]);
 }
 
-/// The villain a figure on the portal holds, when it is one saved trap that
-/// holds one.
-function heldOnPortal(name: string): Villain | undefined {
-  const holding = villainList.filter((villain) => villain.trap && trapName(villain) === name);
+function trapOn(villain: Villain): boolean {
+  return trapSlot(villain) >= 0;
+}
+
+/// The villain the figure in `slot` holds: the one in its file when Omoio
+/// knows which file it is, otherwise the one in the only saved trap of its
+/// name.
+function heldIn(slot: number): Villain | undefined {
+  const file = slotFiles[slot];
+  if (file) return villainList.find((villain) => villain.trap?.path === file.path);
+  const holding = villainList.filter((villain) => villain.trap && trapName(villain) === onPortal[slot]);
   return holding.length === 1 ? holding[0] : undefined;
 }
 
@@ -576,6 +624,14 @@ function villainPicture(villain: Villain): string | null {
 
 function elementWords(element: FigureElement | null): string {
   return element ? (ELEMENT_NAMES.get(element) ?? "") : "Kaos";
+}
+
+/// How to catch a villain not caught yet: with a trap of its element, and
+/// Kaos with his own.
+function catchWith(villain: Villain): string {
+  if (!villain.element) return "Only the Kaos trap can hold it.";
+  const words = elementWords(villain.element);
+  return `Catch it with ${/^[AEIOU]/.test(words) ? "an" : "a"} ${words} trap.`;
 }
 
 /// How many villains are caught, how many of those sit in a trap, and a bar
@@ -634,7 +690,7 @@ function villainTile(villain: Villain, index: number): HTMLElement {
   tile.onclick = () => {
     zone = "grid";
     at = index;
-    void choose();
+    void act(choose);
   };
   return tile;
 }
@@ -659,7 +715,7 @@ function renderVillain(villain: Villain | undefined): HTMLElement {
     const trap = pictureOf(villain.trap.id, villain.trap.variant);
     if (trap) picture.appendChild(image(trap));
     const words = node("div", "portal-held-words");
-    words.append(node("b", "", trapName(villain)), node("span", "", `${elementWords(villain.element)} trap`));
+    words.append(node("b", "", trapName(villain)), node("span", "", `${elementWords(villain.trap.element)} trap`));
     if (trapOn(villain)) {
       const on = node("span", "portal-held-on");
       on.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${BADGES.on[1]}</svg>`;
@@ -669,9 +725,8 @@ function renderVillain(villain: Villain | undefined): HTMLElement {
     held.append(picture, words);
     card.appendChild(held);
   } else {
-    const fits = villain.element ? `a ${elementWords(villain.element)} trap` : "the Kaos trap";
     card.appendChild(
-      node("p", "portal-villain-note", villain.caught ? "Not in one of your traps now." : `Not caught yet. Only ${fits} can hold it.`)
+      node("p", "portal-villain-note", villain.caught ? "Not in one of your traps now." : `Not caught yet. ${catchWith(villain)}`)
     );
   }
   const kin = villainList.filter((other) => other.element === villain.element);
@@ -882,23 +937,73 @@ function movePortal(move: Move) {
   render();
 }
 
-/// One change to the portal at a time, since each goes through the
-/// emulator's own window and takes a moment.
-async function change(saying: Notice, job: () => Promise<string[]>, said: (names: string[]) => Notice) {
-  if (busy) return;
-  busy = true;
-  notify(saying);
+/// Calls to the emulator's portal under way or waiting their turn. They go
+/// one at a time, in the order asked: each works in the emulator's own
+/// window, and two at once would close it under each other. The menu can
+/// close and open again while one runs.
+let pending = 0;
+let line: Promise<unknown> = Promise.resolve();
+/// What the change under way says, said again if the menu opens again
+/// before it is done.
+let working: Notice | null = null;
+/// Whether something the user asked for is under way. Putting a trap on can
+/// take two changes, and a press in between would pick the same free slot.
+let acting = false;
+
+function inTurn<T>(call: () => Promise<T>): Promise<T> {
+  pending += 1;
+  const run = line.then(() => call()).finally(() => {
+    pending -= 1;
+  });
+  line = run.catch(() => undefined);
+  return run;
+}
+
+/// Does what the user asked for, unless the portal is busy.
+async function act(what: () => Promise<unknown>) {
+  if (acting || pending > 0) return;
+  acting = true;
   try {
-    onPortal = await job();
-    notify(said(onPortal));
-    mine = await listFigures(true);
-    buildTabs();
-  } catch (err) {
-    notify(problem(err, "That didn't work. Try again."));
+    await what();
   } finally {
-    busy = false;
-    render();
+    acting = false;
   }
+}
+
+/// What a change gives back: the portal afterwards, and the file put in a
+/// slot when one was.
+interface Outcome {
+  names: string[];
+  slot?: number;
+  path?: string;
+}
+
+/// One change to the portal, in its turn. Says whether it went through.
+/// When it didn't, the portal is read again, since the emulator may have
+/// done part of it.
+async function change(saying: Notice, job: () => Promise<Outcome>, said: (names: string[]) => Notice): Promise<boolean> {
+  working = saying;
+  notify(saying);
+  let done = false;
+  try {
+    const outcome = await inTurn(job);
+    readPortal(outcome.names);
+    if (outcome.slot !== undefined && outcome.path && onPortal[outcome.slot]) {
+      slotFiles[outcome.slot] = { path: outcome.path, name: onPortal[outcome.slot] };
+    }
+    done = true;
+    working = null;
+    notify(said(onPortal));
+  } catch (err) {
+    working = null;
+    notify(problem(err, "That didn't work. Try again."));
+    const names = await inTurn(portalFigures).catch(() => null);
+    if (names) readPortal(names);
+  }
+  mine = await listFigures(true).catch(() => mine);
+  buildTabs();
+  render();
+  return done;
 }
 
 /// The first empty slot, or -1 when the portal is full. Before the portal
@@ -907,11 +1012,11 @@ function freeSlot(): number {
   return onPortal.length === 0 ? 0 : onPortal.indexOf("");
 }
 
-function takeOffSlot(slot: number, name: string) {
+function takeOffSlot(slot: number, name: string): Promise<boolean> {
   const picture = pictureNamed(name);
   return change(
     { kind: "working", title: `Taking ${name} off…`, picture },
-    () => portalClear(slot),
+    async () => ({ names: await portalClear(slot) }),
     () => ({ kind: "done", title: `${name} is off the portal`, picture })
   );
 }
@@ -927,43 +1032,55 @@ async function takeOff() {
   }
   if (tabs[tab]?.tray) {
     const villain = trayOrder()[at];
-    const slot = villain?.trap ? onPortal.indexOf(trapName(villain)) : -1;
-    if (villain && slot >= 0) await takeOffSlot(slot, trapName(villain));
+    const slot = villain ? trapSlot(villain) : -1;
+    if (slot >= 0) await takeOffSlot(slot, onPortal[slot]);
     return;
   }
   const entry = tabs[tab]?.entries[at];
   if (!entry) return;
-  const names = entry.swap ? [entry.swap.top.name, entry.swap.bottom.name] : [portalName(entry)];
-  for (const name of names) {
+  if (!entry.swap) {
+    const slot = slotOf(entry);
+    if (slot >= 0) await takeOffSlot(slot, onPortal[slot]);
+    return;
+  }
+  for (const name of [entry.swap.top.name, entry.swap.bottom.name]) {
     const slot = onPortal.indexOf(name);
-    if (slot >= 0) await takeOffSlot(slot, name);
+    if (slot >= 0 && !(await takeOffSlot(slot, name))) return;
   }
 }
 
 /// Puts one figure on the portal in the first free slot: the saved one when
-/// there is one, otherwise a new one the emulator makes. Says whether it is
-/// on now.
+/// there is one, otherwise a new one the emulator makes. The real portal has
+/// one place for a trap, so a trap already on comes off first, as it would
+/// by hand; how a game takes two at once is unknown. Says whether the
+/// figure is on now.
 async function putOn(name: string, figure: Figure | undefined, offer: Offer | undefined): Promise<boolean> {
+  if ((offer?.kind ?? figure?.kind) === "trap") {
+    for (const other of placed().filter((each) => holdsTrap(each.slot))) {
+      if (!(await takeOffSlot(other.slot, other.name))) return false;
+    }
+  }
   const slot = freeSlot();
   if (slot < 0) {
     notify({ kind: "problem", title: "The portal is full", detail: "Take a figure off first." });
     return false;
   }
   const picture = [pictureOf(offer?.id ?? figure?.id, offer?.variant ?? figure?.variant)];
+  let done = false;
   if (figure) {
-    await change(
+    done = await change(
       { kind: "working", title: `Putting ${name} on the portal…`, picture },
-      () => portalLoad(slot, figure.path),
+      async () => ({ names: await portalLoad(slot, figure.path), slot, path: figure.path }),
       (names) => ({ kind: "done", title: `${names[slot] || name} is on the portal`, picture })
     );
   } else if (offer) {
-    await change(
+    done = await change(
       { kind: "working", title: `Making ${offer.name}…`, detail: "A new figure, kept for next time.", picture },
-      () => portalCreate(slot, offer),
+      async () => ({ ...(await portalCreate(slot, offer)), slot }),
       (names) => ({ kind: "done", title: `${names[slot] || offer.name} is on the portal`, picture })
     );
   }
-  return Boolean(onPortal[slot]);
+  return done && Boolean(onPortal[slot]);
 }
 
 /// Both halves of a swapper, one after the other, each the saved figure when
@@ -991,18 +1108,23 @@ async function putSwapper(top: Offer, bottom: Offer) {
 /// the villain into the game with it. A villain in no trap says why.
 async function chooseVillain() {
   const villain = trayOrder()[at];
-  if (!villain || busy) return;
+  if (!villain) return;
   if (!villain.trap) {
-    const fits = villain.element ? `a ${elementWords(villain.element)} trap` : "the Kaos trap";
     return notify(
       villain.caught
         ? { kind: "info", title: `${villain.name} isn't in one of your traps`, picture: [villainPicture(villain)] }
-        : { kind: "info", title: `${villain.name} isn't caught yet`, detail: `Only ${fits} can hold it.` }
+        : { kind: "info", title: `${villain.name} isn't caught yet`, detail: catchWith(villain) }
     );
   }
-  const name = trapName(villain);
-  if (onPortal.includes(name)) return notify({ kind: "done", title: `${name} is already on the portal`, picture: pictureNamed(name) });
-  await putOn(name, trapFigure(villain), undefined);
+  const slot = trapSlot(villain);
+  if (slot >= 0) return already(slot);
+  await putOn(trapName(villain), trapFigure(villain), undefined);
+}
+
+/// Says the figure in `slot` is on the portal already.
+function already(slot: number) {
+  const name = onPortal[slot];
+  notify({ kind: "done", title: `${name} is already on the portal`, picture: pictureNamed(name) });
 }
 
 /// Puts the selected figure on the portal: the saved one when there is one,
@@ -1012,7 +1134,7 @@ async function choose() {
   if (zone === "portal") return takeOff();
   if (tabs[tab]?.tray) return chooseVillain();
   const entry = tabs[tab]?.entries[at];
-  if (!entry || busy) return;
+  if (!entry) return;
   if (entry.swap) {
     if (!pickedTop) {
       const top = entry.swap.top;
@@ -1024,8 +1146,8 @@ async function choose() {
     pickedTop = null;
     return putSwapper(top, entry.swap.bottom);
   }
-  const name = portalName(entry);
-  if (onPortal.includes(name)) return notify({ kind: "done", title: `${name} is already on the portal`, picture: pictureNamed(name) });
+  const slot = slotOf(entry);
+  if (slot >= 0) return already(slot);
   await putOn(entry.name, entry.figure, entry.offer);
 }
 
@@ -1034,19 +1156,17 @@ async function choose() {
 async function loadOffers() {
   if (offers.length > 0 || asking) return;
   asking = true;
-  busy = true;
   const getting: Notice = { kind: "working", title: "Getting the characters…" };
   // While the page still says it is loading, that says enough.
   if (ready) notify(getting);
   render();
   try {
-    offers = await figureCharacters();
+    offers = await inTurn(figureCharacters);
     if (notice === getting) notify(null);
   } catch (err) {
     notify(problem(err, "Couldn't get the characters."));
   } finally {
     asking = false;
-    busy = false;
     buildTabs();
     // With nothing saved yet, open on the first element, not an empty tab.
     if (mine.length === 0 && tab === 0 && tabs.length > 1) tab = 1;
@@ -1054,32 +1174,28 @@ async function loadOffers() {
   }
 }
 
-/// Reads what is on the portal. Usually quick, so the notice only comes up
-/// when the emulator takes its time.
+/// Reads what is on the portal, after any change under way. Usually quick,
+/// so the notice only comes up when the emulator takes its time.
 async function refresh() {
-  busy = true;
   const looking: Notice = { kind: "working", title: "Reading the portal…" };
-  const slow = window.setTimeout(() => ready && notify(looking), 400);
-  const [names, files, found] = await Promise.all([
-    portalFigures().catch((err: unknown) => {
-      notify(problem(err, "Couldn't read the portal."));
-      return null;
-    }),
-    listFigures(true),
-    listVillains().catch(() => [] as Villain[]),
-  ]);
+  const slow = window.setTimeout(() => ready && !working && notify(looking), 400);
+  const names = await inTurn(portalFigures).catch((err: unknown) => {
+    notify(problem(err, "Couldn't read the portal."));
+    return null;
+  });
   window.clearTimeout(slow);
   if (names) {
-    onPortal = names;
+    readPortal(names);
     if (notice === looking) notify(null);
   }
+  // Listed after the portal is read, so a figure made meanwhile is in it.
+  const [files, found] = await Promise.all([listFigures(true), listVillains().catch(() => [] as Villain[])]);
   mine = files;
   villainList = found;
   // A villain caught since the menu was last open stands out until the next time.
   const caught = new Set(found.filter((villain) => villain.caught).map((villain) => villain.id));
   caughtNew = caughtBefore ? new Set([...caught].filter((id) => !caughtBefore!.has(id))) : new Set();
   caughtBefore = caught;
-  busy = false;
   buildTabs();
   render();
 }
@@ -1110,9 +1226,8 @@ function press(input: string) {
     notify(null);
     return render();
   }
-  if (busy) return;
-  if (input === "South") void choose();
-  else if (input === "West") void takeOff();
+  if (input === "South") void act(choose);
+  else if (input === "West") void act(takeOff);
 }
 
 window.setInterval(async () => {
@@ -1161,9 +1276,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 /// Shown again: what is already held down, such as the button that opened
-/// the menu, is not taken as a press.
+/// the menu, is not taken as a press, and a change still under way says so.
 async function show() {
-  notify(null);
+  notify(working);
   try {
     family = (await portalMenuFamily()) as PadFamily;
     held = await readPads();

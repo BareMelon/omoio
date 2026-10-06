@@ -79,12 +79,16 @@ const WAIT: Duration = Duration::from_secs(5);
 /// How long RPCS3 may take to show its main window after it starts.
 const START_WAIT: Duration = Duration::from_secs(30);
 /// How long one step through the figure maker's list may take to show. The
-/// list stops moving at either end, which is how its ends are found.
+/// list stops moving at either end, which is how its ends are found, so a
+/// step that hasn't shown by then gets `END_WAIT` more before it counts as
+/// the end: a game starting can keep RPCS3 too busy to answer at once, and
+/// a list cut short would be kept until RPCS3 updates.
 const STEP_WAIT: Duration = Duration::from_millis(300);
+const END_WAIT: Duration = Duration::from_secs(1);
 
 /// One errand in RPCS3's windows at a time: the manager opening while a game
 /// starts and a figure the user picked meanwhile would each open windows the
-/// other is waiting for.
+/// other is waiting for, and one clears away the windows another left open.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
 fn turn() -> MutexGuard<'static, ()> {
@@ -551,6 +555,7 @@ fn choose_file(automation: &Automation, picker: HWND, file: &Path) -> Result<(),
 
 /// The figures on the portal, by slot.
 pub fn figures(pid: u32) -> Result<Vec<String>, String> {
+    let _turn = turn();
     let automation = Automation::new()?;
     let window = manager(&automation, pid)?;
     read(&automation, window)
@@ -560,6 +565,7 @@ pub fn figures(pid: u32) -> Result<Vec<String>, String> {
 /// returns what the portal holds afterwards.
 pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
     check(slot)?;
+    let _turn = turn();
     let automation = Automation::new()?;
     let window = manager(&automation, pid)?;
     put_away_leftovers(pid);
@@ -573,6 +579,7 @@ pub fn load(pid: u32, slot: usize, file: &Path) -> Result<Vec<String>, String> {
 /// Takes the figure in `slot` off the portal, and returns what is left.
 pub fn clear(pid: u32, slot: usize) -> Result<Vec<String>, String> {
     check(slot)?;
+    let _turn = turn();
     let automation = Automation::new()?;
     let window = manager(&automation, pid)?;
     let manager = automation.window(window)?;
@@ -590,6 +597,7 @@ pub fn clear(pid: u32, slot: usize) -> Result<Vec<String>, String> {
 /// holds afterwards.
 pub fn create(pid: u32, slot: usize, character: &Character, file: &Path) -> Result<Vec<String>, String> {
     check(slot)?;
+    let _turn = turn();
     let automation = Automation::new()?;
     let window = manager(&automation, pid)?;
     put_away_leftovers(pid);
@@ -638,6 +646,7 @@ fn make(automation: &Automation, pid: u32, maker: HWND, character: &Character, f
 /// Every character RPCS3's figure maker offers. The maker is closed again
 /// without making anything.
 pub fn characters(pid: u32) -> Result<Vec<Character>, String> {
+    let _turn = turn();
     let automation = Automation::new()?;
     let window = manager(&automation, pid)?;
     put_away_leftovers(pid);
@@ -679,11 +688,11 @@ fn list(automation: &Automation, maker: HWND) -> Result<Vec<Character>, String> 
             key(maker, arrow);
             // A read can land half way through a step, between the list and
             // the boxes, so a change counts once two reads agree on it.
-            let next = soon(STEP_WAIT, || {
+            let moved = || {
                 let first = read();
                 (first != now && read() == first).then_some(first)
-            });
-            let Some(next) = next else {
+            };
+            let Some(next) = soon(STEP_WAIT, moved).or_else(|| soon(END_WAIT, moved)) else {
                 break;
             };
             keep(&mut found, &next);

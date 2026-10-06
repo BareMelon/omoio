@@ -769,6 +769,8 @@ export interface Villain {
     path: string;
     id: number;
     variant: number;
+    /// The trap's own element, null for the Kaos trap.
+    element: FigureElement | null;
     variant_form: boolean;
     evolved: boolean;
   } | null;
@@ -830,8 +832,9 @@ export function figureCharacters(): Promise<Offer[]> {
 }
 
 /// Makes a new figure of `character` and puts it on the portal in `slot`,
-/// counted from 0. Resolves to what the portal holds afterwards.
-export function portalCreate(slot: number, character: Character): Promise<string[]> {
+/// counted from 0. Resolves to what the portal holds afterwards and the new
+/// figure's file.
+export function portalCreate(slot: number, character: Character): Promise<{ names: string[]; path: string }> {
   return invoke("portal_create", { slot, character });
 }
 
