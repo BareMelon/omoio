@@ -10,6 +10,7 @@ pub mod pad_layout;
 pub mod playlog;
 pub mod settings;
 pub mod sfo;
+pub mod tested;
 pub mod tga;
 pub mod types;
 pub mod versions;
