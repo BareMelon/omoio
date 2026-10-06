@@ -53,6 +53,10 @@ pub struct GameEntry {
     /// What this game's emulator can do, so the interface shows only what
     /// applies.
     pub features: crate::core::console::Features,
+    /// Whether the portal menu works in this game. The emulator offering a
+    /// portal is not enough: the menu has been played through with three
+    /// games only, so the interface asks this rather than the title.
+    pub portal_menu: bool,
 }
 
 #[derive(Clone, Serialize)]

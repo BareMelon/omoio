@@ -322,15 +322,17 @@ fn cover_for(
 
 fn entry(app: &AppHandle, game: crate::core::library::Game) -> GameEntry {
     let (cover, cover_source) = cover_for(app, &game);
+    let features = crate::backends::for_console(game.console)
+        .map(|backend| backend.features())
+        .unwrap_or_default();
     GameEntry {
         set_up: game.is_set_up(),
         // A folder for most games, a single file for a Wii U disc image.
         available: game.is_set_up() && game.path.exists(),
         cover,
         cover_source,
-        features: crate::backends::for_console(game.console)
-            .map(|backend| backend.features())
-            .unwrap_or_default(),
+        features,
+        portal_menu: crate::core::figures::offers_portal_menu(features, game.console, &game.title),
         game,
     }
 }

@@ -177,8 +177,9 @@ function fill(body: HTMLElement, hero: HTMLElement, game: Game): void {
   };
 
   // The button that opens the portal menu over a Skylanders game, shown only
-  // where the game's emulator lets Omoio fill the portal.
-  if (offers.portal && game.set_up && /skylanders/i.test(game.title)) {
+  // for a game the menu works in. Other Skylanders games show nothing rather
+  // than a menu that won't open.
+  if (game.portal_menu && game.set_up) {
     body.querySelector("#detail-portal")!.classList.remove("gone");
     const keyRow = body.querySelector<HTMLButtonElement>("#detail-portal-button")!;
     const key = keyRow.querySelector<HTMLElement>(".d-key")!;
