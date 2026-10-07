@@ -19,7 +19,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(windows)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 const LABEL: &str = "portal";
 
@@ -323,6 +325,7 @@ pub fn showing(app: &AppHandle) -> bool {
 /// Shows the menu over the whole screen Omoio is on. Made the first time and
 /// kept, hidden, after that, so opening it again is instant. The game stops
 /// hearing the pad while it is up.
+#[cfg(windows)]
 fn open(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         window.show().map_err(|e| e.to_string())?;
@@ -353,6 +356,11 @@ fn open(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     crate::session::quiet_game(app);
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn open(_app: &AppHandle) -> Result<(), String> {
+    Err("Omoio's in-game portal menu is available only on Windows. Use the emulator's own portal tools.".into())
 }
 
 /// Hides the menu. The game underneath carries on, and hears the pad again:

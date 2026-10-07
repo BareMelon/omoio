@@ -33,8 +33,11 @@ pub(super) struct Places {
 pub(super) fn places(picked: &Path, appdata_cemu: Option<&Path>) -> Result<Places, String> {
     let holds_data =
         |dir: &Path| dir.join("keys.txt").is_file() || dir.join("settings.xml").is_file() || dir.join("mlc01").is_dir();
-    let root = if picked.join("portable").is_dir() {
-        picked.join("portable")
+    // Cemu's Mac portable folder sits beside the .app bundle, not inside it.
+    let bundle = picked.extension().is_some_and(|ext| ext == "app") && picked.join("Contents/MacOS/Cemu").is_file();
+    let portable = if bundle { picked.parent().unwrap_or(picked).join("portable") } else { picked.join("portable") };
+    let root = if portable.is_dir() {
+        portable
     } else if holds_data(picked) {
         picked.to_path_buf()
     } else if picked.join("Contents/MacOS/Cemu").is_file() || picked.join("Cemu.app").is_dir() || picked.join("Cemu.exe").is_file() || picked.join("Cemu").is_file() || picked.join("AppRun").is_file() || picked.join("cemu").is_file() {
@@ -429,6 +432,20 @@ mod tests {
             root: omoio,
         };
         (theirs, from, to)
+    }
+
+    #[test]
+    fn mac_app_import_finds_sibling_portable_data_before_shared_data() {
+        let scratch = Scratch::new("mac-bundle");
+        let bundle = scratch.0.join("Cemu.app");
+        write(&bundle.join("Contents/MacOS/Cemu"), "");
+        let shared = scratch.0.join("Library/Application Support/Cemu");
+        write(&shared.join("settings.xml"), "<content/>");
+        assert_eq!(places(&bundle, Some(&shared)).unwrap().root, shared);
+        let portable = scratch.0.join("portable");
+        write(&portable.join("keys.txt"), KEY);
+        assert_eq!(places(&bundle, Some(&shared)).unwrap().root, portable);
+        assert_eq!(places(&scratch.0, Some(&shared)).unwrap().root, portable);
     }
 
     #[test]
