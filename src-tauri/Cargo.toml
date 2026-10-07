@@ -43,7 +43,7 @@ yaml-rust2 = "0.10"
 # certificate check of our own. See updates.rs.
 quick-xml = "0.41"
 sha1 = "0.10"
-rustls = { version = "0.23", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # Reads which gamepads are plugged in, so the profile Omoio writes for the
 # emulator names the controller that is actually there. Pure Rust, no DLL to
 # ship. See backends/rpcs3/controllers.rs.

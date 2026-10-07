@@ -38,7 +38,7 @@ pub fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(local_data.join("Omoio").join("cemu"))
 }
 
-fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(windows)]
     { Ok(install_dir(app)?.join("Cemu.exe")) }
     #[cfg(not(windows))]
@@ -47,7 +47,7 @@ fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 /// The Linux build uses XDG paths (CemuApp.cpp v2.6). Keep config, data and
 /// cache in the same private directory, matching Windows portable mode.
-pub(super) fn user_data(root: &Path) -> PathBuf {
+pub(crate) fn user_data(root: &Path) -> PathBuf {
     if cfg!(windows) { root.join("portable") } else { root.join("xdg/Cemu") }
 }
 
@@ -812,7 +812,7 @@ fn write_first_settings(portable: &Path) -> std::io::Result<()> {
 
 /// Cemu is a GUI program; without this every start of it from Omoio would
 /// flash a console window over whatever the user is looking at.
-fn command(exe: &Path) -> std::process::Command {
+pub(crate) fn command(exe: &Path) -> std::process::Command {
     let mut cmd = crate::platform::command(exe);
     #[cfg(target_os = "linux")]
     if let Some(root) = exe.parent().and_then(Path::parent) {

@@ -297,7 +297,9 @@ fn free_space(path: &Path) -> Option<u64> {
 
 #[cfg(not(windows))]
 fn free_space(path: &Path) -> Option<u64> {
-    let path = path.canonicalize().ok().or_else(|| path.parent()?.canonicalize().ok())?;
+    let mut probe = path;
+    while !probe.exists() { probe = probe.parent()?; }
+    let path = probe.canonicalize().ok()?;
     sysinfo::Disks::new_with_refreshed_list().iter()
         .filter(|disk| path.starts_with(disk.mount_point()))
         .max_by_key(|disk| disk.mount_point().as_os_str().len())

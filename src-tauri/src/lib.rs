@@ -9,6 +9,8 @@ mod hardware;
 pub mod import;
 mod pads;
 mod platform;
+#[cfg(target_os = "linux")]
+pub mod linux_smoke;
 mod figure_pictures;
 mod portal_menu;
 pub mod session;

@@ -163,7 +163,8 @@ fn own_path(install: &Path, title_id: &str) -> PathBuf {
 }
 
 fn shipped_path(install: &Path, title_id: &str) -> PathBuf {
-    install.join("gameProfiles").join("default").join(format!("{title_id}.ini"))
+    let resources = if cfg!(windows) { install.to_path_buf() } else { install.join("AppDir/usr/share/Cemu") };
+    resources.join("gameProfiles").join("default").join(format!("{title_id}.ini"))
 }
 
 fn read_lines(path: &Path) -> Option<Vec<String>> {

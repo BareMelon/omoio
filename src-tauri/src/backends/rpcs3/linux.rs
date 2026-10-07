@@ -9,9 +9,15 @@ pub(super) async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<S
     emit(&app, "checking", 0, 0);
     let client = reqwest::Client::new();
     let release = latest_release(&client).await?;
-    let asset = release.assets.iter().find(|a| a.name.ends_with("_linux64.AppImage"))
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| a.name.ends_with("_linux64.AppImage"))
         .ok_or("No Linux x86_64 build found in the latest RPCS3 release")?;
-    let expected = asset.digest.as_deref().and_then(|s| s.strip_prefix("sha256:"))
+    let expected = asset
+        .digest
+        .as_deref()
+        .and_then(|s| s.strip_prefix("sha256:"))
         .filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
         .ok_or("GitHub did not provide a SHA-256 digest for the RPCS3 AppImage")?;
     let dir = install_dir(&app)?;
@@ -34,12 +40,16 @@ pub(super) async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<S
     let _installing = Installing;
     let from = image.clone();
     let into = dir.clone();
-    let unpacked = tauri::async_runtime::spawn_blocking(move || crate::platform::install_appimage(&from, &into))
-        .await.map_err(|e| e.to_string())?;
+    let unpacked = tauri::async_runtime::spawn_blocking(move || {
+        crate::platform::install_appimage(&from, &into)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&image);
     unpacked?;
     std::fs::create_dir_all(data_dir(&app)?).map_err(|e| e.to_string())?;
-    let version = read_version(&exe_path(&app)?).ok_or("RPCS3 installed but did not report a version")?;
+    let version =
+        read_version(&exe_path(&app)?).ok_or("RPCS3 installed but did not report a version")?;
     emit(&app, "done", 1, 1);
     Ok(version)
 }

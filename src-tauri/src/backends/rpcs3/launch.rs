@@ -217,6 +217,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn writes_the_line_the_way_rpcs3_does() {
         let line = games_list_line(
             "BCES00850",
@@ -226,6 +227,15 @@ mod tests {
             line,
             "BCES00850: \"C:/Games/PS3/LittleBigPlanet 2/\""
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_paths_preserve_quotes_and_literal_backslashes() {
+        let path = Path::new("/games/quote\" and back\\slash");
+        let line = games_list_line("BCES00850", path);
+        let parsed: String = serde_json::from_str(line.strip_prefix("BCES00850: ").unwrap()).unwrap();
+        assert_eq!(parsed, "/games/quote\" and back\\slash/");
     }
 
     #[test]

@@ -6,16 +6,25 @@ use std::process::{Child, Command};
 
 pub fn track(mut child: Child) -> u32 {
     let pid = child.id();
-    std::thread::spawn(move || { let _ = child.wait(); });
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
     pid
 }
 
 #[cfg(target_os = "linux")]
 pub fn start_fullscreen(app: &tauri::AppHandle) -> bool {
     use tauri::Manager;
-    crate::big_picture::is_on() || app.path().data_dir().ok()
-        .map(|dir| crate::core::settings::Settings::load(&dir.join("Omoio/settings.json")).start_fullscreen)
-        .unwrap_or(false)
+    crate::big_picture::is_on()
+        || app
+            .path()
+            .data_dir()
+            .ok()
+            .map(|dir| {
+                crate::core::settings::Settings::load(&dir.join("Omoio/settings.json"))
+                    .start_fullscreen
+            })
+            .unwrap_or(false)
 }
 
 pub fn command(exe: &Path) -> Command {
@@ -31,7 +40,14 @@ pub fn command(exe: &Path) -> Command {
         // Own the process group so Stop also reaches emulator subprocesses.
         command.process_group(0);
         // Do not leak the launcher's own AppImage paths into a nested AppImage.
-        for key in ["APPIMAGE", "APPDIR", "OWD", "ARGV0", "LD_LIBRARY_PATH", "LD_PRELOAD"] {
+        for key in [
+            "APPIMAGE",
+            "APPDIR",
+            "OWD",
+            "ARGV0",
+            "LD_LIBRARY_PATH",
+            "LD_PRELOAD",
+        ] {
             command.env_remove(key);
         }
     }

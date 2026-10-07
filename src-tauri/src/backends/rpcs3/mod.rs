@@ -57,7 +57,7 @@ pub fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(local_data.join("Omoio").join("rpcs3"))
 }
 
-fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(windows)]
     { Ok(install_dir(app)?.join("rpcs3.exe")) }
     #[cfg(not(windows))]
@@ -122,7 +122,7 @@ pub fn open_in_explorer(folder: &Path) -> Result<(), String> {
 
 // RPCS3 is a console-less GUI binary; without this flag every call to it
 // flashes a console window over whatever the user is looking at.
-fn command(exe: &Path) -> std::process::Command {
+pub(crate) fn command(exe: &Path) -> std::process::Command {
     let mut cmd = crate::platform::command(exe);
     #[cfg(target_os = "linux")]
     if let Some(root) = exe.parent().and_then(Path::parent) {
@@ -139,7 +139,7 @@ fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(if cfg!(windows) { root } else { root.join("xdg-config/rpcs3") })
 }
 
-fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let root = data_dir(app)?;
     Ok(if cfg!(windows) { root.join("config") } else { root })
 }

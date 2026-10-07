@@ -89,8 +89,9 @@ Tauri automatically merges `src-tauri/tauri.linux.conf.json`. Packages appear in
 `src-tauri/target/release/bundle/deb` and `bundle/appimage`. No update signing
 secret is needed.
 
-CI runs native Rust tests, builds both packages and checks that the desktop
-process stays running under Xvfb. This is build/startup evidence, not a completed
+CI runs native Rust tests, installs and checks both official Linux emulator
+binaries through Omoio's installer code, builds both packages and checks that
+the desktop process stays running under Xvfb. This is build/startup evidence, not a completed
 playthrough with games, physical controllers or a Wayland desktop.
 
 ## Source references

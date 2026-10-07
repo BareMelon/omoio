@@ -28,6 +28,13 @@ jobs:
           sudo apt-get install -y build-essential curl file pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libudev-dev libsdl2-dev xvfb
       - name: Rust toolchain
         run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: linux-rust-${{ hashFiles('src-tauri/Cargo.lock') }}
       - name: Frontend dependencies and icons
         run: |
           npm ci
@@ -35,6 +42,12 @@ jobs:
           npm run build
       - name: Rust tests
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Official Linux emulator installation
+        env:
+          XDG_DATA_HOME: /tmp/omoio-integration/data
+          XDG_CONFIG_HOME: /tmp/omoio-integration/config
+          XDG_CACHE_HOME: /tmp/omoio-integration/cache
+        run: timeout 180s xvfb-run -a cargo run --locked --manifest-path src-tauri/Cargo.toml --example linux_smoke
       - name: Build Debian package and AppImage
         env:
           NO_STRIP: true
