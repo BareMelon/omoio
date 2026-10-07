@@ -101,6 +101,14 @@ function playable(game: Game): boolean {
   return game.set_up && game.available;
 }
 
+/// A PS3 game won't start without the firmware. Choosing the file takes a
+/// file picker, which belongs on the desktop, so here it is only said. Not
+/// before RPCS3 is there, and not while the version is still being read.
+function needsFirmware(game: Game): boolean {
+  const { rpcs3Version, firmwareVersion } = store.get();
+  return game.console === "ps3" && Boolean(rpcs3Version) && firmwareVersion === null;
+}
+
 // ---- state ----
 
 const root = h("div", "bp");
@@ -1076,7 +1084,9 @@ function gamePage(titleId: string, section: Section): Screen {
         ? "Import this game's files from the desktop to play it."
         : !game.available
           ? "Connect the drive this game is on to play it."
-          : running && !game.features.quiet_behind
+          : needsFirmware(game)
+            ? "Add PS3 firmware from the desktop to play it. It goes in under System, PS3 firmware."
+            : running && !game.features.quiet_behind
             ? "The game still hears the controller while Big Picture is open."
             : "";
       if (note) notes.append(h("p", "bp-page-note", note));
@@ -1128,12 +1138,13 @@ function render(entering: boolean): void {
 /// What the screens are drawn from, so a change elsewhere in the app that
 /// doesn't touch them never redraws them.
 function drawnFrom(): string {
-  const { games: all, playing, suspended, firmwareVersion } = store.get();
+  const { games: all, playing, suspended, rpcs3Version, firmwareVersion } = store.get();
   return JSON.stringify([
     all?.map((game) => [game.title_id, game.title, game.cover, game.available, game.set_up]),
     playing?.title_id,
     suspended,
     quitting,
+    rpcs3Version,
     firmwareVersion,
   ]);
 }

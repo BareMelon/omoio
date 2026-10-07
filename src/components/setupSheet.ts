@@ -99,7 +99,7 @@ async function askWhoAndWhere(sheet: HTMLElement): Promise<void> {
     <div class="setting">
       <div>
         <div class="setting-k">Region</div>
-        <div class="setting-hint">Sets the language games start in.</div>
+        <div class="setting-hint">Sets the language PS3 games start in. It doesn't change Wii U games.</div>
       </div>
       <div class="row-actions">
         <select class="select" id="setup-region"></select>
