@@ -1,0 +1,55 @@
+name: macOS build
+
+on:
+  push:
+    branches: [master, macos-support]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: aarch64
+            rpcs3_repo: rpcs3-binaries-mac-arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+            rpcs3_repo: rpcs3-binaries-mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inspect native emulator bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RPCS3_REPO: ${{ matrix.rpcs3_repo }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/mac-probe/rpcs3" "$RUNNER_TEMP/mac-probe/cemu"
+          cd "$RUNNER_TEMP/mac-probe"
+          gh api "repos/RPCS3/$RPCS3_REPO/releases/latest" > release.json
+          python3 - <<'PY'
+          import json, urllib.request, hashlib, pathlib
+          asset = next(a for a in json.load(open('release.json'))['assets'] if a['name'].endswith('.7z'))
+          urllib.request.urlretrieve(asset['browser_download_url'], 'rpcs3.7z')
+          assert 'sha256:' + hashlib.sha256(pathlib.Path('rpcs3.7z').read_bytes()).hexdigest() == asset['digest']
+          urllib.request.urlretrieve('https://github.com/cemu-project/Cemu/releases/download/v2.6/cemu-2.6-macos-12-x64.dmg', 'cemu.dmg')
+          assert hashlib.sha256(pathlib.Path('cemu.dmg').read_bytes()).hexdigest() == '698c4b298f94983e4d6c30e9687ba8ff05094dd3930837c5104cddc0b0a49e4e'
+          PY
+          /usr/bin/tar -xf rpcs3.7z -C rpcs3
+          /usr/bin/hdiutil attach cemu.dmg -readonly -nobrowse -mountpoint "$RUNNER_TEMP/mac-probe/mount"
+          /usr/bin/ditto "$RUNNER_TEMP/mac-probe/mount/Cemu.app" cemu/Cemu.app
+          /usr/bin/hdiutil detach "$RUNNER_TEMP/mac-probe/mount"
+          find rpcs3 cemu -maxdepth 4 -type f | head -80 || true
+          plutil -p rpcs3/RPCS3.app/Contents/Info.plist
+          plutil -p cemu/Cemu.app/Contents/Info.plist
+          file rpcs3/RPCS3.app/Contents/MacOS/* cemu/Cemu.app/Contents/MacOS/*
+          rpcs3/RPCS3.app/Contents/MacOS/rpcs3 --headless --version
+          cemu/Cemu.app/Contents/MacOS/Cemu --version
