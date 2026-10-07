@@ -5,12 +5,14 @@
 <p align="center">Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.</p>
 <p align="center"><a href="https://omoio.app">omoio.app</a> · <a href="https://ko-fi.com/omoio">Support on Ko-fi</a></p>
 
-**Linux fork:** this repository adds native x86_64 Linux support to
-[Bertrram/omoio](https://github.com/Bertrram/omoio). See the
-[Linux installation and build guide](docs/linux.md) for packages, supported
-features and current limits. The screenshots and Windows instructions below
-describe the upstream app. Use this fork's builds for Linux; omoio.app hosts
-upstream Windows installers.
+**Linux and macOS fork:** this repository ports
+[Bertrram/omoio](https://github.com/Bertrram/omoio) to x86_64 Linux and macOS 15+
+on Apple Silicon and Intel. Use the [Linux guide](docs/linux.md) or
+[Mac guide](docs/macos.md) for downloads, installation and platform limits.
+Mac support is experimental, especially Intel RPCS3 runtime compatibility.
+The screenshots and Windows feature descriptions below describe the upstream
+app. Use this fork's builds for Linux and Mac; omoio.app hosts upstream Windows
+installers. Launcher updates in this fork are manual.
 
 [![The Omoio video on YouTube, 1 minute 10 seconds](design/screenshots/video.jpg)](https://youtu.be/wWmthRdoImE)
 
@@ -252,9 +254,11 @@ credit wherever they appear.
 <summary>Does it run on Mac or Linux?</summary>
 <br>
 
-This fork supports x86_64 Linux and Windows. On Linux, games run in separate
-emulator windows; the embedded window and automated Skylanders portal menu
-remain Windows-only. See [Linux support](docs/linux.md). macOS is not supported.
+This fork adds x86_64 Linux and experimental macOS 15+ support for Apple Silicon
+and Intel. On Linux and Mac, games run in separate emulator windows; the embedded
+window and automated Skylanders portal menu remain Windows-only. Cemu requires
+Rosetta on Apple Silicon. See [Linux support](docs/linux.md) and
+[Mac support](docs/macos.md), including the Intel RPCS3 testing limitation.
 
 </details>
 
@@ -282,7 +286,8 @@ licence; [the notice beside them](src/icons/emulators/NOTICE.md) lists which.
 
 ## Build
 
-Needs Rust, Node 20 or newer, and the Tauri prerequisites for Windows.
+For Linux or macOS, follow the platform guides above. Windows development needs
+Rust, Node 22 or newer, and the Tauri prerequisites for Windows.
 
 ```
 npm install
@@ -291,8 +296,8 @@ npm run tauri dev      # run locally
 npm run tauri build -- --no-bundle    # build omoio.exe
 ```
 
-The installer also needs the key its updates are signed with, in
-`TAURI_SIGNING_PRIVATE_KEY`, so it's built for releases only.
+This fork disables launcher self-updates and does not require an upstream update
+signing key. Mac builds use ad-hoc signing and are not Apple-notarized.
 
 ## Support
 

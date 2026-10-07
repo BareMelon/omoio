@@ -12,7 +12,7 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     if rpcs3::detect_version(app).as_deref() != Some(&rpc_version) {
         return Err("RPCS3 bundle version detection disagrees with installation".into());
     }
-    // Hosted Intel Macs abort inside the upstream RPCS3/MoltenVK startup.
+    // The initial hosted Intel probe aborted during upstream RPCS3 startup.
     // Apple Silicon runners can run the official emulator version command.
     if cfg!(target_arch = "aarch64") {
         let output = rpcs3::command(&rpcs3::exe_path(app)?)
@@ -30,7 +30,7 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
         println!("RPCS3 Apple Silicon executable version check passed");
     } else {
         println!(
-            "RPCS3 Intel bundle checked; runtime needs a physical Mac with supported graphics"
+            "RPCS3 Intel bundle checked; executable startup remains unverified after the hosted-runner abort"
         );
     }
     let cemu_version = cemu::install(app.clone(), cancel).await?;

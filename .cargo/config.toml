@@ -1,0 +1,4 @@
+[env]
+# sdl2-sys 0.38 bundles SDL with an older cmake_minimum_required. CMake 4
+# supports that source when its policy floor is explicitly selected.
+CMAKE_POLICY_VERSION_MINIMUM = { value = "3.5", force = false }

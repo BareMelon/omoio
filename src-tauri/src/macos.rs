@@ -125,6 +125,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bundle_updates_preserve_data_and_reject_incomplete_downloads() {
+        let root = std::env::temp_dir().join(format!("omoio-mac-update-{}", std::process::id()));
+        let stage = staging(&root).unwrap();
+        let installed = root.join("Example.app/Contents/MacOS");
+        std::fs::create_dir_all(&installed).unwrap();
+        std::fs::write(installed.join("example"), "old").unwrap();
+        let save = root.join("home/save.dat");
+        std::fs::create_dir_all(save.parent().unwrap()).unwrap();
+        std::fs::write(&save, "saved game").unwrap();
+        let source = stage.join("Example.app");
+        std::fs::create_dir_all(source.join("Contents/MacOS")).unwrap();
+        assert!(replace_bundle(&source, &root, "Example.app", "example").is_err());
+        assert_eq!(
+            std::fs::read_to_string(installed.join("example")).unwrap(),
+            "old"
+        );
+        std::fs::write(source.join("Contents/MacOS/example"), "new").unwrap();
+        replace_bundle(&source, &root, "Example.app", "example").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(installed.join("example")).unwrap(),
+            "new"
+        );
+        assert_eq!(std::fs::read_to_string(save).unwrap(), "saved game");
+        assert!(!root.join("Example.app.previous").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn native_children_use_a_stoppable_process_group() {
         let mut child = crate::platform::command(Path::new("/bin/sleep"))
             .arg("30")

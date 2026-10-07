@@ -45,7 +45,8 @@ Sony's page and must be selected by you.
   render scale.
 - Launcher self-updates are disabled in this fork. Install new fork packages
   manually; emulator updates still work. No upstream signing key is used.
-- ARM Linux and macOS are not supported by this port.
+- ARM Linux is not supported. For Apple Silicon and Intel Macs, see the
+  separate [macOS guide](macos.md).
 
 ## Private emulator data
 
