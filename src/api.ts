@@ -89,6 +89,9 @@ export interface Game {
     /// Big Picture's presses never reach a game waiting behind it.
     quiet_behind: boolean;
   };
+  /// Whether the portal menu works in this game. Omoio's own rule, so the
+  /// interface never guesses it from the title.
+  portal_menu: boolean;
 }
 
 export function listGames(): Promise<Game[]> {
