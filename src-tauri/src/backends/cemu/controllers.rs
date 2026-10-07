@@ -235,7 +235,7 @@ fn reader_for(player: &Player, hid: &[sdl::HidPad], ids: UsbIds) -> Option<Reade
     if player.pad.handler != "SDL" {
         return None;
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     if let Some(found) = crate::pads::cemu_pad(&player.pad.device) {
         return Some(Reader::Sdl(found));
     }

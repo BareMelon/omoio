@@ -17,39 +17,89 @@ jobs:
         include:
           - runner: macos-15
             architecture: aarch64
-            rpcs3_repo: rpcs3-binaries-mac-arm64
           - runner: macos-15-intel
             architecture: x86_64
-            rpcs3_repo: rpcs3-binaries-mac
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '15.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Inspect native emulator bundles
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RPCS3_REPO: ${{ matrix.rpcs3_repo }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: rust-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: macos-${{ matrix.architecture }}-rust-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: macos-${{ matrix.architecture }}-rust-${{ hashFiles('src-tauri/Cargo.lock') }}-
+      - name: Frontend dependencies and icons
         run: |
-          mkdir -p "$RUNNER_TEMP/mac-probe/rpcs3" "$RUNNER_TEMP/mac-probe/cemu"
-          cd "$RUNNER_TEMP/mac-probe"
-          gh api "repos/RPCS3/$RPCS3_REPO/releases/latest" > release.json
-          python3 - <<'PY'
-          import json, urllib.request, hashlib, pathlib
-          asset = next(a for a in json.load(open('release.json'))['assets'] if a['name'].endswith('.7z'))
-          urllib.request.urlretrieve(asset['browser_download_url'], 'rpcs3.7z')
-          assert 'sha256:' + hashlib.sha256(pathlib.Path('rpcs3.7z').read_bytes()).hexdigest() == asset['digest']
-          urllib.request.urlretrieve('https://github.com/cemu-project/Cemu/releases/download/v2.6/cemu-2.6-macos-12-x64.dmg', 'cemu.dmg')
-          assert hashlib.sha256(pathlib.Path('cemu.dmg').read_bytes()).hexdigest() == '698c4b298f94983e4d6c30e9687ba8ff05094dd3930837c5104cddc0b0a49e4e'
+          npm ci
+          npx tauri icon Images/Icon/omoio-icon-1024.png
+          npm run build
+      - name: Rust tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Official macOS emulator installation and private data
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee "$RUNNER_TEMP/omoio-emulators.log"
+          import subprocess, sys
+          result = subprocess.run(['cargo', 'run', '--locked', '--manifest-path', 'src-tauri/Cargo.toml', '--example', 'macos_smoke'], timeout=240)
+          sys.exit(result.returncode)
           PY
-          /usr/bin/tar -xf rpcs3.7z -C rpcs3
-          /usr/bin/hdiutil attach cemu.dmg -readonly -nobrowse -mountpoint "$RUNNER_TEMP/mac-probe/mount"
-          /usr/bin/ditto "$RUNNER_TEMP/mac-probe/mount/Cemu.app" cemu/Cemu.app
-          /usr/bin/hdiutil detach "$RUNNER_TEMP/mac-probe/mount"
-          find rpcs3 cemu -maxdepth 4 -type f | head -80 || true
-          plutil -p rpcs3/RPCS3.app/Contents/Info.plist
-          plutil -p cemu/Cemu.app/Contents/Info.plist
-          file rpcs3/RPCS3.app/Contents/MacOS/* cemu/Cemu.app/Contents/MacOS/*
-          rpcs3/RPCS3.app/Contents/MacOS/rpcs3 --headless --version
-          cemu/Cemu.app/Contents/MacOS/Cemu --version
+          grep -F 'macOS emulator integration passed:' "$RUNNER_TEMP/omoio-emulators.log"
+      - name: Emulator startup diagnostics
+        if: failure()
+        run: |
+          find "$HOME/Library/Application Support/Omoio" -maxdepth 7 -name '*.txt' -print 2>/dev/null || true
+          find "$HOME/Library/Application Support" -maxdepth 3 -name log.txt -print 2>/dev/null || true
+          system_profiler SPDisplaysDataType
+      - name: Build application and disk image
+        run: npx tauri build
+      - name: Packaged application startup and signature
+        run: |
+          codesign --verify --deep --strict src-tauri/target/release/bundle/macos/Omoio.app
+          python3 - <<'PY'
+          import subprocess, time
+          exe = 'src-tauri/target/release/bundle/macos/Omoio.app/Contents/MacOS/omoio'
+          dependencies = subprocess.check_output(['otool', '-L', exe], text=True)
+          print(dependencies)
+          assert '/opt/homebrew/' not in dependencies and '/usr/local/opt/' not in dependencies, 'Unexpected Homebrew runtime dependency'
+          process = subprocess.Popen([exe])
+          try:
+              time.sleep(15)
+              assert process.poll() is None, 'Omoio exited during startup'
+              subprocess.run(['screencapture', '-x', 'src-tauri/target/release/bundle/macos/startup.png'], check=True)
+              print('Packaged macOS application startup passed')
+          finally:
+              if process.poll() is None:
+                  process.terminate()
+              process.wait(timeout=15)
+          PY
+          ditto -c -k --sequesterRsrc --keepParent src-tauri/target/release/bundle/macos/Omoio.app "src-tauri/target/release/bundle/macos/Omoio_macos_${{ matrix.architecture }}.zip"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: omoio-macos-${{ matrix.architecture }}
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.zip
+            src-tauri/target/release/bundle/macos/startup.png
+          if-no-files-found: error
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: always() && steps.rust-cache.outcome == 'success' && steps.rust-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: macos-${{ matrix.architecture }}-rust-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}

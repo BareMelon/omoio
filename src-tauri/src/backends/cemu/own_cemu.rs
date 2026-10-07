@@ -37,7 +37,7 @@ pub(super) fn places(picked: &Path, appdata_cemu: Option<&Path>) -> Result<Place
         picked.join("portable")
     } else if holds_data(picked) {
         picked.to_path_buf()
-    } else if picked.join("Cemu.exe").is_file() || picked.join("Cemu").is_file() || picked.join("AppRun").is_file() || picked.join("cemu").is_file() {
+    } else if picked.join("Contents/MacOS/Cemu").is_file() || picked.join("Cemu.app").is_dir() || picked.join("Cemu.exe").is_file() || picked.join("Cemu").is_file() || picked.join("AppRun").is_file() || picked.join("cemu").is_file() {
         appdata_cemu
             .filter(|dir| holds_data(dir))
             .map(Path::to_path_buf)

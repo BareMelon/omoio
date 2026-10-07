@@ -166,7 +166,7 @@ pub(crate) fn kill(pid: u32) {
         .output();
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 pub(crate) fn kill(pid: u32) {
     // Children are launched in their own process group (platform::command).
     if let Ok(pid) = i32::try_from(pid) {
@@ -188,7 +188,12 @@ pub(crate) fn still_running(pid: u32) -> bool {
         };
         String::from_utf8_lossy(&out.stdout).contains(&pid.to_string())
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        i32::try_from(pid).is_ok_and(|pid| pid > 1 && (unsafe { libc::kill(pid, 0) } == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)))
+    }
+    #[cfg(target_os = "linux")]
     {
         // Treat a zombie as stopped even before the reaper thread runs.
         let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false; };

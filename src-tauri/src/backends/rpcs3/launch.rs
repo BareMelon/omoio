@@ -161,7 +161,7 @@ pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
     } else {
         command.arg("--no-gui");
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         if !skylanders { command.arg("--no-gui"); }
         if crate::platform::start_fullscreen(app) { command.arg("--fullscreen"); }
@@ -230,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn linux_paths_preserve_quotes_and_literal_backslashes() {
         let path = Path::new("/games/quote\" and back\\slash");
         let line = games_list_line("BCES00850", path);

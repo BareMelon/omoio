@@ -13,6 +13,8 @@ pub mod overlay;
 pub mod overlay;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 pub mod packages;
 pub mod patches;
 #[cfg(windows)]
@@ -33,8 +35,12 @@ use tokio::io::AsyncWriteExt;
 
 #[cfg(windows)]
 const RELEASES_API: &str = "https://api.github.com/repos/RPCS3/rpcs3-binaries-win/releases/latest";
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 const RELEASES_API: &str = "https://api.github.com/repos/RPCS3/rpcs3-binaries-linux/releases/latest";
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const RELEASES_API: &str = "https://api.github.com/repos/RPCS3/rpcs3-binaries-mac-arm64/releases/latest";
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+const RELEASES_API: &str = "https://api.github.com/repos/RPCS3/rpcs3-binaries-mac/releases/latest";
 const USER_AGENT: &str = "Omoio";
 
 #[derive(Deserialize)]
@@ -60,8 +66,10 @@ pub fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
 pub(crate) fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(windows)]
     { Ok(install_dir(app)?.join("rpcs3.exe")) }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     { Ok(install_dir(app)?.join("AppDir/AppRun")) }
+    #[cfg(target_os = "macos")]
+    { Ok(install_dir(app)?.join("RPCS3.app/Contents/MacOS/rpcs3")) }
 }
 
 /// The version `rpcs3.exe --version` last gave, with the size and time of the
@@ -114,7 +122,8 @@ pub fn open_in_explorer(folder: &Path) -> Result<(), String> {
     }
     #[cfg(not(windows))]
     {
-        std::process::Command::new("xdg-open").arg(folder).spawn()
+        let opener = if cfg!(target_os = "macos") { "/usr/bin/open" } else { "xdg-open" };
+        std::process::Command::new(opener).arg(folder).spawn()
             .map_err(|e| format!("Could not open the folder: {e}"))?;
         Ok(())
     }
@@ -130,13 +139,17 @@ pub(crate) fn command(exe: &Path) -> std::process::Command {
             .env("XDG_CONFIG_HOME", root.join("xdg-config"))
             .env("XDG_CACHE_HOME", root.join("xdg-cache"));
     }
+    #[cfg(target_os = "macos")]
+    if let Some(root) = exe.ancestors().nth(4) {
+        cmd.current_dir(root).env("HOME", root.join("home"));
+    }
     cmd
 }
 
 /// RPCS3's Linux data and configuration share its XDG config directory.
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let root = install_dir(app)?;
-    Ok(if cfg!(windows) { root } else { root.join("xdg-config/rpcs3") })
+    Ok(if cfg!(windows) { root } else if cfg!(target_os = "macos") { root.join("home/Library/Application Support/rpcs3") } else { root.join("xdg-config/rpcs3") })
 }
 
 pub(crate) fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -146,7 +159,7 @@ pub(crate) fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn log_path(app: &AppHandle) -> Result<PathBuf, String> {
     let root = install_dir(app)?;
-    Ok(if cfg!(windows) { root.join("log/RPCS3.log") } else { root.join("xdg-cache/rpcs3/RPCS3.log") })
+    Ok(if cfg!(windows) { root.join("log/RPCS3.log") } else if cfg!(target_os = "macos") { root.join("home/Library/Caches/rpcs3/RPCS3.log") } else { root.join("xdg-cache/rpcs3/RPCS3.log") })
 }
 
 // Asking the binary itself rather than trusting whatever we last installed:
@@ -155,9 +168,24 @@ fn read_version(exe: &Path) -> Option<String> {
     read_version_checked(exe).ok()
 }
 
+#[cfg(target_os = "macos")]
+fn read_version_checked(exe: &Path) -> Result<String, String> {
+    // Reading bundle metadata avoids starting Metal/Vulkan during every
+    // library refresh; a version label does not require an emulation device.
+    let plist = exe.parent().and_then(Path::parent).ok_or("Invalid RPCS3 app path")?.join("Info.plist");
+    let version = crate::macos::plist_value(&plist, "CFBundleShortVersionString")?;
+    let build = crate::macos::plist_value(&plist, "CFBundleVersion")?;
+    if !version.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        || build.is_empty() || !build.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("The RPCS3 app bundle has an invalid version.".into());
+    }
+    Ok(format!("{version}-{build}"))
+}
+
+#[cfg(not(target_os = "macos"))]
 fn read_version_checked(exe: &Path) -> Result<String, String> {
     let mut cmd = command(exe);
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     // The official AppImage need not ship Qt's offscreen plugin. RPCS3's
     // headless application reads --version without initializing a display.
     cmd.arg("--headless");
@@ -193,7 +221,13 @@ async fn latest_release(client: &reqwest::Client) -> Result<Release, String> {
 /// `0.0.42-19985-6ba56a52`.
 fn version_from_archive(name: &str) -> Option<&str> {
     let version = name.strip_prefix("rpcs3-v")?;
-    version.strip_suffix("_win64_msvc.7z").or_else(|| version.strip_suffix("_linux64.AppImage"))
+    ["_win64_msvc.7z", "_linux64.AppImage", "_macos.7z", "_macos_aarch64.7z"].iter().find_map(|suffix| version.strip_suffix(suffix))
+}
+
+fn native_archive_suffix() -> &'static str {
+    if cfg!(windows) { "_win64_msvc.7z" }
+    else if cfg!(target_os = "macos") { if cfg!(target_arch = "aarch64") { "_macos_aarch64.7z" } else { "_macos.7z" } }
+    else { "_linux64.AppImage" }
 }
 
 pub async fn newest_version() -> Result<String, String> {
@@ -201,7 +235,7 @@ pub async fn newest_version() -> Result<String, String> {
     release
         .assets
         .iter()
-        .filter(|asset| asset.name.ends_with(if cfg!(windows) { "_win64_msvc.7z" } else { "_linux64.AppImage" }))
+        .filter(|asset| asset.name.ends_with(native_archive_suffix()))
         .find_map(|asset| version_from_archive(&asset.name))
         .map(str::to_string)
         .ok_or_else(|| "No native build found in the latest RPCS3 release".to_string())
@@ -277,6 +311,11 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
 #[cfg(target_os = "linux")]
 pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
     linux::install(app, cancel).await
+}
+
+#[cfg(target_os = "macos")]
+pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
+    macos::install(app, cancel).await
 }
 
 async fn download(

@@ -12,7 +12,7 @@ pub fn track(mut child: Child) -> u32 {
     pid
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn start_fullscreen(app: &tauri::AppHandle) -> bool {
     use tauri::Manager;
     crate::big_picture::is_on()
@@ -34,7 +34,7 @@ pub fn command(exe: &Path) -> Command {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000);
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         // Own the process group so Stop also reaches emulator subprocesses.
@@ -50,6 +50,10 @@ pub fn command(exe: &Path) -> Command {
         ] {
             command.env_remove(key);
         }
+    }
+    #[cfg(target_os = "macos")]
+    for key in ["DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH", "DYLD_INSERT_LIBRARIES"] {
+        command.env_remove(key);
     }
     command
 }

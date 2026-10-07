@@ -1,4 +1,4 @@
-//! Read native SDL controller names and GUIDs on Linux.
+//! Read native SDL controller names and GUIDs on Linux and macOS.
 
 use super::*;
 use sdl2::controller::{Axis, Button, GameController};

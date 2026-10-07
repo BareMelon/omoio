@@ -9,6 +9,10 @@ mod hardware;
 pub mod import;
 mod pads;
 mod platform;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub mod macos_smoke;
 #[cfg(target_os = "linux")]
 pub mod linux_smoke;
 mod figure_pictures;

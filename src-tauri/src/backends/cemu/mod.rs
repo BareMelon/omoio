@@ -41,14 +41,16 @@ pub fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
 pub(crate) fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(windows)]
     { Ok(install_dir(app)?.join("Cemu.exe")) }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     { Ok(install_dir(app)?.join("AppDir/AppRun")) }
+    #[cfg(target_os = "macos")]
+    { Ok(install_dir(app)?.join("Cemu.app/Contents/MacOS/Cemu")) }
 }
 
 /// The Linux build uses XDG paths (CemuApp.cpp v2.6). Keep config, data and
 /// cache in the same private directory, matching Windows portable mode.
 pub(crate) fn user_data(root: &Path) -> PathBuf {
-    if cfg!(windows) { root.join("portable") } else { root.join("xdg/Cemu") }
+    if cfg!(windows) { root.join("portable") } else if cfg!(target_os = "macos") { root.join("home/Library/Application Support/Cemu") } else { root.join("xdg/Cemu") }
 }
 
 pub fn detect_version(app: &AppHandle) -> Option<String> {
@@ -85,6 +87,8 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
     if cfg!(target_os = "linux") && std::env::consts::ARCH != "x86_64" {
         return Err("Automatic Cemu installation currently supports x86_64 Linux.".into());
     }
+    #[cfg(target_os = "macos")]
+    crate::macos::require_cemu_architecture()?;
     let client = reqwest::Client::new();
 
     emit(&app, "checking", 0, 0);
@@ -133,6 +137,8 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
         { unpack(&from, &into) }
         #[cfg(target_os = "linux")]
         { crate::platform::install_appimage(&from, &into) }
+        #[cfg(target_os = "macos")]
+        { crate::macos::install_dmg(&from, &into, "Cemu.app", "Cemu") }
     })
         .await
         .map_err(|e| e.to_string())??;
@@ -820,6 +826,11 @@ pub(crate) fn command(exe: &Path) -> std::process::Command {
         cmd.current_dir(root).env("XDG_CONFIG_HOME", &xdg)
             .env("XDG_DATA_HOME", &xdg).env("XDG_CACHE_HOME", &xdg);
     }
+    #[cfg(target_os = "macos")]
+    if let Some(root) = exe.ancestors().nth(4) {
+        let home = root.join("home");
+        cmd.current_dir(root).env("HOME", &home).env("CFFIXED_USER_HOME", &home);
+    }
     cmd
 }
 
@@ -1021,7 +1032,7 @@ impl super::EmulatorBackend for Cemu {
         // picks (checked with Trap Team, 6 October 2026). Not `-f`: Omoio places the picture itself, in its window
         // or across the screen, the same as it does for RPCS3.
         let mut cmd = command(&exe);
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if crate::platform::start_fullscreen(app) { cmd.arg("-f"); }
         let child = cmd
             .arg("-g")

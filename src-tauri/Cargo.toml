@@ -1,7 +1,7 @@
 [package]
 name = "omoio"
 version = "0.2.4"
-description = "A game library for Windows and Linux that runs PS3 and Wii U games through RPCS3 and Cemu"
+description = "A game library for Windows, Linux and macOS that runs PS3 and Wii U games through RPCS3 and Cemu"
 authors = ["Bertram Bech"]
 license = "MIT"
 edition = "2021"
@@ -47,7 +47,6 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # Reads which gamepads are plugged in, so the profile Omoio writes for the
 # emulator names the controller that is actually there. Pure Rust, no DLL to
 # ship. See backends/rpcs3/controllers.rs.
-gilrs = "0.11"
 # Reads which villain a Trap Team trap holds, for the portal menu: a figure's
 # data is encrypted with AES under a key made with MD5. Read only. aes is
 # already in the build through sevenz-rust2, and md-5 shares sha2's pieces.
@@ -65,11 +64,17 @@ png = "0.17"
 # in zstd blocks, and its meta.xml is read from there. See backends/cemu/wua.rs.
 zstd = "0.13"
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
 sdl2 = "0.38"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+sdl2 = { version = "0.38", features = ["bundled", "static-link"] }
+
 [target.'cfg(windows)'.dependencies]
+gilrs = "0.11"
 windows = { version = "0.62", features = [
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_HumanInterfaceDevice",

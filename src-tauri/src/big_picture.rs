@@ -51,7 +51,7 @@ pub fn set(app: &AppHandle, on: bool) -> Result<(), String> {
     let session = app.state::<Session>();
     if on && session.playing().is_some() {
         if !cfg!(windows) {
-            return Err("Linux games run in their own windows. Switch back to Omoio after closing the game.".to_string());
+            return Err("Games on this platform run in their own windows. Switch back to Omoio after closing the game.".to_string());
         }
         session.hide_game();
         crate::portal_menu::close(app);

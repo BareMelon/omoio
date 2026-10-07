@@ -30,13 +30,21 @@ pub const FILE: &str = "cemu-2.6-windows-x64.zip";
 #[cfg(windows)]
 pub const SHA256: &str = "a6bcc2bc42a362d10213819948f3152fae7d47f70067f25939b51d3ddcfb0896";
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub const DOWNLOAD: &str = "https://github.com/cemu-project/Cemu/releases/download/v2.6/Cemu-2.6-x86_64.AppImage";
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub const FILE: &str = "Cemu-2.6-x86_64.AppImage";
 // GitHub's published asset digest, verified on 7 October 2026.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub const SHA256: &str = "0c20c4aeb800bb13d9bab9474ef45a6f8fcde6402cad9b32ac2a1bbd03186313";
+
+#[cfg(target_os = "macos")]
+pub const DOWNLOAD: &str = "https://github.com/cemu-project/Cemu/releases/download/v2.6/cemu-2.6-macos-12-x64.dmg";
+#[cfg(target_os = "macos")]
+pub const FILE: &str = "cemu-2.6-macos-12-x64.dmg";
+// SHA-256 of the official release asset downloaded on 7 October 2026.
+#[cfg(target_os = "macos")]
+pub const SHA256: &str = "698c4b298f94983e4d6c30e9687ba8ff05094dd3930837c5104cddc0b0a49e4e";
 
 /// `TAG` as `detect_version` reports a version, without the `v`.
 pub fn version() -> &'static str {
@@ -62,7 +70,7 @@ mod tests {
         assert_eq!(version(), "2.6");
         assert!(DOWNLOAD.contains(&format!("/releases/download/{TAG}/")));
         assert!(DOWNLOAD.ends_with(&format!("/{FILE}")));
-        assert!(FILE.ends_with(if cfg!(windows) { "-windows-x64.zip" } else { "-x86_64.AppImage" }));
+        assert!(FILE.ends_with(if cfg!(windows) { "-windows-x64.zip" } else if cfg!(target_os = "macos") { "-macos-12-x64.dmg" } else { "-x86_64.AppImage" }));
         assert!(FILE.contains(version()));
         assert_eq!(SHA256.len(), 64);
         assert!(SHA256.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));

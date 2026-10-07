@@ -16,14 +16,14 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-#[cfg(target_os = "linux")]
-#[path = "pads_linux.rs"]
-mod linux;
-#[cfg(target_os = "linux")]
-use linux::watch;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[path = "pads_sdl.rs"]
+mod native_sdl;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use native_sdl::watch;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn cemu_pad(device: &str) -> Option<crate::backends::cemu::sdl::Found> {
-    linux::cemu_pad(device)
+    native_sdl::cemu_pad(device)
 }
 
 /// USB vendor ids, which say who made a pad and so how its buttons are
@@ -173,7 +173,7 @@ fn xinput_held(_slot: u32) -> Option<Vec<&'static str>> {
 
 /// What a pad gilrs reads has held, by place. Triggers are buttons on some
 /// pads and axes on others, so both are looked at.
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
 fn sdl_held(pad: &gilrs::Gamepad) -> Vec<&'static str> {
     use gilrs::{Axis, Button};
     const BUTTONS: [(Button, &str); 17] = [
@@ -227,7 +227,7 @@ struct Seen {
     vendor: Option<u16>,
     product: Option<u16>,
     held: Vec<&'static str>,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     cemu: crate::backends::cemu::sdl::Found,
 }
 
@@ -239,7 +239,7 @@ fn seen() -> &'static Mutex<Option<Vec<Seen>>> {
 
 /// Starts the thread that owns gilrs the first time a pad is asked about, and
 /// waits a moment for its first look so that question gets a real answer.
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
 fn watch() {
     static STARTED: OnceLock<()> = OnceLock::new();
     STARTED.get_or_init(|| {
