@@ -1543,6 +1543,39 @@ pub fn add_cemu_keys(app: AppHandle, path: String) -> Result<usize, String> {
     crate::backends::cemu::keys::add(&app, Path::new(&path))
 }
 
+/// What the user's own Cemu, in the folder they picked, has to bring over to
+/// Omoio's. Only reads that folder. A save that doesn't name its game is
+/// named from the library when the game is there.
+#[tauri::command]
+pub fn look_at_own_cemu(app: AppHandle, path: String) -> Result<crate::backends::cemu::own_cemu::Found, String> {
+    let mut found = crate::backends::cemu::own_cemu::look(&app, &path)?;
+    let library = library_path(&app).map(|file| Library::load(&file)).unwrap_or_default();
+    for save in found.saves.iter_mut().filter(|save| save.name.is_none()) {
+        save.name = library
+            .games()
+            .iter()
+            .find(|game| game.title_id.eq_ignore_ascii_case(&save.title_id))
+            .map(|game| game.title.clone());
+    }
+    Ok(found)
+}
+
+/// Copies the user's keys, and the saves of games Omoio's Cemu has none for,
+/// into Omoio's Cemu. Overwrites nothing.
+#[tauri::command]
+pub fn bring_own_cemu(app: AppHandle, path: String) -> Result<crate::backends::cemu::own_cemu::Brought, String> {
+    refuse_while_playing(&app, Console::WiiU)?;
+    crate::backends::cemu::own_cemu::bring_over(&app, &path)
+}
+
+/// Puts the user's save for one game in place of Omoio's, once they have
+/// said so. Omoio's is moved aside first.
+#[tauri::command]
+pub fn replace_with_own_save(app: AppHandle, path: String, title_id: String) -> Result<(), String> {
+    refuse_while_playing(&app, Console::WiiU)?;
+    crate::backends::cemu::own_cemu::replace_save(&app, &path, &title_id)
+}
+
 #[tauri::command]
 pub fn cancel_cemu_install(state: State<'_, InstallState>) {
     state.cancel_cemu.store(true, Ordering::Relaxed);

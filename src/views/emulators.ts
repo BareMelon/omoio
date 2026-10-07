@@ -8,6 +8,7 @@ import {
   onCemuInstallProgress,
   type InstallProgress,
 } from "../api";
+import { openOwnCemu } from "../components/ownCemuSheet";
 import { store } from "../state";
 import type { View } from "./view";
 import rpcs3Icon from "../icons/emulators/rpcs3.svg";
@@ -201,6 +202,40 @@ async function keysBlock(): Promise<HTMLElement> {
   return box;
 }
 
+/// Omoio's Cemu is its own, apart from any the user already has, so keys and
+/// saves in theirs don't show here until they are brought over.
+function ownCemuBlock(): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "emu-keys";
+  const said = document.createElement("span");
+  said.className = "cfg-v";
+  said.textContent = "Have a Cemu of your own?";
+
+  const bring = document.createElement("button");
+  bring.className = "small-btn";
+  bring.textContent = "Bring over keys and saves";
+  bring.onclick = async () => {
+    const picked = await open({
+      multiple: false,
+      directory: true,
+      title: "Choose the folder your Cemu.exe is in",
+    });
+    if (typeof picked !== "string") return;
+    try {
+      await openOwnCemu(picked, () => store.redraw());
+      said.textContent = "Have a Cemu of your own?";
+    } catch (err) {
+      said.textContent = typeof err === "string" ? err : "Couldn't read that folder.";
+    }
+  };
+
+  const actions = document.createElement("div");
+  actions.className = "row-actions";
+  actions.append(said, bring);
+  box.appendChild(actions);
+  return box;
+}
+
 export async function renderEmulators(): Promise<View> {
   const versions = await emulatorVersions();
   const versionOf = (runs?: string) => versions.find((v) => v.console === runs)?.version ?? null;
@@ -224,7 +259,7 @@ export async function renderEmulators(): Promise<View> {
     card.className = "emu-hero";
     const words = text(emulator);
     card.append(badge(emulator, "big"), words);
-    if (emulator.runs === "wiiu") words.appendChild(await keysBlock());
+    if (emulator.runs === "wiiu") words.append(await keysBlock(), ownCemuBlock());
     const side = document.createElement("div");
     side.className = "emu-side";
     side.innerHTML = `<span class="status go">Installed</span><span class="emu-ver"></span>`;
