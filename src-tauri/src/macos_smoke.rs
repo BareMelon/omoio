@@ -47,13 +47,21 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
         ));
     }
     let data = cemu::user_data(&cemu::install_dir(app)?);
+    cemu::write_first_settings(&data).map_err(|e| e.to_string())?;
     // Exercise wx/Cocoa's real path lookup, rather than merely inspecting
     // environment variables that an emulator may choose not to honor.
     let mut child = cemu::command(&exe).spawn().map_err(|e| e.to_string())?;
-    let mut found_log = false;
+    let mut initialized = false;
     for _ in 0..60 {
-        if data.join("log.txt").is_file() {
-            found_log = true;
+        // Cemu creates this default MLC file after reading settings.xml.
+        // A game log is created only when a game is launched.
+        if data
+            .join("mlc01/sys/title/0005001b/1005c000/content/language.txt")
+            .is_file()
+            && data.join("memorySearcher").is_dir()
+            && data.join("controllerProfiles").is_dir()
+        {
+            initialized = true;
             break;
         }
         if child.try_wait().map_err(|e| e.to_string())?.is_some() {
@@ -61,11 +69,13 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let alive = child.try_wait().map_err(|e| e.to_string())?.is_none();
     crate::session::kill(child.id());
     let _ = child.wait();
-    if !found_log {
+    if !initialized || !alive {
         return Err(format!(
-            "Cemu did not write its startup log in the private data directory: {}",
+            "Cemu failed startup or did not initialize its private data directory: {}",
             data.display()
         ));
     }
@@ -75,7 +85,7 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     {
         return Err("Cemu's shipped game profiles are missing from Resources".into());
     }
-    println!("macOS emulator integration passed: RPCS3 {rpc_version}, Cemu {cemu_version}, private Cemu log verified");
+    println!("macOS emulator integration passed: RPCS3 {rpc_version}, Cemu {cemu_version}, private Cemu data verified");
     Ok(())
 }
 

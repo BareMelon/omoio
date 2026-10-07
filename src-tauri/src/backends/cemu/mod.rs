@@ -807,7 +807,7 @@ fn tune_settings(settings: &Path, skylanders: bool) -> std::io::Result<()> {
     Ok(())
 }
 
-fn write_first_settings(portable: &Path) -> std::io::Result<()> {
+pub(crate) fn write_first_settings(portable: &Path) -> std::io::Result<()> {
     let path = portable.join("settings.xml");
     if path.exists() {
         return Ok(());

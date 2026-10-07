@@ -63,7 +63,7 @@ jobs:
       - name: Emulator startup diagnostics
         if: failure()
         run: |
-          find "$HOME/Library/Application Support/Omoio" -maxdepth 7 -name '*.txt' -print 2>/dev/null || true
+          find "$HOME/Library/Application Support/Omoio" -maxdepth 13 \( -name '*.txt' -o -name settings.xml -o -name memorySearcher \) -print 2>/dev/null || true
           find "$HOME/Library/Application Support" -maxdepth 3 -name log.txt -print 2>/dev/null || true
           system_profiler SPDisplaysDataType
       - name: Build application and disk image
