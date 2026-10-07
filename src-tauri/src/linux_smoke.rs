@@ -68,7 +68,7 @@ pub fn run() -> i32 {
             });
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(crate::app_context())
         .expect("Linux smoke-test runtime failed");
     outcome.load(Ordering::SeqCst)
 }

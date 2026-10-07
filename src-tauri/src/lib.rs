@@ -19,6 +19,12 @@ mod figure_pictures;
 mod portal_menu;
 pub mod session;
 
+// macOS embeds a linker symbol for Info.plist. Generate it only once, even
+// when an integration example and the normal entry point share this crate.
+pub(crate) fn app_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -151,6 +157,6 @@ pub fn run() {
             commands::set_start_in_big_picture,
             commands::pads_connected,
         ])
-        .run(tauri::generate_context!())
+        .run(app_context())
         .expect("error while running tauri application");
 }
