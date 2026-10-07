@@ -976,6 +976,41 @@ export function addCemuKeys(path: string): Promise<number> {
   return invoke("add_cemu_keys", { path });
 }
 
+/// A game's save in the user's own Cemu, and whether Omoio's Cemu has one:
+/// none yet, the same files, or a save of its own.
+export interface OwnCemuSave {
+  title_id: string;
+  name: string | null;
+  state: "new" | "same" | "differs";
+}
+
+/// What the user's own Cemu has to bring over to Omoio's.
+export interface OwnCemu {
+  /// The folder its keys and saves were found in.
+  folder: string;
+  /// Keys Omoio's Cemu doesn't have yet.
+  keys: number;
+  keys_problem: string | null;
+  saves: OwnCemuSave[];
+}
+
+/// Only reads the folder picked.
+export function lookAtOwnCemu(path: string): Promise<OwnCemu> {
+  return invoke("look_at_own_cemu", { path });
+}
+
+/// Copies the keys, and the saves of games Omoio's Cemu has none for.
+/// Overwrites nothing. Resolves to how many of each were copied.
+export function bringOwnCemu(path: string): Promise<{ keys: number; saves: number }> {
+  return invoke("bring_own_cemu", { path });
+}
+
+/// Puts the user's save for one game in place of Omoio's, which is moved
+/// aside first.
+export function replaceWithOwnSave(path: string, titleId: string): Promise<void> {
+  return invoke("replace_with_own_save", { path, titleId });
+}
+
 export function onCemuInstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
   return listen<InstallProgress>("cemu-install-progress", (event) => handler(event.payload));
 }
