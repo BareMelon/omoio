@@ -1,7 +1,10 @@
 use crate::core::types::{CpuInfo, DisplayInfo, GpuInfo, HardwareInfo, MemoryInfo};
 use sysinfo::System;
+#[cfg(windows)]
 use windows::core::PCWSTR;
+#[cfg(windows)]
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE};
+#[cfg(windows)]
 use windows::Win32::Graphics::Gdi::{
     EnumDisplaySettingsW, DEVMODEW, ENUM_CURRENT_SETTINGS,
 };
@@ -41,6 +44,7 @@ fn detect_cpu_and_memory() -> (CpuInfo, MemoryInfo) {
 // DXGI reports dedicated video memory as a 64-bit SIZE_T. The alternative,
 // WMI's Win32_VideoController.AdapterRAM, is a 32-bit field that silently
 // wraps on any card with more than 4 GB of VRAM - which is most of them.
+#[cfg(windows)]
 fn detect_gpu() -> Option<GpuInfo> {
     unsafe {
         let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
@@ -77,6 +81,7 @@ fn detect_gpu() -> Option<GpuInfo> {
     }
 }
 
+#[cfg(windows)]
 fn detect_display() -> Option<DisplayInfo> {
     let mut mode = DEVMODEW {
         dmSize: std::mem::size_of::<DEVMODEW>() as u16,
@@ -92,4 +97,14 @@ fn detect_display() -> Option<DisplayInfo> {
     } else {
         None
     }
+}
+
+#[cfg(not(windows))]
+fn detect_gpu() -> Option<GpuInfo> {
+    None
+}
+
+#[cfg(not(windows))]
+fn detect_display() -> Option<DisplayInfo> {
+    None
 }

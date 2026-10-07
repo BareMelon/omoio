@@ -218,7 +218,7 @@ function ownCemuBlock(): HTMLElement {
     const picked = await open({
       multiple: false,
       directory: true,
-      title: "Choose the folder your Cemu.exe is in",
+      title: "Choose your Cemu data folder (settings.xml or mlc01)",
     });
     if (typeof picked !== "string") return;
     try {

@@ -8,6 +8,11 @@ pub mod graphics;
 pub mod launch;
 #[cfg(windows)]
 pub mod overlay;
+#[cfg(not(windows))]
+#[path = "overlay_external.rs"]
+pub mod overlay;
+#[cfg(target_os = "linux")]
+mod linux;
 pub mod packages;
 pub mod patches;
 #[cfg(windows)]
@@ -26,7 +31,10 @@ use std::time::SystemTime;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 
+#[cfg(windows)]
 const RELEASES_API: &str = "https://api.github.com/repos/RPCS3/rpcs3-binaries-win/releases/latest";
+#[cfg(not(windows))]
+const RELEASES_API: &str = "https://api.github.com/repos/RPCS3/rpcs3-binaries-linux/releases/latest";
 const USER_AGENT: &str = "Omoio";
 
 #[derive(Deserialize)]
@@ -38,6 +46,8 @@ struct Release {
 struct Asset {
     name: String,
     browser_download_url: String,
+    #[serde(default)]
+    digest: Option<String>,
 }
 
 // RPCS3 ships as a portable folder, not an installer - extracting the
@@ -48,7 +58,10 @@ pub fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(install_dir(app)?.join("rpcs3.exe"))
+    #[cfg(windows)]
+    { Ok(install_dir(app)?.join("rpcs3.exe")) }
+    #[cfg(not(windows))]
+    { Ok(install_dir(app)?.join("AppDir/AppRun")) }
 }
 
 /// The version `rpcs3.exe --version` last gave, with the size and time of the
@@ -101,28 +114,48 @@ pub fn open_in_explorer(folder: &Path) -> Result<(), String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = folder;
-        Err("Only supported on Windows.".to_string())
+        std::process::Command::new("xdg-open").arg(folder).spawn()
+            .map_err(|e| format!("Could not open the folder: {e}"))?;
+        Ok(())
     }
 }
 
 // RPCS3 is a console-less GUI binary; without this flag every call to it
 // flashes a console window over whatever the user is looking at.
 fn command(exe: &Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new(exe);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+    let mut cmd = crate::platform::command(exe);
+    #[cfg(target_os = "linux")]
+    if let Some(root) = exe.parent().and_then(Path::parent) {
+        cmd.current_dir(root)
+            .env("XDG_CONFIG_HOME", root.join("xdg-config"))
+            .env("XDG_CACHE_HOME", root.join("xdg-cache"));
     }
     cmd
+}
+
+/// RPCS3's Linux data and configuration share its XDG config directory.
+fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = install_dir(app)?;
+    Ok(if cfg!(windows) { root } else { root.join("xdg-config/rpcs3") })
+}
+
+fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = data_dir(app)?;
+    Ok(if cfg!(windows) { root.join("config") } else { root })
+}
+
+fn log_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = install_dir(app)?;
+    Ok(if cfg!(windows) { root.join("log/RPCS3.log") } else { root.join("xdg-cache/rpcs3/RPCS3.log") })
 }
 
 // Asking the binary itself rather than trusting whatever we last installed:
 // the installed build's actual behaviour is what counts.
 fn read_version(exe: &Path) -> Option<String> {
-    let output = command(exe).arg("--version").output().ok()?;
+    let mut cmd = command(exe);
+    #[cfg(target_os = "linux")]
+    cmd.env("QT_QPA_PLATFORM", "offscreen");
+    let output = cmd.arg("--version").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     // "RPCS3 0.0.42-19884-3ef20ebb Alpha" -> "0.0.42-19884-3ef20ebb"
     text.split_whitespace().nth(1).map(|s| s.to_string())
@@ -145,7 +178,8 @@ async fn latest_release(client: &reqwest::Client) -> Result<Release, String> {
 /// `--version` prints: `rpcs3-v0.0.42-19985-6ba56a52_win64_msvc.7z` is
 /// `0.0.42-19985-6ba56a52`.
 fn version_from_archive(name: &str) -> Option<&str> {
-    name.strip_prefix("rpcs3-v")?.strip_suffix("_win64_msvc.7z")
+    let version = name.strip_prefix("rpcs3-v")?;
+    version.strip_suffix("_win64_msvc.7z").or_else(|| version.strip_suffix("_linux64.AppImage"))
 }
 
 pub async fn newest_version() -> Result<String, String> {
@@ -153,11 +187,13 @@ pub async fn newest_version() -> Result<String, String> {
     release
         .assets
         .iter()
+        .filter(|asset| asset.name.ends_with(if cfg!(windows) { "_win64_msvc.7z" } else { "_linux64.AppImage" }))
         .find_map(|asset| version_from_archive(&asset.name))
         .map(str::to_string)
-        .ok_or_else(|| "No Windows build found in the latest RPCS3 release".to_string())
+        .ok_or_else(|| "No native build found in the latest RPCS3 release".to_string())
 }
 
+#[cfg(windows)]
 pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
     let client = reqwest::Client::new();
 
@@ -168,7 +204,7 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
         .assets
         .iter()
         .find(|a| a.name.ends_with("_win64_msvc.7z"))
-        .ok_or("No Windows build found in the latest RPCS3 release")?;
+        .ok_or("No native build found in the latest RPCS3 release")?;
     let checksum_name = format!("{}.sha256", archive.name);
     let checksum_asset = release
         .assets
@@ -224,6 +260,11 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
     Ok(version)
 }
 
+#[cfg(target_os = "linux")]
+pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
+    linux::install(app, cancel).await
+}
+
 async fn download(
     client: &reqwest::Client,
     url: &str,
@@ -236,6 +277,7 @@ async fn download(
         .header("User-Agent", USER_AGENT)
         .send()
         .await
+        .and_then(reqwest::Response::error_for_status)
         .map_err(|e| e.to_string())?;
     let total = response.content_length().unwrap_or(0);
     let mut file = tokio::fs::File::create(dest).await.map_err(|e| e.to_string())?;
@@ -319,28 +361,33 @@ impl super::EmulatorBackend for Rpcs3 {
             settings: true,
             saves: true,
             compatibility: true,
-            portal: true,
+            portal: cfg!(windows),
             // Omoio switches RPCS3's background input off before each game.
-            quiet_behind: true,
+            quiet_behind: cfg!(windows),
         }
     }
 
+    #[cfg(windows)]
     fn portal_figures(&self, pid: u32) -> Result<Vec<String>, String> {
         portal::figures(pid)
     }
 
+    #[cfg(windows)]
     fn portal_load(&self, pid: u32, slot: usize, figure: &Path) -> Result<Vec<String>, String> {
         portal::load(pid, slot, figure)
     }
 
+    #[cfg(windows)]
     fn portal_clear(&self, pid: u32, slot: usize) -> Result<Vec<String>, String> {
         portal::clear(pid, slot)
     }
 
+    #[cfg(windows)]
     fn portal_characters(&self, pid: u32) -> Result<Vec<crate::core::figures::Character>, String> {
         portal::characters(pid)
     }
 
+    #[cfg(windows)]
     fn portal_create(
         &self,
         pid: u32,
@@ -351,6 +398,7 @@ impl super::EmulatorBackend for Rpcs3 {
         portal::create(pid, slot, character, file)
     }
 
+    #[cfg(windows)]
     fn tidy_window(&self, pid: u32, game: isize) {
         portal::tidy(pid, game);
     }
@@ -451,7 +499,7 @@ impl super::EmulatorBackend for Rpcs3 {
     }
 
     fn log_file(&self, app: &AppHandle) -> Option<PathBuf> {
-        install_dir(app).ok().map(|dir| dir.join("log").join("RPCS3.log"))
+        log_path(app).ok()
     }
 
     fn catalogue(&self, app: &AppHandle) -> Option<Vec<crate::core::catalogue::Entry>> {

@@ -398,6 +398,7 @@ pub fn set_button(app: &AppHandle, place: &str) -> Result<(), String> {
 /// tenth of one, and the choice is read again every two seconds so one made
 /// while playing counts. It ends with the game and takes the menu with it.
 pub fn watch(app: AppHandle, pid: u32) {
+    if !cfg!(windows) { return; }
     std::thread::spawn(move || {
         let mut was = false;
         let mut wanted = button(&app);

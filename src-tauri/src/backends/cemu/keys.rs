@@ -52,7 +52,7 @@ pub(super) fn read(text: &str) -> (Vec<String>, Option<usize>) {
 }
 
 fn path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("portable").join("keys.txt"))
+    Ok(super::user_data(&super::install_dir(app)?).join("keys.txt"))
 }
 
 /// How many keys Cemu has, not counting its example.
@@ -67,7 +67,7 @@ pub fn count(app: &AppHandle) -> usize {
 /// Adds the keys in the user's file to Cemu's, leaving those already there.
 /// Returns how many were new.
 pub fn add(app: &AppHandle, from: &Path) -> Result<usize, String> {
-    if !super::install_dir(app)?.join("Cemu.exe").is_file() {
+    if !super::exe_path(app)?.is_file() {
         return Err("Install Cemu first, then add your keys.".to_string());
     }
     let text = std::fs::read_to_string(from).map_err(|_| "Couldn't read that file.".to_string())?;

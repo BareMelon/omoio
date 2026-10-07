@@ -18,14 +18,16 @@ fn eboot_path(root: &Path) -> Option<PathBuf> {
 /// forward slashes and a trailing slash. Read off a working install rather than
 /// guessed at, and written back the same way so RPCS3 recognises its own file.
 fn games_list_line(title_id: &str, root: &Path) -> String {
-    let mut path = root.to_string_lossy().replace('\\', "/");
+    let mut path = root.to_string_lossy().into_owned();
+    #[cfg(windows)]
+    { path = path.replace('\\', "/"); }
     if !path.ends_with('/') {
         path.push('/');
     }
     // Windows forbids quotes and backslashes in names, so the quoted form needs
     // no escaping, and it survives a folder called something like "Game #1"
     // which unquoted YAML would read as a comment.
-    format!("{title_id}: \"{path}\"")
+    format!("{title_id}: {}", serde_json::to_string(&path).unwrap())
 }
 
 /// Replaces this game's line and leaves every other one untouched. The file
@@ -47,7 +49,7 @@ fn merged_list(existing: &str, title_id: &str, root: &Path) -> String {
 }
 
 pub fn register(app: &AppHandle, game: &Game) -> Result<(), String> {
-    let config_dir = super::install_dir(app)?.join("config");
+    let config_dir = super::config_dir(app)?;
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     let list = config_dir.join("games.yml");
 
@@ -98,7 +100,7 @@ fn with_welcome_disabled(existing: &str) -> String {
 }
 
 fn disable_welcome_screen(app: &AppHandle) -> Result<(), String> {
-    let dir = super::install_dir(app)?.join("GuiConfigs");
+    let dir = super::data_dir(app)?.join("GuiConfigs");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let file = dir.join("CurrentSettings.ini");
     let existing = std::fs::read_to_string(&file).unwrap_or_default();
@@ -116,10 +118,10 @@ fn disable_welcome_screen(app: &AppHandle) -> Result<(), String> {
 /// value chosen for one game in its own settings still wins over this one.
 fn keep_pad_to_the_game(app: &AppHandle) {
     const KEY: &str = "Background input enabled";
-    let Ok(dir) = super::install_dir(app) else {
+    let Ok(dir) = super::config_dir(app) else {
         return;
     };
-    let path = dir.join("config").join("config.yml");
+    let path = dir.join("config.yml");
     let Ok(config) = std::fs::read_to_string(&path) else {
         return;
     };
@@ -153,16 +155,23 @@ pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
     // Spawned rather than waited on, so Omoio stays usable while the game runs.
     let skylanders = crate::core::figures::is_skylanders(&game.title);
     let mut command = super::command(&exe);
+    #[cfg(windows)]
     if skylanders {
         command.env("QT_QPA_PLATFORM", super::portal::QT_PLATFORM);
     } else {
         command.arg("--no-gui");
     }
+    #[cfg(target_os = "linux")]
+    {
+        if !skylanders { command.arg("--no-gui"); }
+        if crate::platform::start_fullscreen(app) { command.arg("--fullscreen"); }
+    }
     let child = command.arg(&eboot).spawn().map_err(|e| e.to_string())?;
+    #[cfg(windows)]
     if skylanders {
         super::portal::prepare(child.id());
     }
-    Ok(child.id())
+    Ok(crate::platform::track(child))
 }
 
 #[cfg(test)]
@@ -321,7 +330,7 @@ pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(),
         return Err("Install RPCS3 first, then packages can be installed.".to_string());
     }
 
-    let log = super::install_dir(app)?.join("log").join("RPCS3.log");
+    let log = super::log_path(app)?;
     let started = std::time::SystemTime::now();
 
     super::command(&exe)

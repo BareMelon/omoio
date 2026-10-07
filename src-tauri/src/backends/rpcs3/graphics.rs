@@ -58,7 +58,7 @@ fn current(config: &str) -> Option<u32> {
 /// first launch. The caller tries again next time rather than marking this as
 /// done.
 pub fn apply(app: &AppHandle, display_height: u32, graphics_memory: u64) -> Result<Option<u32>, String> {
-    let path = super::install_dir(app)?.join("config").join("config.yml");
+    let path = super::config_dir(app)?.join("config.yml");
     let config = std::fs::read_to_string(&path)
         .map_err(|_| "RPCS3 hasn't written its settings yet.".to_string())?;
     if current(&config) != Some(SHIPPED) {

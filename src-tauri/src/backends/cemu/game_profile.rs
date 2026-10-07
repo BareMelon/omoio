@@ -159,7 +159,7 @@ fn stored(key: &str, value: &str) -> String {
 }
 
 fn own_path(install: &Path, title_id: &str) -> PathBuf {
-    install.join("portable").join("gameProfiles").join(format!("{title_id}.ini"))
+    super::user_data(install).join("gameProfiles").join(format!("{title_id}.ini"))
 }
 
 fn shipped_path(install: &Path, title_id: &str) -> PathBuf {

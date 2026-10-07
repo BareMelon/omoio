@@ -78,7 +78,7 @@ pub fn regions() -> Vec<RegionChoice> {
 }
 
 fn username_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?
+    Ok(super::data_dir(app)?
         .join("dev_hdd0")
         .join("home")
         .join(USER)
@@ -86,7 +86,7 @@ fn username_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("config").join("config.yml"))
+    Ok(super::config_dir(app)?.join("config.yml"))
 }
 
 /// PS3 names are short and plain. Anything else is trimmed rather than

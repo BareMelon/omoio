@@ -24,7 +24,7 @@ pub struct Installed {
 }
 
 fn game_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("dev_hdd0").join("game"))
+    Ok(super::data_dir(app)?.join("dev_hdd0").join("game"))
 }
 
 /// RPCS3 keeps its own bookkeeping in here alongside the games. The name is

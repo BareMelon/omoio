@@ -96,14 +96,14 @@ pub fn as_pack(patch: Patch) -> Pack {
 }
 
 pub fn catalogue_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("patches").join("patch.yml"))
+    Ok(super::data_dir(app)?.join("patches").join("patch.yml"))
 }
 
 /// `config/patch_config.yml`, next to RPCS3's other settings. On Windows
 /// RPCS3 asks for its config subdirectory here, which its own File.cpp
 /// resolves to `config/` beside the executable.
 pub fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("config").join("patch_config.yml"))
+    Ok(super::config_dir(app)?.join("patch_config.yml"))
 }
 
 pub fn have_catalogue(app: &AppHandle) -> bool {

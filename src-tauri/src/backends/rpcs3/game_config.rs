@@ -105,14 +105,13 @@ fn curated_for(key: &str) -> Option<&'static Curated> {
 }
 
 fn config_path(app: &AppHandle, title_id: &str) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?
-        .join("config")
+    Ok(super::config_dir(app)?
         .join("custom_configs")
         .join(format!("config_{title_id}.yml")))
 }
 
 fn defaults_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("config").join("config.yml"))
+    Ok(super::config_dir(app)?.join("config.yml"))
 }
 
 /// Every setting the installed RPCS3 has, in the order it lists them.

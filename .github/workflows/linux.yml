@@ -1,0 +1,55 @@
+name: Linux build
+
+on:
+  push:
+    branches: [master, linux-support]
+    tags: ["v*-linux*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl file pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libudev-dev libsdl2-dev xvfb
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Frontend dependencies and icons
+        run: |
+          npm ci
+          npx tauri icon Images/Icon/omoio-icon-1024.png
+          npm run build
+      - name: Rust tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build Debian package and AppImage
+        env:
+          NO_STRIP: true
+        run: npx tauri build
+      - name: Native desktop smoke test
+        run: |
+          set +e
+          timeout 15s xvfb-run -a env WEBKIT_DISABLE_DMABUF_RENDERER=1 src-tauri/target/release/omoio > /tmp/omoio-smoke.log 2>&1
+          status=$?
+          cat /tmp/omoio-smoke.log
+          test "$status" -eq 124
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: omoio-linux-x86_64
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

@@ -1,5 +1,6 @@
 import { listGames, setGameFullscreen, stopGame, type Playing } from "../api";
 import { store } from "../state";
+import { platform } from "../platform";
 
 /// Shown across the top of the content area while a game is running. The game
 /// picture sits below it, so this is the only part of Omoio visible mid-game
@@ -18,6 +19,7 @@ export function renderPlayingBar(playing: Playing): HTMLElement {
   bar.querySelector<HTMLElement>(".playing-name")!.textContent = playing.title;
 
   const fullscreenButton = bar.querySelector<HTMLButtonElement>("#toggle-fullscreen")!;
+  fullscreenButton.hidden = !platform.embedded_games;
   // The key is on the button because once the picture covers the screen the
   // button is behind it, and F11 is then the only way back.
   fullscreenButton.textContent = store.get().gameFullscreen

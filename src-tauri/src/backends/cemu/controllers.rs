@@ -235,6 +235,10 @@ fn reader_for(player: &Player, hid: &[sdl::HidPad], ids: UsbIds) -> Option<Reade
     if player.pad.handler != "SDL" {
         return None;
     }
+    #[cfg(target_os = "linux")]
+    if let Some(found) = crate::pads::cemu_pad(&player.pad.device) {
+        return Some(Reader::Sdl(found));
+    }
     let (vendor, product, ordinal) = ids(&player.pad.device)?;
     sdl::find(vendor, product, ordinal, hid).map(Reader::Sdl)
 }
@@ -411,13 +415,13 @@ pub fn first_player(app: &AppHandle, pro: bool) -> Result<(), String> {
 }
 
 fn profile_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("portable").join("controllerProfiles"))
+    Ok(super::user_data(&super::install_dir(app)?).join("controllerProfiles"))
 }
 
 /// Writes the layout for every game where Cemu reads it. Nothing is written
 /// before Cemu is installed, and a game's own layout is left to RPCS3.
 pub fn write(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), String> {
-    if !title_id.is_empty() || !super::install_dir(app)?.join("Cemu.exe").is_file() {
+    if !title_id.is_empty() || !super::exe_path(app)?.is_file() {
         return Ok(());
     }
     let hid = hid_for(players, super::detect_version(app).as_deref(), sdl::hid_pads);

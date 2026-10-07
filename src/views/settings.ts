@@ -377,9 +377,8 @@ export async function renderSettings(): Promise<View> {
   content.appendChild(section("Session logs", keep.row, logsRow.row));
 
   // ---- Omoio itself ----
-  const versionRow = row("Omoio", "Looks for a new version when it starts and every few hours after.");
-  const [updateSaid, updateButton] = updateControls();
-  versionRow.right.append(updateSaid, value(version), updateButton);
+  const versionRow = row("Omoio", "Install updates to this fork from its GitHub releases. Emulator updates are automatic.");
+  versionRow.right.append(value(version), ...updateControls());
   content.appendChild(section("Updates", versionRow.row));
 
   // ---- library ----

@@ -5,6 +5,13 @@
 <p align="center">Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.</p>
 <p align="center"><a href="https://omoio.app">omoio.app</a> · <a href="https://ko-fi.com/omoio">Support on Ko-fi</a></p>
 
+**Linux fork:** this repository adds native x86_64 Linux support to
+[Bertrram/omoio](https://github.com/Bertrram/omoio). See the
+[Linux installation and build guide](docs/linux.md) for packages, supported
+features and current limits. The screenshots and Windows instructions below
+describe the upstream app. Use this fork's builds for Linux; omoio.app hosts
+upstream Windows installers.
+
 [![The Omoio video on YouTube, 1 minute 10 seconds](design/screenshots/video.jpg)](https://youtu.be/wWmthRdoImE)
 
 ![The library, with the panel for The Last of Us open](design/screenshots/library.png)
@@ -245,7 +252,9 @@ credit wherever they appear.
 <summary>Does it run on Mac or Linux?</summary>
 <br>
 
-No, only on Windows.
+This fork supports x86_64 Linux and Windows. On Linux, games run in separate
+emulator windows; the embedded window and automated Skylanders portal menu
+remain Windows-only. See [Linux support](docs/linux.md). macOS is not supported.
 
 </details>
 

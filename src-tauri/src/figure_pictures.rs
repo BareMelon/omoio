@@ -93,6 +93,9 @@ fn fingerprint(bytes: &[u8]) -> String {
 
 /// The reader, downloaded the first time and checked every time.
 async fn reader(app: &AppHandle) -> Result<PathBuf, String> {
+    if !cfg!(windows) {
+        return Err("The Skylanders picture reader currently has a Windows build only.".into());
+    }
     let path = app
         .path()
         .local_data_dir()

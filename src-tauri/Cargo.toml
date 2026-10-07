@@ -1,7 +1,7 @@
 [package]
 name = "omoio"
 version = "0.2.4"
-description = "A game library for Windows that sets up and runs PS3 and Wii U games through RPCS3 and Cemu"
+description = "A game library for Windows and Linux that runs PS3 and Wii U games through RPCS3 and Cemu"
 authors = ["Bertram Bech"]
 license = "MIT"
 edition = "2021"
@@ -18,7 +18,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
-tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
@@ -28,23 +27,6 @@ sysinfo = "0.39"
 # whose widgets are not windows of their own. See backends/rpcs3/portal.rs.
 # The HID and device-setup pieces read pads the way Cemu's SDL does, to name
 # them in its profiles. See backends/cemu/sdl.rs.
-windows = { version = "0.62", features = [
-    "Win32_Devices_DeviceAndDriverInstallation",
-    "Win32_Devices_HumanInterfaceDevice",
-    "Win32_Graphics_Dxgi",
-    "Win32_Graphics_Gdi",
-    "Win32_Foundation",
-    "Win32_Storage_FileSystem",
-    "Win32_System_Com",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Ole",
-    "Win32_System_Threading",
-    "Win32_System_Variant",
-    "Win32_UI_Accessibility",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_UI_Input_XboxController",
-] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
 sevenz-rust2 = "0.22"
 zip = "4"
@@ -82,6 +64,29 @@ png = "0.17"
 # new crate. A Wii U game kept as a .wua, Cemu's own archive, has its files
 # in zstd blocks, and its meta.xml is read from there. See backends/cemu/wua.rs.
 zstd = "0.13"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+sdl2 = "0.38"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_XboxController",
+] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

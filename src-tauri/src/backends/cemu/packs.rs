@@ -59,7 +59,7 @@ struct Asset {
 }
 
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("portable"))
+    Ok(super::user_data(&super::install_dir(app)?))
 }
 
 fn folder(app: &AppHandle) -> Result<PathBuf, String> {

@@ -16,6 +16,16 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+#[cfg(target_os = "linux")]
+#[path = "pads_linux.rs"]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::watch;
+#[cfg(target_os = "linux")]
+pub fn cemu_pad(device: &str) -> Option<crate::backends::cemu::sdl::Found> {
+    linux::cemu_pad(device)
+}
+
 /// USB vendor ids, which say who made a pad and so how its buttons are
 /// marked.
 const MICROSOFT: u16 = 0x045E;
@@ -37,7 +47,16 @@ pub fn xinput_slot(slot: usize) -> Pad {
 /// The four XInput slots, which a player can be given before anything is in
 /// them.
 pub fn xinput_slots() -> Vec<Pad> {
-    (0..4).map(xinput_slot).collect()
+    if cfg!(windows) {
+        (0..4).map(xinput_slot).collect()
+    } else {
+        (0..4).map(|slot| Pad {
+            device: format!("Disconnected Pad #{}", slot + 1),
+            name: format!("Player {} (not connected)", slot + 1),
+            handler: "Null".into(),
+            family: "generic".into(),
+        }).collect()
+    }
 }
 
 fn family_of(vendor: Option<u16>) -> &'static str {
@@ -154,6 +173,7 @@ fn xinput_held(_slot: u32) -> Option<Vec<&'static str>> {
 
 /// What a pad gilrs reads has held, by place. Triggers are buttons on some
 /// pads and axes on others, so both are looked at.
+#[cfg(not(target_os = "linux"))]
 fn sdl_held(pad: &gilrs::Gamepad) -> Vec<&'static str> {
     use gilrs::{Axis, Button};
     const BUTTONS: [(Button, &str); 17] = [
@@ -207,6 +227,8 @@ struct Seen {
     vendor: Option<u16>,
     product: Option<u16>,
     held: Vec<&'static str>,
+    #[cfg(target_os = "linux")]
+    cemu: crate::backends::cemu::sdl::Found,
 }
 
 /// `None` until gilrs has had its first look.
@@ -217,6 +239,7 @@ fn seen() -> &'static Mutex<Option<Vec<Seen>>> {
 
 /// Starts the thread that owns gilrs the first time a pad is asked about, and
 /// waits a moment for its first look so that question gets a real answer.
+#[cfg(not(target_os = "linux"))]
 fn watch() {
     static STARTED: OnceLock<()> = OnceLock::new();
     STARTED.get_or_init(|| {

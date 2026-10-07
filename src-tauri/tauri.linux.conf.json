@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "linux": {
+      "deb": {
+        "depends": ["libsdl2-2.0-0", "libudev1"]
+      }
+    }
+  }
+}

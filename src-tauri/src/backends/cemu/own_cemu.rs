@@ -37,13 +37,13 @@ pub(super) fn places(picked: &Path, appdata_cemu: Option<&Path>) -> Result<Place
         picked.join("portable")
     } else if holds_data(picked) {
         picked.to_path_buf()
-    } else if picked.join("Cemu.exe").is_file() {
+    } else if picked.join("Cemu.exe").is_file() || picked.join("Cemu").is_file() || picked.join("AppRun").is_file() || picked.join("cemu").is_file() {
         appdata_cemu
             .filter(|dir| holds_data(dir))
             .map(Path::to_path_buf)
             .ok_or("This Cemu hasn't saved anything yet, so there is nothing to bring over.")?
     } else {
-        return Err("This doesn't look like a Cemu folder. Choose the folder Cemu.exe is in.".to_string());
+        return Err("This doesn't look like a Cemu folder. Choose your Cemu data folder (the one containing settings.xml or mlc01).".to_string());
     };
     let mut mlc = super::mlc_folder(&root);
     if mlc.is_relative() {
@@ -59,10 +59,10 @@ pub(super) fn places(picked: &Path, appdata_cemu: Option<&Path>) -> Result<Place
 /// Where Omoio's own Cemu keeps them.
 fn omoio_places(app: &AppHandle) -> Result<Places, String> {
     let dir = super::install_dir(app)?;
-    if !dir.join("Cemu.exe").is_file() {
+    if !super::exe_path(app)?.is_file() {
         return Err("Install Cemu first, then bring yours over.".to_string());
     }
-    let root = dir.join("portable");
+    let root = super::user_data(&dir);
     let mut mlc = super::mlc_folder(&root);
     if mlc.is_relative() {
         mlc = root.join(mlc);
@@ -80,7 +80,8 @@ fn set_aside_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn user_places(app: &AppHandle, picked: &str) -> Result<Places, String> {
-    let appdata = app.path().config_dir().ok().map(|dir| dir.join("Cemu"));
+    let appdata = if cfg!(windows) { app.path().config_dir() } else { app.path().data_dir() }
+        .ok().map(|dir| dir.join("Cemu"));
     let from = places(Path::new(picked), appdata.as_deref())?;
     let to = omoio_places(app)?;
     if same_folder(&from.root, &to.root) || same_folder(&from.saves, &to.saves) {

@@ -4,7 +4,7 @@ use tauri::AppHandle;
 const PUP_MAGIC: &[u8] = b"SCEUF\0\0\0";
 
 fn dev_flash_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("dev_flash"))
+    Ok(super::data_dir(app)?.join("dev_flash"))
 }
 
 pub fn detect_version(app: &AppHandle) -> Option<String> {

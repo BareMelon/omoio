@@ -61,6 +61,7 @@ impl Session {
     /// A game still starting has no window yet; it is hidden the moment it
     /// gets one. Says whether a game was running.
     pub fn hide_game(&self) -> bool {
+        if !cfg!(windows) { return false; }
         let window = {
             let mut inner = self.inner.lock().unwrap();
             let Some(running) = inner.as_mut() else {
@@ -156,7 +157,7 @@ impl Session {
 }
 
 #[cfg(windows)]
-fn kill(pid: u32) {
+pub(crate) fn kill(pid: u32) {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let _ = std::process::Command::new("taskkill")
@@ -165,10 +166,15 @@ fn kill(pid: u32) {
         .output();
 }
 
-#[cfg(not(windows))]
-fn kill(_pid: u32) {}
+#[cfg(target_os = "linux")]
+pub(crate) fn kill(pid: u32) {
+    // Children are launched in their own process group (platform::command).
+    if let Ok(pid) = i32::try_from(pid) {
+        if pid > 1 { unsafe { libc::kill(-pid, libc::SIGKILL); } }
+    }
+}
 
-fn still_running(pid: u32) -> bool {
+pub(crate) fn still_running(pid: u32) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -184,8 +190,10 @@ fn still_running(pid: u32) -> bool {
     }
     #[cfg(not(windows))]
     {
-        let _ = pid;
-        false
+        // Treat a zombie as stopped even before the reaper thread runs.
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false; };
+        let state = stat.rsplit_once(") ").and_then(|(_, rest)| rest.chars().next());
+        !matches!(state, None | Some('Z') | Some('X'))
     }
 }
 
@@ -223,6 +231,14 @@ pub fn watch(app: AppHandle, pid: u32) {
                 return;
             }
 
+            #[cfg(not(windows))]
+            if !attached {
+                attached = true;
+                let _ = app.emit("game-started", session.playing());
+            }
+
+            #[cfg(windows)]
+            {
             let Some(window) = app.get_webview_window("main") else {
                 continue;
             };
@@ -266,6 +282,7 @@ pub fn watch(app: AppHandle, pid: u32) {
                 if let (Some(backend), Some(game)) = (backend, session.window()) {
                     backend.tidy_window(pid, game);
                 }
+            }
             }
         }
     });

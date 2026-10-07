@@ -50,6 +50,9 @@ pub fn set(app: &AppHandle, on: bool) -> Result<(), String> {
     let window = app.get_webview_window("main").ok_or("Omoio's window isn't there.")?;
     let session = app.state::<Session>();
     if on && session.playing().is_some() {
+        if !cfg!(windows) {
+            return Err("Linux games run in their own windows. Switch back to Omoio after closing the game.".to_string());
+        }
         session.hide_game();
         crate::portal_menu::close(app);
     }
@@ -122,7 +125,10 @@ fn watch(app: AppHandle) {
             std::thread::sleep(Duration::from_millis(50));
             let mut ours = vec![std::process::id()];
             ours.extend(app.state::<Session>().pid());
-            let now = overlay::front_belongs_to(&ours)
+            let focused = if cfg!(windows) { overlay::front_belongs_to(&ours) } else {
+                app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false))
+            };
+            let now = focused
                 && crate::pads::connected()
                     .iter()
                     .any(|pad| crate::pads::held(&pad.device).is_some_and(|held| is_chord(&held)));

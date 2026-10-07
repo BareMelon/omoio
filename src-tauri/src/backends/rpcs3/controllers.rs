@@ -123,7 +123,7 @@ fn display_name(handler: &str, device: &str) -> String {
 }
 
 fn profile_dir(app: &AppHandle, title_id: &str) -> Result<PathBuf, String> {
-    let root = super::install_dir(app)?.join("config").join("input_configs");
+    let root = super::config_dir(app)?.join("input_configs");
     Ok(if title_id.is_empty() {
         root.join("global")
     } else {
@@ -252,7 +252,7 @@ fn quoted(value: &str) -> String {
 
 /// Writes the players' layout where RPCS3 reads it, for every game or for one.
 pub fn write(app: &AppHandle, title_id: &str, players: &[Player]) -> Result<(), String> {
-    let usable = |p: &Player| !p.pad.device.is_empty() && matches!(p.pad.handler.as_str(), "XInput" | "SDL");
+    let usable = |p: &Player| !p.pad.device.is_empty() && (matches!(p.pad.handler.as_str(), "XInput" | "SDL") || (!cfg!(windows) && p.pad.handler == "Null"));
     if !players.iter().all(usable) {
         return Err("Couldn't save the controller settings.".to_string());
     }
@@ -277,8 +277,8 @@ pub fn forget(app: &AppHandle, title_id: &str) -> Result<(), String> {
 /// own, read in the first time Omoio keeps a layout of its own.
 pub fn existing(app: &AppHandle) -> Vec<(String, Vec<Player>)> {
     let mut scopes = vec![String::new()];
-    if let Ok(entries) = super::install_dir(app)
-        .map(|dir| dir.join("config").join("input_configs"))
+    if let Ok(entries) = super::config_dir(app)
+        .map(|dir| dir.join("input_configs"))
         .and_then(|root| std::fs::read_dir(root).map_err(|e| e.to_string()))
     {
         scopes.extend(

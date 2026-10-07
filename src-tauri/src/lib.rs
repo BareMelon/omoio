@@ -8,6 +8,7 @@ pub mod core;
 mod hardware;
 pub mod import;
 mod pads;
+mod platform;
 mod figure_pictures;
 mod portal_menu;
 pub mod session;
@@ -39,12 +40,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            #[cfg(desktop)]
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             big_picture::start(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::platform_info,
             commands::get_hardware_info,
             commands::get_rpcs3_version,
             commands::install_rpcs3,

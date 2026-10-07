@@ -33,6 +33,7 @@ import { renderSystem } from "./views/system";
 import { renderLogs } from "./views/logs";
 import { renderSettings } from "./views/settings";
 import type { View } from "./views/view";
+import { platform } from "./platform";
 
 const VIEWS: Record<ViewId, () => View | Promise<View>> = {
   library: renderLibrary,
@@ -117,6 +118,11 @@ store.subscribe((state) => {
       topbar.replaceChildren(renderPlayingBar(state.playing));
     }
     content.replaceChildren();
+    if (!platform.embedded_games) {
+      const message = document.createElement("p");
+      message.textContent = "Your game is running in the emulator window. Switch to it to play; use its fullscreen shortcut there. You can stop the game from Omoio.";
+      content.appendChild(message);
+    }
     return;
   }
   if (barShowing !== null) {

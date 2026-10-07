@@ -332,7 +332,7 @@ pub fn installed_version(app: &AppHandle, title_id: &str) -> Option<String> {
     if title_id.is_empty() || title_id.contains(['/', '\\', '.', ':']) {
         return None;
     }
-    let path = super::install_dir(app)
+    let path = super::data_dir(app)
         .ok()?
         .join("dev_hdd0")
         .join("game")
@@ -344,7 +344,7 @@ pub fn installed_version(app: &AppHandle, title_id: &str) -> Option<String> {
 }
 
 fn downloads_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("omoio-updates"))
+    Ok(super::data_dir(app)?.join("omoio-updates"))
 }
 
 /// Downloads one update and hands it to RPCS3 to install.

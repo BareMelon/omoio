@@ -9,6 +9,7 @@ pub mod game_profile;
 pub mod keys;
 pub mod own_cemu;
 pub mod packs;
+#[cfg(windows)]
 pub mod portal;
 pub mod release;
 pub mod sdl;
@@ -38,12 +39,21 @@ pub fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(install_dir(app)?.join("Cemu.exe"))
+    #[cfg(windows)]
+    { Ok(install_dir(app)?.join("Cemu.exe")) }
+    #[cfg(not(windows))]
+    { Ok(install_dir(app)?.join("AppDir/AppRun")) }
+}
+
+/// The Linux build uses XDG paths (CemuApp.cpp v2.6). Keep config, data and
+/// cache in the same private directory, matching Windows portable mode.
+pub(super) fn user_data(root: &Path) -> PathBuf {
+    if cfg!(windows) { root.join("portable") } else { root.join("xdg/Cemu") }
 }
 
 pub fn detect_version(app: &AppHandle) -> Option<String> {
     let dir = install_dir(app).ok()?;
-    if !dir.join("Cemu.exe").is_file() {
+    if !exe_path(app).ok().is_some_and(|p| p.is_file()) {
         return None;
     }
     let tag = std::fs::read_to_string(dir.join(VERSION_FILE)).ok()?;
@@ -72,6 +82,9 @@ pub async fn newest_version() -> Result<String, String> {
 /// page, checks it is the file that was checked, and unpacks it into Omoio's
 /// folder. Returns the version installed.
 pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, String> {
+    if cfg!(target_os = "linux") && std::env::consts::ARCH != "x86_64" {
+        return Err("Automatic Cemu installation currently supports x86_64 Linux.".into());
+    }
     let client = reqwest::Client::new();
 
     emit(&app, "checking", 0, 0);
@@ -115,7 +128,12 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
 
     emit(&app, "extracting", 0, 1);
     let (from, into) = (zip_path.clone(), dir.clone());
-    tauri::async_runtime::spawn_blocking(move || unpack(&from, &into))
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        { unpack(&from, &into) }
+        #[cfg(target_os = "linux")]
+        { crate::platform::install_appimage(&from, &into) }
+    })
         .await
         .map_err(|e| e.to_string())??;
     let _ = std::fs::remove_file(&zip_path);
@@ -123,11 +141,11 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
     // A folder named portable beside Cemu.exe keeps its settings, saves and
     // cache inside Omoio's folder instead of %APPDATA%\Cemu, where the user
     // may already have a Cemu of their own.
-    std::fs::create_dir_all(dir.join("portable")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(user_data(&dir)).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(VERSION_FILE), release::TAG).map_err(|e| e.to_string())?;
 
     emit(&app, "done", 1, 1);
-    detect_version(&app).ok_or_else(|| "Cemu unpacked, but Cemu.exe isn't where it should be.".to_string())
+    detect_version(&app).ok_or_else(|| "Cemu unpacked, but its executable isn't where it should be.".to_string())
 }
 
 /// The release zip holds one folder, such as `Cemu_2.6/`, around everything.
@@ -521,7 +539,7 @@ fn save_icon(mlc: &Path, title_id: &str) -> Option<PathBuf> {
 /// decrypted, as the console does. Omoio only reads what Cemu wrote.
 fn played_picture(app: &AppHandle, game: &Game) -> Option<Vec<u8>> {
     let title_id = title_id_for(app, game)?;
-    let mlc = mlc_folder(&install_dir(app).ok()?.join("portable"));
+    let mlc = mlc_folder(&user_data(&install_dir(app).ok()?));
     tga_as_png(&save_icon(&mlc, &title_id)?)
 }
 
@@ -760,10 +778,12 @@ fn tune_settings(settings: &Path, skylanders: bool) -> std::io::Result<()> {
     let before = std::fs::read_to_string(settings)?;
     let portal = if skylanders { "true" } else { "false" };
     let mut text = set_setting(&before, &["EmulatedUsbDevices"], "EmulateSkylanderPortal", portal);
-    text = set_setting(&text, &[], "fullscreen", "false");
-    text = set_setting(&text, &[], "window_maximized", "false");
-    text = set_setting(&text, &["window_position"], "x", OFF_SCREEN);
-    text = set_setting(&text, &["window_position"], "y", OFF_SCREEN);
+    if cfg!(windows) {
+        text = set_setting(&text, &[], "fullscreen", "false");
+        text = set_setting(&text, &[], "window_maximized", "false");
+        text = set_setting(&text, &["window_position"], "x", OFF_SCREEN);
+        text = set_setting(&text, &["window_position"], "y", OFF_SCREEN);
+    }
     for notice in ["ControllerProfiles", "ShaderCompiling", "FriendService"] {
         text = set_setting(&text, &["Graphic", "Notification"], notice, "false");
     }
@@ -793,12 +813,12 @@ fn write_first_settings(portable: &Path) -> std::io::Result<()> {
 /// Cemu is a GUI program; without this every start of it from Omoio would
 /// flash a console window over whatever the user is looking at.
 fn command(exe: &Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new(exe);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+    let mut cmd = crate::platform::command(exe);
+    #[cfg(target_os = "linux")]
+    if let Some(root) = exe.parent().and_then(Path::parent) {
+        let xdg = root.join("xdg");
+        cmd.current_dir(root).env("XDG_CONFIG_HOME", &xdg)
+            .env("XDG_DATA_HOME", &xdg).env("XDG_CACHE_HOME", &xdg);
     }
     cmd
 }
@@ -826,10 +846,10 @@ impl super::EmulatorBackend for Cemu {
         // pad whatever is in front, so Omoio keeps its input settings window
         // open while a menu is over the game, which stops that (`hush`).
         Features {
-            portal: true,
+            portal: cfg!(windows),
             settings: true,
             packs: true,
-            quiet_behind: true,
+            quiet_behind: cfg!(windows),
             ..Features::default()
         }
     }
@@ -873,19 +893,21 @@ impl super::EmulatorBackend for Cemu {
         let Ok(dir) = install_dir(app) else {
             return;
         };
-        if !dir.join("Cemu.exe").is_file() {
+        if !exe_path(app).ok().is_some_and(|p| p.is_file()) {
             return;
         }
-        let portable = dir.join("portable");
+        let portable = user_data(&dir);
         let _ = write_first_settings(&portable);
         let _ = tune_settings(&portable.join("settings.xml"), is_skylanders(&game.title));
         packs::apply(app);
     }
 
+    #[cfg(windows)]
     fn tidy_window(&self, pid: u32, _game: isize) {
         portal::tidy(pid);
     }
 
+    #[cfg(windows)]
     fn hush(&self, pid: u32, hushed: bool) -> Result<(), String> {
         portal::hush(pid, hushed)
     }
@@ -915,22 +937,27 @@ impl super::EmulatorBackend for Cemu {
         game_profile::write(&install_dir(app)?, &title_id, &game.title, chosen)
     }
 
+    #[cfg(windows)]
     fn portal_figures(&self, pid: u32) -> Result<Vec<String>, String> {
         portal::figures(pid)
     }
 
+    #[cfg(windows)]
     fn portal_load(&self, pid: u32, slot: usize, figure: &Path) -> Result<Vec<String>, String> {
         portal::load(pid, slot, figure)
     }
 
+    #[cfg(windows)]
     fn portal_clear(&self, pid: u32, slot: usize) -> Result<Vec<String>, String> {
         portal::clear(pid, slot)
     }
 
+    #[cfg(windows)]
     fn portal_characters(&self, pid: u32) -> Result<Vec<crate::core::figures::Character>, String> {
         portal::characters(pid)
     }
 
+    #[cfg(windows)]
     fn portal_create(
         &self,
         pid: u32,
@@ -941,6 +968,7 @@ impl super::EmulatorBackend for Cemu {
         portal::create(pid, slot, character, file)
     }
 
+    #[cfg(windows)]
     fn ready_portal(&self, pid: u32) {
         portal::ready(pid)
     }
@@ -992,12 +1020,15 @@ impl super::EmulatorBackend for Cemu {
         // loose programs. Given a .wua, Cemu starts the title `game_in_wua`
         // picks (checked with Trap Team, 6 October 2026). Not `-f`: Omoio places the picture itself, in its window
         // or across the screen, the same as it does for RPCS3.
-        let child = command(&exe)
+        let mut cmd = command(&exe);
+        #[cfg(target_os = "linux")]
+        if crate::platform::start_fullscreen(app) { cmd.arg("-f"); }
+        let child = cmd
             .arg("-g")
             .arg(&game.path)
             .spawn()
             .map_err(|e| e.to_string())?;
-        Ok(child.id())
+        Ok(crate::platform::track(child))
     }
 
     fn detect_version(&self, app: &AppHandle) -> Option<String> {
@@ -1005,7 +1036,7 @@ impl super::EmulatorBackend for Cemu {
     }
 
     fn log_file(&self, app: &AppHandle) -> Option<PathBuf> {
-        install_dir(app).ok().map(|dir| dir.join("portable").join("log.txt"))
+        install_dir(app).ok().map(|dir| user_data(&dir).join("log.txt"))
     }
 
     fn version_from_log(&self, log: &str) -> Option<String> {
@@ -1409,12 +1440,13 @@ Deluxe");
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("<EmulateSkylanderPortal>true</EmulateSkylanderPortal>"), "{text}");
         assert!(text.contains("<api>1</api>"), "the rest is left alone");
-        assert!(text.contains("<fullscreen>false</fullscreen>"), "{text}");
+        if cfg!(windows) { assert!(text.contains("<fullscreen>false</fullscreen>"), "{text}"); }
         assert!(text.contains("<ShaderCompiling>false</ShaderCompiling>"), "{text}");
         assert!(text.contains("<TVDevice>default</TVDevice>"), "{text}");
-        assert!(text.contains("<window_position><x>-30000</x>"), "{text}");
+        if cfg!(windows) { assert!(text.contains("<window_position><x>-30000</x>"), "{text}"); }
         assert!(text.contains("<TVVolume>100</TVVolume>"), "{text}");
-        assert!(text.contains("<y>-30000</y>"), "{text}");
+        if cfg!(windows) { assert!(text.contains("<y>-30000</y>"), "{text}"); }
+        else { assert!(!text.contains("-30000"), "Linux windows must stay on screen: {text}"); }
 
         tune_settings(&file, false).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();

@@ -25,7 +25,7 @@ pub struct Backup {
 }
 
 fn home(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(super::install_dir(app)?.join("dev_hdd0").join("home"))
+    Ok(super::data_dir(app)?.join("dev_hdd0").join("home"))
 }
 
 fn backups_dir(app: &AppHandle, title_id: &str) -> Result<PathBuf, String> {

@@ -19,6 +19,17 @@ pub fn get_hardware_info() -> HardwareInfo {
     hardware::detect()
 }
 
+#[derive(serde::Serialize)]
+pub struct PlatformInfo {
+    os: &'static str,
+    embedded_games: bool,
+}
+
+#[tauri::command]
+pub fn platform_info() -> PlatformInfo {
+    PlatformInfo { os: std::env::consts::OS, embedded_games: cfg!(windows) }
+}
+
 #[derive(Default)]
 pub struct InstallState {
     cancel: Arc<AtomicBool>,
@@ -285,8 +296,12 @@ fn free_space(path: &Path) -> Option<u64> {
 }
 
 #[cfg(not(windows))]
-fn free_space(_path: &Path) -> Option<u64> {
-    None
+fn free_space(path: &Path) -> Option<u64> {
+    let path = path.canonicalize().ok().or_else(|| path.parent()?.canonicalize().ok())?;
+    sysinfo::Disks::new_with_refreshed_list().iter()
+        .filter(|disk| path.starts_with(disk.mount_point()))
+        .max_by_key(|disk| disk.mount_point().as_os_str().len())
+        .map(|disk| disk.available_space())
 }
 
 /// The game's own picture, kept under our own folder. A game imported before
@@ -1678,7 +1693,10 @@ pub fn portal_menu_family() -> String {
 pub fn pads_held(app: AppHandle) -> Vec<&'static str> {
     let mut ours = vec![std::process::id()];
     ours.extend(app.state::<Session>().pid());
-    if !crate::backends::rpcs3::overlay::front_belongs_to(&ours) {
+    let focused = if cfg!(windows) { crate::backends::rpcs3::overlay::front_belongs_to(&ours) } else {
+        app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false))
+    };
+    if !focused {
         return Vec::new();
     }
     crate::pads::held_anywhere()
