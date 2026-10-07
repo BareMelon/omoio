@@ -10,7 +10,11 @@ fn numbers(version: &str) -> Vec<u64> {
     version
         .strip_prefix('v')
         .unwrap_or(version)
-        .split(['.', '-'])
+        // A numeric-only RPCS3 commit hash is still a hash, not a version
+        // component. Mac bundle metadata contains only version and build.
+        .split('-')
+        .take(2)
+        .flat_map(|part| part.split('.'))
         .map_while(|piece| piece.parse().ok())
         .collect()
 }
@@ -40,6 +44,14 @@ mod tests {
         assert!(!is_newer_release("0.0.42-19981-954d7968", "0.0.42-19985-6ba56a52"));
         assert!(!is_newer_release("0.0.42-19985-6ba56a52", "0.0.42-19985-6ba56a52"));
         assert!(is_newer_release("0.0.43-20001-0a1b2c3d", "0.0.42-19985-6ba56a52"));
+    }
+
+    #[test]
+    fn mac_bundle_build_numbers_compare_without_a_commit_hash() {
+        assert!(!is_newer_release("0.0.43-20240-12345678", "0.0.43-20240"));
+        assert!(!is_newer_release("0.0.43-20240-5f8dd1de", "0.0.43-20240"));
+        assert!(is_newer_release("0.0.43-20241-12345678", "0.0.43-20240"));
+        assert!(!is_newer_release("0.0.43-20239-12345678", "0.0.43-20240"));
     }
 
     #[test]

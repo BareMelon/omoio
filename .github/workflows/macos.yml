@@ -86,7 +86,13 @@ jobs:
           finally:
               if process.poll() is None:
                   process.terminate()
-              process.wait(timeout=15)
+              try:
+                  process.wait(timeout=5)
+              except subprocess.TimeoutExpired:
+                  # Cocoa may defer SIGTERM while its native event loop is
+                  # running. Reap the smoke-test process deterministically.
+                  process.kill()
+                  process.wait(timeout=5)
           PY
           ditto -c -k --sequesterRsrc --keepParent src-tauri/target/release/bundle/macos/Omoio.app "src-tauri/target/release/bundle/macos/Omoio_macos_${{ matrix.architecture }}.zip"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
