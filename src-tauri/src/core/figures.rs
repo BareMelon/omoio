@@ -4,7 +4,7 @@
 //! numbers only. These facts were checked against Dolphin's figure list,
 //! which has them for every figure; the table here is Omoio's own.
 
-use crate::core::console::Console;
+use crate::core::console::{Console, Features};
 use serde::{Deserialize, Serialize};
 
 /// The element a figure belongs to.
@@ -77,6 +77,13 @@ pub fn has_portal_menu(console: Console, title: &str) -> bool {
             (console, game_from_title(title)),
             (Console::Ps3, Some(Game::Giants)) | (Console::WiiU, Some(Game::SwapForce | Game::TrapTeam))
         )
+}
+
+/// Whether a game in the library shows the portal menu: its emulator fills
+/// the portal, and the menu works in the game. The game's page and Big
+/// Picture ask this, so neither guesses from the title.
+pub fn offers_portal_menu(features: Features, console: Console, title: &str) -> bool {
+    features.portal && has_portal_menu(console, title)
 }
 
 /// The game a figure id came out with. The sidekicks of the first two games
@@ -620,6 +627,37 @@ mod tests {
         assert!(!has_portal_menu(Console::Ps3, "Skylanders Trap Team"));
         assert!(!has_portal_menu(Console::WiiU, "Skylanders: SuperChargers"));
         assert!(!has_portal_menu(Console::Ps3, "Giants: Citizen Kabuto"), "not a Skylanders game");
+    }
+
+    #[test]
+    fn the_other_skylanders_games_have_no_portal_menu_yet() {
+        // Spyro's Adventure comes later, through Dolphin. Its Wii U release
+        // was sold in Japan only.
+        assert!(!has_portal_menu(Console::Ps3, "Skylanders: Spyro's Adventure"));
+        assert!(!has_portal_menu(Console::WiiU, "Skylanders Spyro's Adventure"));
+        assert!(!has_portal_menu(Console::Ps3, "Skylanders SuperChargers"));
+        assert!(!has_portal_menu(Console::Ps3, "Skylanders Imaginators"));
+        assert!(!has_portal_menu(Console::WiiU, "Skylanders Imaginators"));
+        assert!(!has_portal_menu(Console::Ps3, "Skylanders SWAP Force"));
+    }
+
+    #[test]
+    fn titles_are_read_whatever_their_case() {
+        assert!(has_portal_menu(Console::WiiU, "SKYLANDERS SWAP FORCE"));
+        assert!(has_portal_menu(Console::WiiU, "Skylanders Trap Team™"));
+        assert!(has_portal_menu(Console::Ps3, "skylanders giants"));
+    }
+
+    #[test]
+    fn the_portal_menu_is_offered_only_where_the_emulator_fills_the_portal() {
+        let portal = Features { portal: true, ..Features::default() };
+        let none = Features::default();
+
+        assert!(offers_portal_menu(portal, Console::Ps3, "Skylanders Giants"));
+        assert!(offers_portal_menu(portal, Console::WiiU, "Skylanders SWAP Force"));
+        assert!(!offers_portal_menu(none, Console::Ps3, "Skylanders Giants"));
+        assert!(!offers_portal_menu(portal, Console::Ps3, "Skylanders: Spyro's Adventure"));
+        assert!(!offers_portal_menu(portal, Console::WiiU, "Mario Kart 8"));
     }
 
     #[test]

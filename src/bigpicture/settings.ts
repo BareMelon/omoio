@@ -238,8 +238,8 @@ export function settingsScreen(kit: Kit, cap: (input: string) => string, start: 
     chord.innerHTML = `${cap("Back")}<span>+</span>${cap("Start")}`;
     rows.push(row("pad:chord", "Back to Big Picture from a game", chord, undefined, "Press both together while playing."));
 
-    const skylanders = (store.get().games ?? []).some((game) => game.features.portal && /skylanders/i.test(game.title));
-    if (skylanders && controllers) {
+    const portalMenu = (store.get().games ?? []).some((game) => game.portal_menu);
+    if (portalMenu && controllers) {
       const known = controllers;
       const current = h("span", "bp-row-value bp-caps");
       current.innerHTML = cap(known.portal);
