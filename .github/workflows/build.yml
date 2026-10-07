@@ -7,20 +7,30 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: read
+# No token rights by default; the one job below asks only for what it needs.
+permissions: {}
 
 jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 60
+    # Read the code, nothing else. The token cannot push, tag or publish.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned to full commit SHAs, so a moved or hijacked tag
+      # cannot change what runs next to the signing key.
+      # Don't leave the GitHub token on disk for the later steps.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      # No npm cache: a cache can be written by other runs, and anything
+      # restored from it runs in the same job as the signing key.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
+          package-manager-cache: false
 
       - name: Rust toolchain
         run: rustup toolchain install stable --profile minimal && rustup default stable
@@ -38,7 +48,8 @@ jobs:
       # Bash rather than PowerShell: the update key has no password, and
       # PowerShell drops a variable set to "", which leaves Tauri waiting for
       # one. Without the key secret the installer is still built, only without
-      # the signature the in-app updater checks.
+      # the signature the in-app updater checks. The key is given to this step
+      # only, never to the whole job.
       - name: Build installer
         shell: bash
         env:
@@ -52,7 +63,7 @@ jobs:
             npx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: omoio-installer
           path: |
