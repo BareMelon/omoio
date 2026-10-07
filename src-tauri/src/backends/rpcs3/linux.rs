@@ -51,8 +51,7 @@ pub(super) async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<S
     // let metadata for that launcher retain the previous emulator version.
     *KNOWN.lock().unwrap() = None;
     std::fs::create_dir_all(data_dir(&app)?).map_err(|e| e.to_string())?;
-    let version =
-        read_version(&exe_path(&app)?).ok_or("RPCS3 installed but did not report a version")?;
+    let version = read_version_checked(&exe_path(&app)?)?;
     emit(&app, "done", 1, 1);
     Ok(version)
 }

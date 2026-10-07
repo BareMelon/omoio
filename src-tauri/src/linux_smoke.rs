@@ -2,7 +2,10 @@
 //! It downloads official emulators but uses no firmware or game dumps.
 
 use crate::backends::{cemu, rpcs3};
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI32, Ordering},
+    Arc,
+};
 use tauri::Manager;
 
 async fn check(app: &tauri::AppHandle) -> Result<(), String> {
@@ -46,10 +49,13 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub fn run() {
+pub fn run() -> i32 {
+    let outcome = Arc::new(AtomicI32::new(1));
+    let result = outcome.clone();
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
+            let result = result.clone();
             tauri::async_runtime::spawn(async move {
                 let code = match check(&handle).await {
                     Ok(()) => 0,
@@ -58,10 +64,12 @@ pub fn run() {
                         1
                     }
                 };
+                result.store(code, Ordering::SeqCst);
                 handle.exit(code);
             });
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("Linux smoke-test runtime failed");
+    outcome.load(Ordering::SeqCst)
 }

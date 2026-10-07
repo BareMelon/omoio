@@ -49,7 +49,10 @@ jobs:
           XDG_DATA_HOME: /tmp/omoio-integration/data
           XDG_CONFIG_HOME: /tmp/omoio-integration/config
           XDG_CACHE_HOME: /tmp/omoio-integration/cache
-        run: timeout 180s xvfb-run -a cargo run --locked --manifest-path src-tauri/Cargo.toml --example linux_smoke
+        run: |
+          set -o pipefail
+          timeout 180s xvfb-run -a cargo run --locked --manifest-path src-tauri/Cargo.toml --example linux_smoke 2>&1 | tee /tmp/omoio-emulators.log
+          grep -F 'Native emulator installation passed:' /tmp/omoio-emulators.log
       - name: Build Debian package and AppImage
         env:
           NO_STRIP: true

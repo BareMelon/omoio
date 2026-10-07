@@ -152,13 +152,25 @@ fn log_path(app: &AppHandle) -> Result<PathBuf, String> {
 // Asking the binary itself rather than trusting whatever we last installed:
 // the installed build's actual behaviour is what counts.
 fn read_version(exe: &Path) -> Option<String> {
+    read_version_checked(exe).ok()
+}
+
+fn read_version_checked(exe: &Path) -> Result<String, String> {
     let mut cmd = command(exe);
     #[cfg(target_os = "linux")]
     cmd.env("QT_QPA_PLATFORM", "offscreen");
-    let output = cmd.arg("--version").output().ok()?;
+    let output = cmd.arg("--version").output().map_err(|e| format!("Couldn't start RPCS3: {e}"))?;
     let text = String::from_utf8_lossy(&output.stdout);
     // "RPCS3 0.0.42-19884-3ef20ebb Alpha" -> "0.0.42-19884-3ef20ebb"
-    text.split_whitespace().nth(1).map(|s| s.to_string())
+    if output.status.success() {
+        if let Some(version) = text.lines().find_map(|line| line.strip_prefix("RPCS3 ")
+            .and_then(|rest| rest.split_whitespace().next())) {
+            return Ok(version.to_string());
+        }
+    }
+    Err(format!("RPCS3 version check failed ({}): {} {}", output.status,
+        text.chars().take(2000).collect::<String>(),
+        String::from_utf8_lossy(&output.stderr).chars().take(2000).collect::<String>()))
 }
 
 async fn latest_release(client: &reqwest::Client) -> Result<Release, String> {
