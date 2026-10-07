@@ -39,6 +39,7 @@ import { GROUP_TITLES } from "../components/gameSettingsSheet";
 import { store } from "../state";
 import { h, heading, listPage, navButton, row, switchRow, type Choice, type Kit, type Screen, type Section } from "./kit";
 import { padScreen } from "./pad";
+import { platform } from "../platform";
 
 /// Settings in Big Picture: the ones a controller can change. Anything that
 /// needs typing, a folder or a file stays on the desktop, and says so rather
@@ -236,7 +237,9 @@ export function settingsScreen(kit: Kit, cap: (input: string) => string, start: 
     rows.push(heading("Buttons"));
     const chord = h("span", "bp-row-value bp-caps");
     chord.innerHTML = `${cap("Back")}<span>+</span>${cap("Start")}`;
-    rows.push(row("pad:chord", "Back to Big Picture from a game", chord, undefined, "Press both together while playing."));
+    if (platform.embedded_games) {
+      rows.push(row("pad:chord", "Back to Big Picture from a game", chord, undefined, "Press both together while playing."));
+    }
 
     const portalMenu = (store.get().games ?? []).some((game) => game.portal_menu);
     if (portalMenu && controllers) {

@@ -30,6 +30,7 @@ import {
   type Settings,
 } from "../api";
 import { updateControls } from "../components/omoioUpdate";
+import { platform } from "../platform";
 import { store } from "../state";
 import type { View } from "./view";
 
@@ -136,14 +137,18 @@ export async function renderSettings(): Promise<View> {
   content.className = "hw";
 
   // ---- playing ----
-  const fullscreen = row("Start games in fullscreen", "Otherwise the game fills Omoio's window. F11 switches either way while playing.");
+  const fullscreen = row("Start games in fullscreen", platform.embedded_games
+    ? "Otherwise the game fills Omoio's window. F11 switches either way while playing."
+    : "Request fullscreen when the emulator starts. Otherwise games open in their own windows.");
   fullscreen.right.appendChild(
     toggle(settings.start_fullscreen, (next) => setStartFullscreen(next))
   );
 
   const bigPicture = row(
     "Open Omoio in Big Picture",
-    "For a PC under a TV. Big Picture fills the screen and works with a controller. View and Menu together bring it back during a game."
+    platform.embedded_games
+      ? "For a PC under a TV. Big Picture fills the screen and works with a controller. View and Menu together bring it back during a game."
+      : "Big Picture fills the screen and works with a controller while Omoio is focused. Games open in a separate emulator window."
   );
   bigPicture.right.appendChild(
     toggle(settings.start_in_big_picture, (next) => setStartInBigPicture(next))

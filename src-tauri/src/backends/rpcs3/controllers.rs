@@ -114,6 +114,9 @@ fn display_name(handler: &str, device: &str) -> String {
     if handler == "XInput" {
         let slot = device.rsplit('#').next().unwrap_or("1");
         format!("Controller {slot}")
+    } else if handler == "Null" {
+        let slot = device.rsplit('#').next().unwrap_or("1");
+        format!("Player {slot} (not connected)")
     } else {
         device
             .trim_end_matches(|c: char| c.is_ascii_digit())
@@ -191,7 +194,7 @@ fn parse_players(text: &str) -> Vec<Option<Player>> {
         .map(|section| {
             let handler = read_value(section, "Handler")?;
             let device = read_value(section, "Device").filter(|d| !d.is_empty())?;
-            if handler != "XInput" && handler != "SDL" {
+            if handler != "XInput" && handler != "SDL" && !(!cfg!(windows) && handler == "Null") {
                 return None;
             }
             let buttons: BTreeMap<String, String> = PS3

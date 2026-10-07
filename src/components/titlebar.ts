@@ -1,5 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { setBigPicture } from "../api";
+import { platform } from "../platform";
+import { store } from "../state";
 
 export function renderTitlebar(): HTMLElement {
   const bar = document.createElement("div");
@@ -30,7 +32,12 @@ export function renderTitlebar(): HTMLElement {
   `;
 
   const win = getCurrentWindow();
-  bar.querySelector<HTMLButtonElement>("#tb-big-picture")!.onclick = () => void setBigPicture(true);
+  const bigPicture = bar.querySelector<HTMLButtonElement>("#tb-big-picture")!;
+  bigPicture.onclick = () => void setBigPicture(true);
+  if (!platform.embedded_games) {
+    bigPicture.title = "Full screen library for a TV and a controller. Available when no game is running.";
+    store.subscribe((state) => { bigPicture.disabled = state.playing !== null; });
+  }
   bar.querySelector<HTMLButtonElement>("#tb-minimize")!.onclick = () => win.minimize();
   bar.querySelector<HTMLButtonElement>("#tb-maximize")!.onclick = () => win.toggleMaximize();
   bar.querySelector<HTMLButtonElement>("#tb-close")!.onclick = () => win.close();
