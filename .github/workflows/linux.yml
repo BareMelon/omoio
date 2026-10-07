@@ -53,6 +53,14 @@ jobs:
           set -o pipefail
           timeout 180s xvfb-run -a cargo run --locked --manifest-path src-tauri/Cargo.toml --example linux_smoke 2>&1 | tee /tmp/omoio-emulators.log
           grep -F 'Native emulator installation passed:' /tmp/omoio-emulators.log
+      - name: Emulator startup diagnostics
+        if: failure()
+        run: |
+          set +e
+          root=/tmp/omoio-integration/data/Omoio/rpcs3/AppDir
+          ls -ld "$root" "$root/AppRun" "$root/usr/bin/rpcs3"
+          file "$root/AppRun" "$root/usr/bin/rpcs3"
+          find "$root" -maxdepth 3 -type l -printf '%p -> %l\n' | head -60
       - name: Build Debian package and AppImage
         env:
           NO_STRIP: true
