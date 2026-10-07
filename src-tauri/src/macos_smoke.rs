@@ -80,10 +80,10 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
         ));
     }
     if !cemu::install_dir(app)?
-        .join("Cemu.app/Contents/Resources/gameProfiles/default")
+        .join("Cemu.app/Contents/SharedSupport/gameProfiles/default")
         .is_dir()
     {
-        return Err("Cemu's shipped game profiles are missing from Resources".into());
+        return Err("Cemu's shipped game profiles are missing from SharedSupport".into());
     }
     println!("macOS emulator integration passed: RPCS3 {rpc_version}, Cemu {cemu_version}, private Cemu data verified");
     Ok(())

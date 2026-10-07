@@ -163,7 +163,7 @@ fn own_path(install: &Path, title_id: &str) -> PathBuf {
 }
 
 fn shipped_path(install: &Path, title_id: &str) -> PathBuf {
-    let resources = if cfg!(windows) { install.to_path_buf() } else if cfg!(target_os = "macos") { install.join("Cemu.app/Contents/Resources") } else { install.join("AppDir/usr/share/Cemu") };
+    let resources = if cfg!(windows) { install.to_path_buf() } else if cfg!(target_os = "macos") { install.join("Cemu.app/Contents/SharedSupport") } else { install.join("AppDir/usr/share/Cemu") };
     resources.join("gameProfiles").join("default").join(format!("{title_id}.ini"))
 }
 

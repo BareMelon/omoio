@@ -116,4 +116,5 @@ a browser download, and Intel RPCS3 on a physical Mac still need manual testing.
   `698c4b298f94983e4d6c30e9687ba8ff05094dd3930837c5104cddc0b0a49e4e`.
 - Cemu v2.6 `src/gui/CemuApp.cpp` and `src/Cemu/Logging/CemuLogging.cpp`
   define its Mac paths and game log; default game profiles live in the
-  application bundle's `Contents/Resources/gameProfiles/default` directory.
+  application bundle's `Contents/SharedSupport/gameProfiles/default` directory
+  (Cemu v2.6 `src/CMakeLists.txt`).
