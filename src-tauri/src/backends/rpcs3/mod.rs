@@ -158,7 +158,9 @@ fn read_version(exe: &Path) -> Option<String> {
 fn read_version_checked(exe: &Path) -> Result<String, String> {
     let mut cmd = command(exe);
     #[cfg(target_os = "linux")]
-    cmd.env("QT_QPA_PLATFORM", "offscreen");
+    // The official AppImage need not ship Qt's offscreen plugin. RPCS3's
+    // headless application reads --version without initializing a display.
+    cmd.arg("--headless");
     let output = cmd.arg("--version").output().map_err(|e| format!("Couldn't start RPCS3: {e}"))?;
     let text = String::from_utf8_lossy(&output.stdout);
     // "RPCS3 0.0.42-19884-3ef20ebb Alpha" -> "0.0.42-19884-3ef20ebb"
