@@ -74,21 +74,29 @@ pub fn install_appimage(image: &Path, dest: &Path) -> Result<(), String> {
         .current_dir(&staging)
         .output()
         .map_err(|e| format!("Couldn't extract the emulator AppImage: {e}"))?;
-    let unpacked = staging.join("squashfs-root");
-    if !output.status.success() || !unpacked.join("AppRun").is_file() {
+    // uruntime extracts into AppDir with a squashfs-root alias; classic
+    // AppImage runtimes create squashfs-root directly. Move the real directory,
+    // since moving the alias to AppDir would make it point to itself.
+    let unpacked = staging.join("squashfs-root").canonicalize();
+    let staging_root = staging.canonicalize().map_err(|e| e.to_string())?;
+    let valid = unpacked.as_ref().is_ok_and(|root| {
+        root.starts_with(&staging_root) && root.is_dir() && root.join("AppRun").is_file()
+    });
+    if !output.status.success() || !valid {
         let _ = std::fs::remove_dir_all(&staging);
         return Err("The emulator AppImage could not be extracted.".to_string());
     }
+    let unpacked = unpacked.map_err(|e| e.to_string())?;
     let current = dest.join("AppDir");
     let previous = dest.join("AppDir.previous");
-    if previous.exists() {
+    if std::fs::symlink_metadata(&previous).is_ok() {
         std::fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
     }
-    if current.exists() {
+    if std::fs::symlink_metadata(&current).is_ok() {
         std::fs::rename(&current, &previous).map_err(|e| e.to_string())?;
     }
     if let Err(error) = std::fs::rename(&unpacked, &current) {
-        if previous.exists() {
+        if std::fs::symlink_metadata(&previous).is_ok() {
             let _ = std::fs::rename(&previous, &current);
         }
         return Err(error.to_string());
@@ -101,6 +109,35 @@ pub fn install_appimage(image: &Path, dest: &Path) -> Result<(), String> {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_extraction_alias_is_moved_as_a_real_directory_and_repairs_a_broken_install() {
+        use std::os::unix::fs::symlink;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "omoio-appimage-alias-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let image = root.join("fixture.AppImage");
+        std::fs::write(&image, "#!/bin/sh\nmkdir -p AppDir\nprintf '#!/bin/sh\\nexit 0\\n' > AppDir/AppRun\nchmod +x AppDir/AppRun\nln -s ./AppDir squashfs-root\n").unwrap();
+        symlink("./AppDir", root.join("AppDir")).unwrap();
+        install_appimage(&image, &root).unwrap();
+        assert!(!std::fs::symlink_metadata(root.join("AppDir"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(command(&root.join("AppDir/AppRun"))
+            .status()
+            .unwrap()
+            .success());
+        assert!(!root.join("extracting").exists());
+        assert!(std::fs::symlink_metadata(root.join("AppDir.previous")).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn a_child_has_its_own_process_group_and_can_be_reaped() {

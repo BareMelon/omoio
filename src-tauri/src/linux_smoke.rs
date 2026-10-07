@@ -6,7 +6,6 @@ use std::sync::{
     atomic::{AtomicBool, AtomicI32, Ordering},
     Arc,
 };
-use tauri::Manager;
 
 async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     let cancel = Arc::new(AtomicBool::new(false));
