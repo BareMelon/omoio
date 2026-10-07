@@ -333,7 +333,9 @@ export async function renderSettings(): Promise<View> {
   const counted = (n: number) => (n === 1 ? "1 figure" : `${n} figures`);
   const figuresRow = row(
     "Toy figures",
-    "Figure files you already have. You don't need any: the portal menu makes a new figure of any character. Press the pad's home button (Guide, PS or Home) while playing a Skylanders game to open it."
+    platform.embedded_games
+      ? "Figure files you already have. You don't need any: the portal menu makes a new figure of any character. Press the pad's home button (Guide, PS or Home) while playing a Skylanders game to open it."
+      : "Keep your figure files together here. Open this folder and load them through the emulator's own Skylanders portal tools. Omoio's in-game portal menu is unavailable on Linux."
   );
   const figuresSaid = value(counted((await figures()).length));
   figuresRow.right.append(
@@ -382,7 +384,7 @@ export async function renderSettings(): Promise<View> {
   content.appendChild(section("Session logs", keep.row, logsRow.row));
 
   // ---- Omoio itself ----
-  const versionRow = row("Omoio", "Install updates to this fork from its GitHub releases. Emulator updates are automatic.");
+  const versionRow = row("Omoio", "Download new packages from this fork's successful GitHub builds. Emulator updates are automatic.");
   versionRow.right.append(value(version), ...updateControls());
   content.appendChild(section("Updates", versionRow.row));
 

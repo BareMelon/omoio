@@ -61,6 +61,13 @@ jobs:
           status=$?
           cat /tmp/omoio-smoke.log
           test "$status" -eq 124
+      - name: Packaged AppImage smoke test without FUSE
+        run: |
+          set +e
+          timeout 30s xvfb-run -a env WEBKIT_DISABLE_DMABUF_RENDERER=1 src-tauri/target/release/bundle/appimage/*.AppImage --appimage-extract-and-run > /tmp/omoio-appimage.log 2>&1
+          status=$?
+          cat /tmp/omoio-appimage.log
+          test "$status" -eq 124
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: omoio-linux-x86_64

@@ -47,6 +47,9 @@ pub(super) async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<S
     .map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&image);
     unpacked?;
+    // AppRun may keep the same size and timestamp between releases. Do not
+    // let metadata for that launcher retain the previous emulator version.
+    *KNOWN.lock().unwrap() = None;
     std::fs::create_dir_all(data_dir(&app)?).map_err(|e| e.to_string())?;
     let version =
         read_version(&exe_path(&app)?).ok_or("RPCS3 installed but did not report a version")?;
