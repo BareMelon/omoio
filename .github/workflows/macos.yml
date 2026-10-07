@@ -50,6 +50,8 @@ jobs:
       - name: Rust tests
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Official macOS emulator installation and private data
+        env:
+          OMOIO_CI_GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           python3 - <<'PY' 2>&1 | tee "$RUNNER_TEMP/omoio-emulators.log"

@@ -204,9 +204,17 @@ fn read_version_checked(exe: &Path) -> Result<String, String> {
 }
 
 async fn latest_release(client: &reqwest::Client) -> Result<Release, String> {
-    let response = client
+    let request = client
         .get(RELEASES_API)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", USER_AGENT);
+    // Hosted CI shares unauthenticated API limits. The integration harness
+    // may authenticate this fixed GitHub API request; shipped builds do not.
+    #[cfg(debug_assertions)]
+    let request = match std::env::var("OMOIO_CI_GITHUB_TOKEN") {
+        Ok(token) if !token.is_empty() => request.bearer_auth(token),
+        _ => request,
+    };
+    let response = request
         .send()
         .await
         .map_err(|e| e.to_string())?;

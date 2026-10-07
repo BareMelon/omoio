@@ -46,6 +46,7 @@ jobs:
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Official Linux emulator installation
         env:
+          OMOIO_CI_GITHUB_TOKEN: ${{ github.token }}
           XDG_DATA_HOME: /tmp/omoio-integration/data
           XDG_CONFIG_HOME: /tmp/omoio-integration/config
           XDG_CACHE_HOME: /tmp/omoio-integration/cache

@@ -29,6 +29,7 @@ pub fn start_fullscreen(app: &tauri::AppHandle) -> bool {
 
 pub fn command(exe: &Path) -> Command {
     let mut command = Command::new(exe);
+    command.env_remove("OMOIO_CI_GITHUB_TOKEN");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
