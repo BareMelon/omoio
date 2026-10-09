@@ -28,6 +28,12 @@ pub fn exe_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
         let bundle = root.join("Dolphin.app");
+        if !bundle.join("Contents/Info.plist").is_file() {
+            // Other backends ask whether Dolphin is installed before writing
+            // shared controller settings. An absent app is an absent path,
+            // not an error that prevents an RPCS3 or Cemu game from starting.
+            return Ok(bundle.join("Contents/MacOS/Dolphin"));
+        }
         let name = crate::macos::plist_value(&bundle.join("Contents/Info.plist"), "CFBundleExecutable")?;
         Ok(bundle.join("Contents/MacOS").join(name))
     }

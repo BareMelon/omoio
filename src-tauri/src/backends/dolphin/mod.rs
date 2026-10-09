@@ -325,6 +325,8 @@ impl super::EmulatorBackend for Dolphin {
 
     /// The game's own partition, or for a game whose pictures are in a few
     /// files, just those (copy.rs).
+    // The official macOS DMG does not ship dolphin-tool.
+    #[cfg(not(target_os = "macos"))]
     fn copy_size(&self, game: &Game) -> Option<u64> {
         if game.path.is_dir() || self.console != Console::Wii {
             return None;
@@ -333,6 +335,7 @@ impl super::EmulatorBackend for Dolphin {
         Some(copy::room_for(figures::game_from_title(&game.title)).unwrap_or(found.data_size))
     }
 
+    #[cfg(not(target_os = "macos"))]
     fn make_copy(
         &self,
         app: &AppHandle,

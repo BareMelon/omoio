@@ -12,10 +12,17 @@ pub async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     if !sys.join("GameSettings").is_dir() || !sys.join("Load/GraphicMods").is_dir() {
         return Err(format!("Dolphin's bundled packs are missing from {}", sys.display()));
     }
-    let tool = dolphin::install::tool_path(app)?;
-    let output = dolphin::install::command(&tool).arg("--help").output().map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err(format!("DolphinTool didn't start: {} {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)));
+    // Dolphin's official macOS DMG only includes the GUI; the Linux
+    // Flatpak also ships its disc-conversion command-line tool.
+    #[cfg(target_os = "linux")]
+    {
+        let tool = dolphin::install::tool_path(app)?;
+        let output = dolphin::install::command(&tool).arg("--help").output()
+            .map_err(|e| format!("Couldn't start DolphinTool {}: {e}", tool.display()))?;
+        if !output.status.success() {
+            return Err(format!("DolphinTool didn't start: {} {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)));
+        }
+        println!("DolphinTool integration passed");
     }
     let user = dolphin::install::user_dir(app)?;
     dolphin::settings::prepare(&user.join("Config"), true, &user.join("Figures")).map_err(|e| e.to_string())?;
@@ -25,6 +32,10 @@ pub async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     std::thread::sleep(Duration::from_secs(12));
     if !crate::session::still_running(pid) {
         return Err("Dolphin exited during its GUI startup check".into());
+    }
+    if !dolphin::install::running(app) {
+        crate::session::kill(pid);
+        return Err("Dolphin's running-instance detection failed".into());
     }
     let closed = backends::close(&dolphin::WII, pid);
     if !closed {
@@ -37,6 +48,6 @@ pub async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     if dolphin::WII.features().portal {
         return Err("Native Dolphin must not advertise Windows portal automation".into());
     }
-    println!("Dolphin integration passed: {version}, native GUI and tool, bundled packs, private data, graceful shutdown");
+    println!("Dolphin integration passed: {version}, native GUI, bundled packs, private data, graceful shutdown");
     Ok(())
 }

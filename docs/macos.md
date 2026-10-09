@@ -107,8 +107,10 @@ builds application and disk-image packages, verifies the app signature, and
 checks packaged desktop startup. The official RPCS3 executable version command
 is exercised on Apple Silicon.
 
-The Dolphin check starts its native GUI and command-line tool, checks shipped
+The Dolphin check starts its native GUI, checks shipped
 packs, verifies its private data directory, and requires graceful shutdown.
+The official macOS DMG does not include DolphinTool; automatic disc extraction
+for figure pictures is unavailable on macOS.
 These checks use no commercial games, console firmware or physical controllers.
 
 The initial official Intel RPCS3 probe aborted with SIGABRT on GitHub's hosted

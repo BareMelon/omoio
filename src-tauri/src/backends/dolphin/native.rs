@@ -75,7 +75,7 @@ mod linux {
     pub fn install_flatpak(bundle: &Path, root: &Path, cancel: &AtomicBool) -> Result<(), String> {
         // Only this private installation is changed. Flatpak verifies runtime
         // signatures; the Dolphin bundle's SHA-256 is checked before this.
-        run(flatpak(root).args(["remote-add", "--if-not-exists", "--noninteractive", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"]), root, cancel)?;
+        run(flatpak(root).args(["remote-add", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"]), root, cancel)?;
         run(flatpak(root).args(["install", "--noninteractive", "--assumeyes", "--or-update", "--bundle"]).arg(bundle), root, cancel)?;
         let output = flatpak(root).args(["info", "--show-location", APP]).output().map_err(|e| e.to_string())?;
         if !output.status.success() { return Err("Couldn't locate the installed Dolphin Flatpak.".into()); }
@@ -86,7 +86,7 @@ mod linux {
         for (name, target) in [
             ("dolphin-emu", location.join("files/bin/dolphin-emu")),
             ("dolphin-tool", location.join("files/bin/dolphin-tool")),
-            ("Sys", location.join("files/share/dolphin-emu/sys")),
+            ("Sys", location.join("files/share/dolphin-emu/Sys")),
         ] {
             if !target.exists() { return Err(format!("Dolphin's package is missing {}", target.display())); }
             let link = root.join(name);
