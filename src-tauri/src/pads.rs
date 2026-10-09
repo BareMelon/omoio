@@ -9,10 +9,12 @@
 //! Every other pad, a DualSense or a Switch Pro or an 8BitDo, is read with
 //! gilrs, which names buttons by place the way layouts do. gilrs keeps its
 //! picture of each pad current as events arrive, so one thread owns it for as
-//! long as Omoio runs and publishes what it sees.
+//! long as Omoio runs and publishes what it sees, starting it again whenever a
+//! pad leaves and before a game starts (`watch`, `rescan`).
 
 use crate::core::pad_layout::Pad;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -226,9 +228,22 @@ struct Seen {
     pad: Pad,
     vendor: Option<u16>,
     product: Option<u16>,
+    /// Whether Windows takes it for an Xbox-style pad, which XInput reads
+    /// too.
+    xbox_like: bool,
     held: Vec<&'static str>,
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     cemu: crate::backends::cemu::sdl::Found,
+}
+
+/// Whether a pad gilrs reads is one XInput also answers for. Microsoft's own
+/// are, and so is any pad Windows.Gaming.Input takes for a gamepad, such as a
+/// PowerA or PDP Xbox pad: gilrs gives exactly those no uuid
+/// (`Gamepad::new`, `Uuid::nil()` when `WgiGamepad::FromGameController`
+/// succeeds, gilrs-core 0.6.8's `windows_wgi/gamepad.rs`, read 8 October
+/// 2026). Listed twice, the second one took a player of its own.
+fn answers_through_xinput(vendor: Option<u16>, xbox_like: bool) -> bool {
+    vendor == Some(MICROSOFT) || xbox_like
 }
 
 /// `None` until gilrs has had its first look.
@@ -237,21 +252,51 @@ fn seen() -> &'static Mutex<Option<Vec<Seen>>> {
     SEEN.get_or_init(|| Mutex::new(None))
 }
 
+/// Set by `rescan` to have gilrs started again before its next look, and
+/// cleared once that look is published.
+static LOOK_AGAIN: AtomicBool = AtomicBool::new(false);
+/// Set when gilrs couldn't start at all, so nothing waits for it to look.
+static NO_GILRS: AtomicBool = AtomicBool::new(false);
+
 /// Starts the thread that owns gilrs the first time a pad is asked about, and
 /// waits a moment for its first look so that question gets a real answer.
+///
+/// gilrs keeps every pad it has seen for as long as it lives. One that leaves
+/// stays on its list, unconnected, and when that connection comes back it is
+/// matched by the id Windows gives the connection and keeps the controller
+/// object it had the first time, which its ids are read from (`handle_event`
+/// and `Gamepad::vendor_id` in gilrs-core 0.6.8's `windows_wgi/gamepad.rs`).
+/// So once a pad leaves, or `rescan` asks, gilrs is started again, and every
+/// pad plugged in is seen as new, as it is when Omoio starts. The old one
+/// stops its own thread as it goes (its `Drop`). Rumble is left off: Omoio
+/// never rumbles a pad, and gilrs 0.11.2's rumble thread runs on after its
+/// gilrs is gone (`ff/server.rs`).
 #[cfg(windows)]
 fn watch() {
     static STARTED: OnceLock<()> = OnceLock::new();
     STARTED.get_or_init(|| {
         std::thread::spawn(|| {
-            let Ok(mut gilrs) = gilrs::Gilrs::new() else {
+            let start = || gilrs::GilrsBuilder::new().with_force_feedback(false).build();
+            let Ok(mut gilrs) = start() else {
+                NO_GILRS.store(true, Ordering::SeqCst);
                 *seen().lock().unwrap() = Some(Vec::new());
                 return;
             };
             loop {
-                while gilrs.next_event().is_some() {}
-                // RPCS3 numbers pads of the same name from zero, which is how
-                // two identical controllers are told apart in its file.
+                let asked = LOOK_AGAIN.load(Ordering::SeqCst);
+                let mut left = false;
+                while let Some(event) = gilrs.next_event() {
+                    left |= matches!(event.event, gilrs::EventType::Disconnected);
+                }
+                if left || asked {
+                    if let Ok(fresh) = start() {
+                        gilrs = fresh;
+                    }
+                }
+                // Pads of the same name are numbered from zero, which tells
+                // two identical controllers apart in the saved layout. RPCS3
+                // names them its own way; backends/rpcs3/controllers.rs turns
+                // this name into RPCS3's.
                 let mut named: HashMap<String, u32> = HashMap::new();
                 let now = gilrs
                     .gamepads()
@@ -260,20 +305,25 @@ fn watch() {
                         let at = named.entry(name.clone()).or_insert(0);
                         let device = format!("{name} {at}");
                         *at += 1;
+                        let xbox_like = pad.uuid() == [0; 16];
                         Seen {
                             pad: Pad {
                                 device,
                                 name,
                                 handler: "SDL".to_string(),
-                                family: family_of(pad.vendor_id()).to_string(),
+                                family: if xbox_like { "xbox" } else { family_of(pad.vendor_id()) }.to_string(),
                             },
                             vendor: pad.vendor_id(),
                             product: pad.product_id(),
+                            xbox_like,
                             held: sdl_held(&pad),
                         }
                     })
                     .collect();
                 *seen().lock().unwrap() = Some(now);
+                if asked {
+                    LOOK_AGAIN.store(false, Ordering::SeqCst);
+                }
                 std::thread::sleep(Duration::from_millis(16));
             }
         });
@@ -283,6 +333,29 @@ fn watch() {
             return;
         }
         std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Has gilrs look at the pads plugged in afresh, as it does when Omoio
+/// starts, and waits a moment for that look. Asked before a game starts:
+/// gilrs hears of pads coming and going through Windows.Gaming.Input, whose
+/// events gilrs notes need a window of Omoio's in focus (gilrs 0.11.2,
+/// `lib.rs`, on Windows), so a pad that came or went while a game was in
+/// front may not have been heard of.
+pub fn rescan() {
+    watch();
+    #[cfg(windows)]
+    {
+    if NO_GILRS.load(Ordering::SeqCst) {
+        return;
+    }
+    LOOK_AGAIN.store(true, Ordering::SeqCst);
+    for _ in 0..50 {
+        if !LOOK_AGAIN.load(Ordering::SeqCst) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
     }
 }
 
@@ -298,11 +371,11 @@ pub fn connected() -> Vec<Pad> {
     let mut found: Vec<Pad> = slots.iter().map(|&slot| xinput_slot(slot)).collect();
     watch();
     if let Some(seen) = seen().lock().unwrap().as_ref() {
-        // Microsoft's pads already answered through XInput, so they are not
-        // listed a second time.
+        // Pads XInput answers for were listed through it already, so they are
+        // not listed a second time.
         found.extend(
             seen.iter()
-                .filter(|s| slots.is_empty() || s.vendor != Some(MICROSOFT))
+                .filter(|s| slots.is_empty() || !answers_through_xinput(s.vendor, s.xbox_like))
                 .map(|s| s.pad.clone()),
         );
     }
@@ -334,16 +407,32 @@ pub fn held(device: &str) -> Option<Vec<&'static str>> {
 /// `None` for a pad gilrs does not have plugged in, or one whose ids it does
 /// not know.
 pub fn usb_ids(device: &str) -> Option<(u16, u16, usize)> {
+    usb_ids_counting(device, |a, b| a == b)
+}
+
+/// `usb_ids`, counting the pads before it that `same` takes, by their
+/// vendor and product ids, for one of a kind with it. For an emulator that
+/// numbers pads by something two models can share, as Dolphin numbers them
+/// by the name SDL gives them.
+pub fn usb_ids_counting(device: &str, same: impl Fn((u16, u16), (u16, u16)) -> bool) -> Option<(u16, u16, usize)> {
     watch();
     let seen = seen().lock().unwrap();
-    let seen = seen.as_ref()?;
-    let at = seen.iter().position(|s| s.pad.device == device)?;
-    let (vendor, product) = (seen[at].vendor?, seen[at].product?);
-    let before = seen[..at]
-        .iter()
-        .filter(|s| s.vendor == Some(vendor) && s.product == Some(product))
-        .count();
-    Some((vendor, product, before))
+    let listed: Vec<(&str, Option<(u16, u16)>)> =
+        seen.as_ref()?.iter().map(|s| (s.pad.device.as_str(), s.vendor.zip(s.product))).collect();
+    ids_before(&listed, device, same)
+}
+
+/// `usb_ids_counting` among the pads `listed`, with their ids, in the order
+/// gilrs lists them.
+fn ids_before(
+    listed: &[(&str, Option<(u16, u16)>)],
+    device: &str,
+    same: impl Fn((u16, u16), (u16, u16)) -> bool,
+) -> Option<(u16, u16, usize)> {
+    let at = listed.iter().position(|(name, _)| *name == device)?;
+    let ids = listed[at].1?;
+    let before = listed[..at].iter().filter_map(|(_, other)| *other).filter(|other| same(*other, ids)).count();
+    Some((ids.0, ids.1, before))
 }
 
 /// Everything held on any pad plugged in, for a menu any player may use.
@@ -388,6 +477,32 @@ mod tests {
         assert_eq!(family_of(Some(0x045E)), "xbox");
         assert_eq!(family_of(Some(0x2DC8)), "generic");
         assert_eq!(family_of(None), "generic");
+    }
+
+    #[test]
+    fn a_pad_xinput_answers_for_is_known_whoever_made_it() {
+        assert!(answers_through_xinput(Some(MICROSOFT), false));
+        assert!(answers_through_xinput(Some(0x20D6), true), "a PowerA pad Windows takes for a gamepad");
+        assert!(!answers_through_xinput(Some(SONY), false));
+        assert!(!answers_through_xinput(None, false));
+    }
+
+    #[test]
+    fn pads_before_one_are_counted_by_what_makes_them_alike() {
+        // Two models of the DualShock 4, then a DualSense.
+        let listed = [
+            ("PS4 Controller 0", Some((SONY, 0x05C4))),
+            ("Mystery Pad 0", None),
+            ("PS4 Controller 1", Some((SONY, 0x09CC))),
+            ("DualSense Wireless Controller 0", Some((SONY, 0x0CE6))),
+        ];
+        let model = |a: (u16, u16), b: (u16, u16)| a == b;
+        let maker = |a: (u16, u16), b: (u16, u16)| a.0 == b.0;
+        assert_eq!(ids_before(&listed, "PS4 Controller 1", model), Some((SONY, 0x09CC, 0)));
+        assert_eq!(ids_before(&listed, "PS4 Controller 1", maker), Some((SONY, 0x09CC, 1)));
+        assert_eq!(ids_before(&listed, "DualSense Wireless Controller 0", maker), Some((SONY, 0x0CE6, 2)));
+        assert_eq!(ids_before(&listed, "Mystery Pad 0", model), None, "no ids");
+        assert_eq!(ids_before(&listed, "Unplugged 0", model), None);
     }
 
     #[test]

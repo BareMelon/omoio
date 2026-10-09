@@ -13,14 +13,15 @@
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
-    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWLP_HWNDPARENT, GWL_STYLE, GW_OWNER,
-    SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNA, WS_CAPTION, WS_POPUP, WS_SYSMENU,
-    WS_THICKFRAME, WS_VISIBLE,
+    EnumWindows, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindow,
+    IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWLP_HWNDPARENT, GWL_STYLE,
+    GW_OWNER, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNA,
+    WS_CAPTION, WS_POPUP, WS_SYSMENU, WS_THICKFRAME, WS_VISIBLE,
 };
 
-struct Search {
+struct Search<'a> {
     pid: u32,
+    is_game: &'a dyn Fn(&str) -> bool,
     found: Option<HWND>,
 }
 
@@ -29,26 +30,30 @@ unsafe extern "system" fn visit(window: HWND, state: LPARAM) -> BOOL {
     let mut owner = 0u32;
     unsafe { GetWindowThreadProcessId(window, Some(&mut owner)) };
 
-    if owner == search.pid && unsafe { IsWindowVisible(window) }.as_bool() && is_game_window(window) {
+    if owner == search.pid && unsafe { IsWindowVisible(window) }.as_bool() && is_game_window(window, search.is_game) {
         search.found = Some(window);
         return BOOL(0); // stop at the first one
     }
     BOOL(1)
 }
 
-/// Whether a window can be the game's. An emulator's dialogs have an owner,
-/// and RPCS3's main window, there for a Skylanders game's portal, shows for a
-/// moment before it is hidden.
-fn is_game_window(window: HWND) -> bool {
+/// Whether a window can be the game's. An emulator's dialogs have an owner;
+/// `is_game` tells its game window from its other windows without one. With
+/// RPCS3's interface showing, as for a Skylanders game's portal, those are
+/// its main window, shown for a moment before it is hidden, and on a game's
+/// first start a progress window that comes and goes before the game's.
+/// Taking that one for the game, Omoio saw it close and quit RPCS3 under the
+/// game.
+fn is_game_window(window: HWND, is_game: &dyn Fn(&str) -> bool) -> bool {
     let owned = unsafe { GetWindow(window, GW_OWNER) }.is_ok();
-    !owned && !super::portal::title(window).starts_with(super::portal::MAIN_TITLE)
+    !owned && is_game(&crate::backends::qt::title(window))
 }
 
 /// The emulator's game window for a given process. Called on a timer while
 /// the game boots, because the window only appears once it has something to
 /// show.
-pub fn find_window(pid: u32) -> Option<isize> {
-    let mut search = Search { pid, found: None };
+pub fn find_window(pid: u32, is_game: &dyn Fn(&str) -> bool) -> Option<isize> {
+    let mut search = Search { pid, is_game, found: None };
     let _ = unsafe { EnumWindows(Some(visit), LPARAM(&mut search as *mut Search as isize)) };
     search.found.map(|hwnd| hwnd.0 as isize)
 }
@@ -65,6 +70,37 @@ pub fn attach(game: isize, host: isize) {
         SetWindowLongPtrW(game, GWL_STYLE, stripped);
         SetWindowLongPtrW(game, GWLP_HWNDPARENT, host);
     }
+}
+
+/// Takes the game window back if it slipped out of Omoio's: RPCS3 puts its
+/// frame back when the game leaves RPCS3's own fullscreen, and the game then
+/// sat in a window of its own over Omoio. Left as it is when it is still in.
+pub fn keep(game: isize, host: isize) {
+    let window = HWND(game as *mut _);
+    let frame = (WS_CAPTION.0 | WS_THICKFRAME.0 | WS_SYSMENU.0) as isize;
+    unsafe {
+        let style = GetWindowLongPtrW(window, GWL_STYLE);
+        if style & frame != 0 {
+            SetWindowLongPtrW(window, GWL_STYLE, style & !frame | WS_POPUP.0 as isize);
+            let _ = SetWindowPos(
+                window,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+        if GetWindowLongPtrW(window, GWLP_HWNDPARENT) != host {
+            SetWindowLongPtrW(window, GWLP_HWNDPARENT, host);
+        }
+    }
+}
+
+/// Whether the window is still there.
+pub fn exists(game: isize) -> bool {
+    unsafe { IsWindow(Some(HWND(game as *mut _))) }.as_bool()
 }
 
 /// Asks whether F11 went down since the last time we asked, which is the low

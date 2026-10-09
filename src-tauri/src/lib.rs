@@ -9,6 +9,8 @@ mod hardware;
 pub mod import;
 mod pads;
 mod platform;
+#[cfg(unix)]
+mod dolphin_smoke;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
@@ -17,6 +19,7 @@ pub mod macos_smoke;
 pub mod linux_smoke;
 mod figure_pictures;
 mod portal_menu;
+mod saves;
 pub mod session;
 
 // macOS embeds a linker symbol for Info.plist. Generate it only once, even
@@ -43,7 +46,23 @@ pub fn run() {
                         session::place(&main, &session);
                     }
                 }
-                WindowEvent::Destroyed => {
+                // An emulator asked to close is waited for before our window
+                // goes, since the game's picture sits on it, and the wait is
+                // off this thread, which draws the window. Both are out of
+                // sight meanwhile, as the user asked for them to go.
+                WindowEvent::CloseRequested { api, .. } if window.label() == "main" && session.stops_slowly() => {
+                    api.prevent_close();
+                    session.hide_game();
+                    let _ = window.hide();
+                    let (handle, ours) = (app.clone(), window.clone());
+                    std::thread::spawn(move || {
+                        handle.state::<session::Session>().stop();
+                        let _ = ours.destroy();
+                    });
+                }
+                // Only for our main window: the portal menu's window closes
+                // as a game ends, and then the next game may already run.
+                WindowEvent::Destroyed if window.label() == "main" => {
                     session.stop();
                 }
                 _ => {}
@@ -53,6 +72,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             big_picture::start(app.handle());
+            figure_pictures::tidy(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -116,6 +136,8 @@ pub fn run() {
             commands::emulator_versions,
             commands::install_cemu,
             commands::cancel_cemu_install,
+            commands::install_dolphin,
+            commands::cancel_dolphin_install,
             commands::cemu_keys,
             commands::add_cemu_keys,
             commands::look_at_own_cemu,
@@ -132,8 +154,11 @@ pub fn run() {
             commands::figures,
             commands::villains,
             commands::add_figures,
+            commands::delete_figure,
             commands::close_portal_menu,
             commands::portal_menu_family,
+            commands::portal_game,
+            commands::portal_made_figures,
             commands::pads_held,
             commands::figure_characters,
             commands::portal_create,

@@ -86,6 +86,7 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
         return Err("Cemu's shipped game profiles are missing from SharedSupport".into());
     }
     println!("macOS emulator integration passed: RPCS3 {rpc_version}, Cemu {cemu_version}, private Cemu data verified");
+    crate::dolphin_smoke::check(app).await?;
     Ok(())
 }
 

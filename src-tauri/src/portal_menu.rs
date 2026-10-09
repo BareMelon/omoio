@@ -6,13 +6,16 @@
 //! Figures are the user's own files, copied into Omoio's figures folder from
 //! Settings, or new ones of any character, which the emulator's own figure
 //! maker makes into the same folder. Omoio never writes figure data itself;
-//! a Trap Team trap is read, for the villain it holds.
+//! a Trap Team trap is read, for the villain it holds, and a file the user
+//! brought only as far as its plain first blocks, to tell a Creation Crystal.
 
 use crate::backends::EmulatorBackend;
 use crate::core::console::Console;
 use crate::core::figure_data::{self, Trapped};
 use crate::core::figures::{self, Character, Class, Element, Kind, Movement};
+use crate::core::imaginators::{self, BattleClass, Casing};
 use crate::core::settings::Settings;
+use crate::core::vehicles::{self, Terrain};
 use crate::core::villains::{Villain, VILLAINS};
 use crate::session::Session;
 use std::collections::BTreeMap;
@@ -55,8 +58,10 @@ pub struct Figure {
     /// The file's name without its extension.
     pub name: String,
     pub path: String,
-    /// The character, for a figure Omoio had the emulator make. A file the
-    /// user brought has none, since Omoio doesn't read inside figure files.
+    /// The character, for a figure Omoio had the emulator make, or for a
+    /// Creation Crystal the user brought, told from its file so the menu can
+    /// keep it with the crystals. Any other file the user brought has none,
+    /// and is listed in every game as before.
     pub id: Option<u16>,
     pub variant: Option<u16>,
     pub element: Option<Element>,
@@ -65,6 +70,14 @@ pub struct Figure {
     /// How a swapper's bottom half moves.
     pub movement: Option<Movement>,
     pub class: Option<Class>,
+    /// A vehicle's terrain, or a trophy's.
+    pub terrain: Option<Terrain>,
+    /// A vehicle's own SuperCharger, or a SuperCharger's own vehicle.
+    pub partner: Option<u16>,
+    /// A Sensei's battle class.
+    pub battle_class: Option<BattleClass>,
+    /// A Creation Crystal's casing.
+    pub casing: Option<Casing>,
     /// The villain a trap holds, read from the data the game wrote to it.
     pub holds: Option<Trapped>,
 }
@@ -76,6 +89,24 @@ fn held(path: &Path, id: Option<u16>) -> Option<Trapped> {
     }
     let bytes = std::fs::read(path).ok()?;
     figure_data::trapped(&<[u8; figure_data::SIZE]>::try_from(bytes.as_slice()).ok()?)
+}
+
+/// The id and variant of a Creation Crystal in a file the user brought. A
+/// file that isn't a figure's size isn't opened.
+fn brought_crystal(path: &Path) -> Option<[u16; 2]> {
+    if path.metadata().ok()?.len() != figure_data::SIZE as u64 {
+        return None;
+    }
+    crystal_in(&std::fs::read(path).ok()?)
+}
+
+/// A crystal's id and variant, read from the figure's first two blocks,
+/// which no game encrypts. Nothing is decrypted, and a file whose own number
+/// doesn't check out isn't taken for a figure.
+fn crystal_in(bytes: &[u8]) -> Option<[u16; 2]> {
+    let figure = <[u8; figure_data::SIZE]>::try_from(bytes).ok()?;
+    let id = figure_data::id(&figure);
+    (imaginators::is_crystal(id) && figure_data::number_ok(&figure)).then(|| [id, figure_data::variant(&figure)])
 }
 
 /// Which character each figure Omoio had made is, by file name.
@@ -121,7 +152,7 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
                 .filter(|path| path.is_file() && is_figure(path))
                 .map(|path| {
                     let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    let character = made.get(&file).copied();
+                    let character = made.get(&file).copied().or_else(|| brought_crystal(&path));
                     let holds = held(&path, character.map(|[id, _]| id));
                     Figure {
                         name: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
@@ -133,6 +164,12 @@ pub fn list(app: &AppHandle) -> Vec<Figure> {
                         series: character.and_then(|[_, variant]| figures::series(variant)),
                         movement: character.and_then(|[id, _]| figures::movement(id)),
                         class: character.and_then(|[id, _]| figures::class(id)),
+                        terrain: character.and_then(|[id, _]| vehicles::terrain(id)),
+                        partner: character.and_then(|[id, _]| vehicles::partner(id)),
+                        battle_class: character.and_then(|[id, _]| imaginators::battle_class(id)),
+                        casing: character
+                            .and_then(|[id, variant]| imaginators::crystal(id, variant))
+                            .map(|crystal| crystal.casing),
                         holds,
                     }
                 })
@@ -219,6 +256,66 @@ pub fn villains(app: &AppHandle) -> Vec<VillainState> {
         .collect()
 }
 
+/// Moves one of the user's saved figures to the Recycle Bin, and forgets
+/// which character it was and that it was used. Only a figure file in the
+/// figures folder is taken. The Recycle Bin rather than gone for good, so a
+/// figure deleted by mistake, with everything its game saved on it, can be
+/// put back.
+pub fn delete(app: &AppHandle, figure: &str) -> Result<(), String> {
+    let dir = folder(app)?;
+    let path = Path::new(figure);
+    let in_folder = path.parent().is_some_and(|parent| parent == dir);
+    if !in_folder || !is_figure(path) || !path.is_file() {
+        return Err("That isn't one of your saved figures.".to_string());
+    }
+    to_recycle_bin(path)?;
+    let Some(name) = path.file_name().map(|name| name.to_string_lossy().into_owned()) else {
+        return Ok(());
+    };
+    let mut list = made_list(app);
+    if list.remove(&name).is_some() {
+        if let (Ok(file), Ok(text)) = (made_file(app), serde_json::to_string(&list)) {
+            let _ = std::fs::write(file, text);
+        }
+    }
+    if let Ok(dir) = data_dir(app) {
+        let file = dir.join("settings.json");
+        let mut settings = Settings::load(&file);
+        settings.recent_figures.retain(|used| *used != name);
+        let _ = settings.save(&file);
+    }
+    Ok(())
+}
+
+/// Moves a file to the Recycle Bin as Explorer's Delete does, without
+/// asking or showing anything: Windows' own file operation, with undo
+/// allowed.
+#[cfg(windows)]
+fn to_recycle_bin(path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW,
+    };
+    // The list of files ends with an empty one, so two nulls.
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: windows::core::PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        ..Default::default()
+    };
+    let failed = unsafe { SHFileOperationW(&mut operation) } != 0 || operation.fAnyOperationsAborted.as_bool();
+    if failed || path.exists() {
+        return Err("Couldn't move that figure to the Recycle Bin.".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn to_recycle_bin(path: &Path) -> Result<(), String> {
+    trash::delete(path).map_err(|e| format!("Couldn't move that figure to the Trash: {e}"))
+}
+
 /// Copies figure files the user picked into the figures folder. A file of the
 /// same name already there is kept. Returns how many were added.
 pub fn add(app: &AppHandle, paths: &[String]) -> Result<usize, String> {
@@ -250,16 +347,21 @@ struct Kept {
 
 /// Every character the running game's emulator can make a figure of. Read
 /// from the emulator the first time and kept, since the list only changes
-/// with a new emulator.
+/// with a new emulator. An emulator whose maker doesn't list them with
+/// their numbers gets those Omoio read from the others.
 pub fn characters(
     app: &AppHandle,
     backend: &dyn EmulatorBackend,
     console: Console,
     pid: u32,
 ) -> Result<Vec<Character>, String> {
-    let version = backend.detect_version(app).unwrap_or_default();
     let key = serde_json::to_string(&console).unwrap_or_default().replace('"', "");
-    let file = data_dir(app)?.join(format!("characters-{key}.json"));
+    let own = format!("characters-{key}.json");
+    if !backend.lists_characters() {
+        return from_the_others(app, &own);
+    }
+    let version = backend.detect_version(app).unwrap_or_default();
+    let file = data_dir(app)?.join(own);
     let kept = std::fs::read_to_string(&file)
         .ok()
         .and_then(|text| serde_json::from_str::<Kept>(&text).ok())
@@ -272,6 +374,43 @@ pub fn characters(
         let _ = std::fs::write(&file, text);
     }
     Ok(characters)
+}
+
+/// The characters kept from every other emulator's maker, each once by its
+/// number, in the order of the files' names.
+fn from_the_others(app: &AppHandle, own: &str) -> Result<Vec<Character>, String> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(data_dir(app)?)
+        .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
+        .unwrap_or_default();
+    files.retain(|file| {
+        file.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("characters-") && name.ends_with(".json") && name != own)
+    });
+    files.sort();
+    let lists = files
+        .iter()
+        .filter_map(|file| std::fs::read_to_string(file).ok())
+        .filter_map(|text| serde_json::from_str::<Kept>(&text).ok())
+        .map(|kept| kept.characters);
+    let merged = merge(lists);
+    if merged.is_empty() {
+        Err("Omoio learns which figures can be made from Cemu's or RPCS3's figure maker. \
+             Make one figure in a Skylanders game there once, and they show here too."
+            .to_string())
+    } else {
+        Ok(merged)
+    }
+}
+
+fn merge(lists: impl Iterator<Item = Vec<Character>>) -> Vec<Character> {
+    let mut merged: Vec<Character> = Vec::new();
+    for character in lists.flatten() {
+        if !merged.iter().any(|known| known.id == character.id && known.variant == character.variant) {
+            merged.push(character);
+        }
+    }
+    merged
 }
 
 /// Where a new figure of a character is kept: the figures folder, under the
@@ -376,10 +515,14 @@ pub fn close(app: &AppHandle) {
 
 /// Puts the menu back in front after the emulator's own windows took it for
 /// a figure, so the game stays deaf to the pad until the menu closes, and
-/// Omoio may hand the game the keyboard then.
+/// Omoio may hand the game the keyboard then. With the menu closed while
+/// the figure went on, the game is let hear again instead: those windows
+/// may have taken the keyboard from it after the menu handed it over.
 pub fn take_front(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL).filter(|_| showing(app)) {
         let _ = window.set_focus();
+    } else {
+        crate::session::quiet_game(app);
     }
 }
 
@@ -467,5 +610,34 @@ mod tests {
         assert!(is_figure(Path::new("x.dump")));
         assert!(!is_figure(Path::new("notes.txt")));
         assert!(!is_figure(Path::new("no extension")));
+    }
+
+    /// A figure as an emulator's figure maker makes it, with its number and
+    /// checksum, as figure_data's own tests make one.
+    fn made_figure(id: u16, variant: u16) -> Vec<u8> {
+        let mut figure = vec![0u8; figure_data::SIZE];
+        figure[..4].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
+        figure[0x10..0x12].copy_from_slice(&id.to_le_bytes());
+        figure[0x1C..0x1E].copy_from_slice(&variant.to_le_bytes());
+        let crc = figure_data::crc16(&figure[..0x1E]);
+        figure[0x1E..0x20].copy_from_slice(&crc.to_le_bytes());
+        figure
+    }
+
+    #[test]
+    fn a_crystal_the_user_brought_is_told_by_its_plain_first_blocks() {
+        assert_eq!(crystal_in(&made_figure(680, 0x5208)), Some([680, 0x5208]));
+        // One whose design Omoio has no name for is still a crystal.
+        assert_eq!(crystal_in(&made_figure(682, 0x5212)), Some([682, 0x5212]));
+        // Every other figure stays unknown, as it was.
+        assert_eq!(crystal_in(&made_figure(217, 0x3003)), None); // a trap
+        assert_eq!(crystal_in(&made_figure(601, 0x5000)), None); // King Pen
+        assert_eq!(crystal_in(&made_figure(16, 0x0000)), None); // Spyro
+        // A file whose number doesn't check out, or isn't a figure's size.
+        let mut broken = made_figure(680, 0x5208);
+        broken[0x1E] ^= 0xFF;
+        assert_eq!(crystal_in(&broken), None);
+        assert_eq!(crystal_in(&made_figure(680, 0x5208)[..512]), None);
+        assert_eq!(crystal_in(&[made_figure(680, 0x5208), vec![0]].concat()), None);
     }
 }

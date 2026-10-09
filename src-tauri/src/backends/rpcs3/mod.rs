@@ -106,9 +106,82 @@ pub fn detect_version(app: &AppHandle) -> Option<String> {
     if installing {
         return None;
     }
-    let version = read_version(&exe)?;
+    let version = if running(&exe) {
+        let log = std::fs::read_to_string(log_path(app).ok()?).ok()?;
+        log_version(&log)?
+    } else {
+        read_version(&exe)?
+    };
     *known = Some((stamp.0, stamp.1, version.clone()));
     Some(version)
+}
+
+/// The processes running Omoio's RPCS3. It allows one copy of itself at a
+/// time: a second, even one asked only for `--version`, puts up a "Fatal
+/// Error" window over the game and waits there until someone presses OK, and
+/// whatever started it waits with it.
+fn copies(exe: &Path) -> (sysinfo::System, Vec<sysinfo::Pid>) {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet),
+    );
+    let ours = system
+        .processes()
+        .iter()
+        .filter(|(_, process)| process.exe().is_some_and(|own| {
+            let expected = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
+            #[cfg(target_os = "linux")]
+            if let Some(root) = exe.parent() {
+                if root.join("usr/bin/rpcs3").canonicalize().is_ok_and(|binary| binary == own) { return true; }
+            }
+            own == expected
+        }))
+        .map(|(&pid, _)| pid)
+        .collect();
+    (system, ours)
+}
+
+fn running(exe: &Path) -> bool {
+    !copies(exe).1.is_empty()
+}
+
+/// For anything that starts RPCS3 to do one job and waits for it, such as
+/// installing firmware or a package.
+pub fn refuse_while_running(app: &AppHandle) -> Result<(), String> {
+    if running(&exe_path(app)?) {
+        return Err("Close the game first. RPCS3 can only do one thing at a time.".to_string());
+    }
+    Ok(())
+}
+
+/// Ends every copy of RPCS3 still running before a game starts: the game
+/// before, still on its way out, or one whose window Omoio lost, hidden with
+/// nothing to close it by. The new game would otherwise meet RPCS3's "Fatal
+/// Error" window. Starting a game ends the one before it anyway.
+fn end_running(exe: &Path) {
+    let (system, ours) = copies(exe);
+    for pid in &ours {
+        if let Some(process) = system.process(*pid) {
+            process.kill();
+        }
+    }
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ours.is_empty() && running(exe) && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// The version a running RPCS3 gives on its log's first line, "RPCS3
+/// v0.0.43-20240-5f8dd1de Alpha | master", in the form `--version` gives it.
+/// The log is rewritten at every start, so it is the running copy's.
+fn log_version(log: &str) -> Option<String> {
+    let first = log.trim_start_matches('\u{feff}').lines().next()?;
+    let mut words = first.split_whitespace();
+    (words.next()? == "RPCS3").then_some(())?;
+    words.next()?.strip_prefix('v').map(str::to_string)
 }
 
 pub fn open_in_explorer(folder: &Path) -> Result<(), String> {
@@ -298,6 +371,9 @@ pub async fn install(app: AppHandle, cancel: Arc<AtomicBool>) -> Result<String, 
     }
 
     emit(&app, "extracting", 0, 1);
+    // Its files are held open while it runs, and an update that met one part
+    // way through would leave RPCS3 half old, half new.
+    refuse_while_running(&app)?;
     INSTALLING.store(true, Ordering::Relaxed);
     let _installing = Installing;
     let extract_dir = dest_dir.clone();
@@ -460,8 +536,27 @@ impl super::EmulatorBackend for Rpcs3 {
     }
 
     #[cfg(windows)]
+    fn is_game_window(&self, title: &str) -> bool {
+        title.starts_with(portal::GAME_TITLE)
+    }
+
+    #[cfg(windows)]
     fn tidy_window(&self, pid: u32, game: isize) {
         portal::tidy(pid, game);
+    }
+
+    /// Omoio's menus keep the game deaf by taking the keyboard from its
+    /// window, since Omoio switches its background input off (launch.rs,
+    /// `keep_pad_to_the_game`). When it may hear again, the game gets the
+    /// keyboard back if one of RPCS3's own windows has it, as the portal's
+    /// file windows take it, which Omoio's own hand-over can't take back
+    /// from them.
+    #[cfg(windows)]
+    fn hush(&self, pid: u32, hushed: bool) -> Result<(), String> {
+        if !hushed {
+            portal::give_back_to_game(pid);
+        }
+        Ok(())
     }
 
     /// A PS3 game is a folder of plain files, which is all the picture
@@ -501,6 +596,14 @@ impl super::EmulatorBackend for Rpcs3 {
         game_config::write(app, &game.title_id, chosen)
     }
 
+    fn save_folders(&self, app: &AppHandle, game: &crate::core::library::Game) -> Vec<super::SaveFolder> {
+        saves::folders(app, &game.title_id)
+    }
+
+    fn save_folder(&self, app: &AppHandle, _game: &crate::core::library::Game, kept_as: &str) -> Option<PathBuf> {
+        saves::folder(app, kept_as)
+    }
+
     fn recognises(&self, path: &Path) -> bool {
         crate::import::recognises(path)
     }
@@ -534,6 +637,10 @@ impl super::EmulatorBackend for Rpcs3 {
         controllers::write(app, title_id, players)
     }
 
+    fn unfound_pad(&self, app: &AppHandle, title_id: &str) -> Option<String> {
+        controllers::unfound(app, title_id)
+    }
+
     fn forget_layout(&self, app: &AppHandle, title_id: &str) -> Result<(), String> {
         controllers::forget(app, title_id)
     }
@@ -545,6 +652,7 @@ impl super::EmulatorBackend for Rpcs3 {
     fn tune_picture(
         &self,
         app: &AppHandle,
+        _display_width: u32,
         display_height: u32,
         graphics_memory: u64,
     ) -> Result<Option<u32>, String> {
@@ -575,8 +683,8 @@ impl super::EmulatorBackend for Rpcs3 {
         Box::pin(compat::refresh(app, cancel))
     }
 
-    fn catalogue_source(&self) -> (&'static str, &'static str) {
-        ("PS3 results from RPCS3", "https://rpcs3.net/compatibility")
+    fn catalogue_source(&self) -> Option<(&'static str, &'static str)> {
+        Some(("PS3 results from RPCS3", "https://rpcs3.net/compatibility"))
     }
 
     fn apply_fixes(
@@ -602,6 +710,7 @@ impl super::EmulatorBackend for Rpcs3 {
             have_list: patches::have_catalogue(app),
             source: "the RPCS3 community".to_string(),
             waiting: None,
+            with_emulator: false,
             packs: patches::for_title(app, title_id, version).into_iter().map(patches::as_pack).collect(),
         }
     }
@@ -640,6 +749,15 @@ mod tests {
             Some("0.0.42-19985-6ba56a52")
         );
         assert_eq!(version_from_archive("rpcs3-v0.0.42-19985-6ba56a52_win64_msvc.7z.sha256"), None);
+    }
+
+    #[test]
+    fn a_running_rpcs3s_version_is_read_from_its_log() {
+        let log = "\u{feff}RPCS3 v0.0.43-20240-5f8dd1de Alpha | master\nArchitecture: x64\n";
+        assert_eq!(log_version(log), Some("0.0.43-20240-5f8dd1de".to_string()));
+        assert_eq!(log_version("RPCS3 v0.0.43-20240-5f8dd1de Alpha"), Some("0.0.43-20240-5f8dd1de".to_string()));
+        assert_eq!(log_version("·! 0:00:00.00000 SYS: something"), None);
+        assert_eq!(log_version(""), None);
     }
 
     #[test]

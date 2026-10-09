@@ -40,6 +40,14 @@ fn staging(dest: &Path) -> Result<PathBuf, String> {
 }
 
 fn replace_bundle(source: &Path, dest: &Path, name: &str, binary: &str) -> Result<(), String> {
+    let discovered;
+    let binary = if binary.is_empty() {
+        discovered = plist_value(&source.join("Contents/Info.plist"), "CFBundleExecutable")?;
+        if Path::new(&discovered).components().count() != 1 || discovered.contains(['/', '\\']) {
+            return Err("The app bundle's executable name is invalid.".into());
+        }
+        &discovered
+    } else { binary };
     if !source.join("Contents/MacOS").join(binary).is_file() {
         return Err(format!(
             "The download did not contain a valid {name} application."

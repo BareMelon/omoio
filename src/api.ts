@@ -74,7 +74,7 @@ export interface Game {
   /// Where the cover came from: the dump's own icon, or RAWG.
   cover_source: "dump" | "rawg" | null;
   /// Which console the game is for, and so which emulator runs it.
-  console: "ps3" | "wiiu";
+  console: Console;
   /// What its emulator can do beyond starting it.
   features: {
     updates: boolean;
@@ -92,6 +92,9 @@ export interface Game {
   /// Whether the portal menu works in this game. Omoio's own rule, so the
   /// interface never guesses it from the title.
   portal_menu: boolean;
+  /// For a Skylanders game the menu doesn't work in: "The portal menu
+  /// doesn't work in this version yet. It works in the Wii U version."
+  portal_note: string | null;
 }
 
 export function listGames(): Promise<Game[]> {
@@ -102,15 +105,22 @@ export function importGame(path: string): Promise<Game> {
   return invoke("import_game", { path });
 }
 
-/// What to tell someone before a game that may not run well is imported.
+/// What to tell someone before a game that may not run well, or a Skylanders
+/// game the portal menu doesn't work in, is imported.
 export interface ImportWarning {
   title: string;
   console: Console;
   console_name: string;
-  /// "RPCS3 rates it Ingame: it starts, but you may hit problems before the end."
+  /// "Omoio's portal menu doesn't work in Skylanders SuperChargers on the
+  /// PS3, so you can't put figures on the portal." Said first. Empty when
+  /// the menu works or the game has no portal.
+  portal: string;
+  /// "RPCS3 rates it Ingame: it starts, but you may hit problems before the
+  /// end." Empty when only the portal is warned about.
   rating: string;
-  /// "The Wii U version is rated Playable in Cemu." Empty when no other
-  /// console has a version that plays well.
+  /// "The Wii U version is rated Playable in Cemu.", or with a portal
+  /// warning "The portal menu works in the Wii U version." Empty when there
+  /// is no such version.
   better: string;
 }
 
@@ -176,6 +186,12 @@ export function onGameFullscreen(handler: (on: boolean) => void): Promise<Unlist
   return listen<boolean>("game-fullscreen", (event) => handler(event.payload));
 }
 
+/// Once a game has started, when its emulator couldn't find a player's
+/// controller. The message is worded for the person playing.
+export function onPadNotFound(handler: (message: string) => void): Promise<UnlistenFn> {
+  return listen<string>("pad-not-found", (event) => handler(event.payload));
+}
+
 export interface Machine {
   rpcs3: string | null;
   cpu: string | null;
@@ -186,7 +202,7 @@ export interface Machine {
 
 export interface PlaySession {
   /// Which console it ran on. Sessions kept before this was recorded were PS3.
-  console?: "ps3" | "wiiu";
+  console?: Console;
   title_id: string;
   title: string;
   started: string;
@@ -433,6 +449,9 @@ export interface Packs {
   source: string;
   /// Why none can be shown yet, when there is a reason.
   waiting: string | null;
+  /// They come with the emulator, as Dolphin's do, so there is nothing to
+  /// download or check for.
+  with_emulator: boolean;
   packs: Pack[];
 }
 
@@ -531,7 +550,9 @@ export interface SaveBackup {
   /// Seconds since the epoch, like the session logs use.
   made: number;
   bytes: number;
-  folders: number;
+  /// Not always one: a game can keep several save folders, or several
+  /// files on a GameCube memory card.
+  saves: number;
 }
 
 export function gameSaves(titleId: string): Promise<[boolean, SaveBackup[]]> {
@@ -597,10 +618,13 @@ export function pendingUpdates(): Promise<[boolean, PendingUpdate[]]> {
   return invoke("pending_updates");
 }
 
-export type Console = "ps3" | "wiiu";
+export type Console = "ps3" | "wiiu" | "wii" | "gamecube";
 
 /// Each console as it is usually shortened, where room is short.
-export const CONSOLE_SHORT: Record<Console, string> = { ps3: "PS3", wiiu: "Wii U" };
+export const CONSOLE_SHORT: Record<Console, string> = { ps3: "PS3", wiiu: "Wii U", wii: "Wii", gamecube: "GameCube" };
+
+/// The emulator that runs each console. Dolphin runs two.
+export const EMULATOR_OF: Record<Console, string> = { ps3: "RPCS3", wiiu: "Cemu", wii: "Dolphin", gamecube: "Dolphin" };
 
 export interface Release {
   title_id: string;
@@ -626,6 +650,11 @@ export interface Listing {
   demo: boolean;
   owned: boolean;
   features: Game["features"];
+  /// For a Skylanders game, whether Omoio's portal menu works in it. Null
+  /// for any other game.
+  portal_menu: boolean | null;
+  /// For a Skylanders game the menu doesn't work in, where it does.
+  portal_note: string | null;
 }
 
 export interface CatalogueFilter {
@@ -762,12 +791,35 @@ export function padsConnected(): Promise<Pad[]> {
 }
 
 /// One of the user's figure files, kept in Omoio's figures folder.
-export type FigureElement = "air" | "earth" | "fire" | "water" | "life" | "undead" | "magic" | "tech" | "light" | "dark";
+/// Kaos is an element of his own in Imaginators, held by the Kaos Sensei only.
+export type FigureElement = "air" | "earth" | "fire" | "water" | "life" | "undead" | "magic" | "tech" | "light" | "dark" | "kaos";
 
-export type FigureKind = "character" | "item" | "trap" | "adventure" | "vehicle" | "trophy";
+export type FigureKind = "character" | "item" | "trap" | "adventure" | "vehicle" | "trophy" | "crystal";
 
 /// How a Swap Force swapper gets about, which its bottom half decides.
 export type Movement = "bounce" | "climb" | "dig" | "rocket" | "sneak" | "speed" | "spin" | "teleport";
+
+/// Where a SuperChargers vehicle goes, which is also what a trophy is for.
+export type Terrain = "land" | "sea" | "sky";
+
+/// An Imaginators Sensei's battle class, which it teaches the Imaginators of
+/// its class. Kaos is a class of his own.
+export type BattleClass =
+  | "knight"
+  | "bowslinger"
+  | "quickshot"
+  | "ninja"
+  | "brawler"
+  | "smasher"
+  | "sorcerer"
+  | "swashbuckler"
+  | "sentinel"
+  | "bazooker"
+  | "kaos";
+
+/// The design of an Imaginators Creation Crystal's casing, by the names
+/// collectors give them; Activision named none.
+export type Casing = "angel" | "pyramid" | "lantern" | "rune" | "reactor" | "acorn" | "armor" | "fanged" | "claw" | "rocket";
 
 export interface Figure {
   name: string;
@@ -782,6 +834,14 @@ export interface Figure {
   series: number | null;
   movement: Movement | null;
   class: FigureClass | null;
+  /// A vehicle's terrain, or the races a trophy is for.
+  terrain: Terrain | null;
+  /// A vehicle's own SuperCharger, or a SuperCharger's own vehicle, by id.
+  partner: number | null;
+  /// An Imaginators Sensei's battle class.
+  battle_class: BattleClass | null;
+  /// A Creation Crystal's casing.
+  casing: Casing | null;
   /// The villain a Trap Team trap holds, read from the trap's own data.
   holds: Trapped | null;
 }
@@ -827,6 +887,11 @@ export function addFigures(paths: string[]): Promise<number> {
   return invoke("add_figures", { paths });
 }
 
+/// Moves one of the user's saved figures to the Recycle Bin.
+export function deleteFigure(path: string): Promise<void> {
+  return invoke("delete_figure", { path });
+}
+
 /// The figures on the running game's portal, by slot, empty where none is.
 export function portalFigures(): Promise<string[]> {
   return invoke("portal_figures");
@@ -868,14 +933,47 @@ export interface Offer extends Character {
   /// Set on a bottom half.
   movement: Movement | null;
   class: FigureClass | null;
+  /// A vehicle's terrain, or the races a trophy is for.
+  terrain: Terrain | null;
+  /// A vehicle's own SuperCharger, or a SuperCharger's own vehicle, by id,
+  /// whatever the variant.
+  partner: number | null;
+  /// What a SuperChargers trophy unlocks: the villains to race as and the
+  /// tracks it opens. Left out for any other figure.
+  unlocks?: { villains: string[]; tracks: string[] };
+  /// An Imaginators Sensei's battle class.
+  battle_class: BattleClass | null;
+  /// A Creation Crystal's casing.
+  casing: Casing | null;
 }
 
 /// The kinds of Skylander the games' checklists mark apart: the Giants,
-/// Trap Team's Trap Masters, and the Minis.
-export type FigureClass = "giant" | "trap_master" | "mini";
+/// Trap Team's Trap Masters, the Minis, SuperChargers' own Skylanders, and
+/// Imaginators' Senseis, the villains among them marked apart.
+export type FigureClass = "giant" | "trap_master" | "mini" | "supercharger" | "sensei" | "villain_sensei";
 
 export function figureCharacters(): Promise<Offer[]> {
   return invoke("figure_characters");
+}
+
+export type SkylandersGame = "spyro" | "giants" | "swapforce" | "trapteam" | "superchargers" | "imaginators";
+
+/// The Skylanders game running now, which decides how the portal menu is
+/// laid out. `null` for one Omoio can't tell.
+export function portalGame(): Promise<SkylandersGame | null> {
+  return invoke("portal_game");
+}
+
+/// Whether the running game takes the figures its emulator makes. Imaginators
+/// checks a factory signature on its own figures, which a made one can't
+/// carry, and a community pack, named in `pack`, takes that check away.
+export interface MadeFigures {
+  check: "none" | "passed" | "next_start" | "off" | "not_downloaded" | "missing";
+  pack: string;
+}
+
+export function portalMadeFigures(): Promise<MadeFigures> {
+  return invoke("portal_made_figures");
 }
 
 /// Makes a new figure of `character` and puts it on the portal in `slot`,
@@ -916,20 +1014,31 @@ export function figurePictures(titleId?: string): Promise<FigurePictures> {
   return invoke("figure_pictures", { titleId: titleId ?? null });
 }
 
-/// Reads the figures' pictures out of the user's own copy of the game.
-/// Resolves to how many were kept.
-export function getFigurePictures(titleId: string): Promise<number> {
-  return invoke("get_figure_pictures", { titleId });
+/// What asking for the pictures came to: how many were kept, or, for a game
+/// whose own files can't be read, the room in bytes that a temporary copy
+/// of it needs, and the room free, to ask the user about first.
+export type GotPictures = { pictures: number } | { copy: { need: number; free: number } };
+
+/// Reads the figures' pictures out of the user's own copy of the game. With
+/// `copy`, the user has agreed to a temporary copy being made first.
+export function getFigurePictures(titleId: string, copy = false): Promise<GotPictures> {
+  return invoke("get_figure_pictures", { titleId, copy });
 }
 
 export function stopFigurePictures(): Promise<void> {
   return invoke("stop_figure_pictures");
 }
 
-export function onFigurePictures(
-  handler: (progress: { title_id: string; done: number; of: number }) => void
-): Promise<UnlistenFn> {
-  return listen<{ title_id: string; done: number; of: number }>("figure-pictures", (event) => handler(event.payload));
+/// How far getting the pictures is: making the copy, then reading.
+export interface PicturesProgress {
+  title_id: string;
+  step: "copy" | "read";
+  done: number;
+  of: number;
+}
+
+export function onFigurePictures(handler: (progress: PicturesProgress) => void): Promise<UnlistenFn> {
+  return listen<PicturesProgress>("figure-pictures", (event) => handler(event.payload));
 }
 
 export function setCovers(on: boolean): Promise<void> {
@@ -952,7 +1061,7 @@ export function catalogueCover(key: string, name: string, console: Console): Pro
 }
 
 export interface EmulatorVersion {
-  console: "ps3" | "wiiu";
+  console: Console;
   /// Null when it is not installed.
   version: string | null;
 }
@@ -1016,6 +1125,19 @@ export function replaceWithOwnSave(path: string, titleId: string): Promise<void>
 
 export function onCemuInstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
   return listen<InstallProgress>("cemu-install-progress", (event) => handler(event.payload));
+}
+
+/// Dolphin runs Wii and GameCube games from the same install.
+export function installDolphin(): Promise<string> {
+  return invoke("install_dolphin");
+}
+
+export function cancelDolphinInstall(): Promise<void> {
+  return invoke("cancel_dolphin_install");
+}
+
+export function onDolphinInstallProgress(handler: (progress: InstallProgress) => void): Promise<UnlistenFn> {
+  return listen<InstallProgress>("dolphin-install-progress", (event) => handler(event.payload));
 }
 
 /// An installed emulator with a newer official release.

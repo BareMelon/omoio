@@ -2,7 +2,7 @@
   <img src="Images/Icon/omoio-icon.svg" width="96" alt="Omoio logo">
 </p>
 <h1 align="center">Omoio</h1>
-<p align="center">Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.</p>
+<p align="center">Your PS3, Wii U, Wii and GameCube games in one library. Press Play and Omoio sets up the emulator for you.</p>
 <p align="center"><a href="https://omoio.app">omoio.app</a> · <a href="https://ko-fi.com/omoio">Support on Ko-fi</a></p>
 
 **Linux and macOS fork:** this repository ports
@@ -10,6 +10,12 @@
 on Apple Silicon and Intel. Use the [Linux guide](docs/linux.md) or
 [Mac guide](docs/macos.md) for downloads, installation and platform limits.
 Mac support is experimental, especially Intel RPCS3 runtime compatibility.
+The fork includes upstream's Dolphin update: Dolphin 2609a uses the official
+universal Mac app or an isolated official Flatpak on Linux. Wii/GameCube
+imports, native launching, controller profiles, save backups and bundled
+community packs are available. Linux requires Flatpak and an X11/XWayland
+display. The automated Skylanders portal remains Windows-only; use Dolphin's
+own Tools menu on Linux and Mac.
 The screenshots and Windows feature descriptions below describe the upstream
 app. Use this fork's builds for Linux and Mac; omoio.app hosts upstream Windows
 installers. Launcher updates in this fork are manual.

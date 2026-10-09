@@ -126,6 +126,7 @@ pub(super) fn watch() {
                         },
                         vendor,
                         product: controller.product_id(),
+                        xbox_like: false,
                         held: held(controller, by_label),
                         cemu: crate::backends::cemu::sdl::Found { uuid, by_label },
                     });

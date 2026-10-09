@@ -30,6 +30,26 @@ pub const TESTED: &[Tested] = &[
         title: "Skylanders Trap Team",
         reason: "Tested by Bertram on 6 October 2026, with the portal menu and its villains.",
     },
+    Tested {
+        console: Console::Ps3,
+        title: "Skylanders SWAP Force",
+        reason: "Tested by Bertram on 7 October 2026: swappers went on at once. RPCS3's list \
+                 rates it Ingame from 2021.",
+    },
+    Tested {
+        console: Console::Ps3,
+        title: "Skylanders Trap Team",
+        reason: "Tested by Bertram on 7 October 2026: figures and traps went on at once, and a \
+                 villain he trapped showed in the Villains tab. RPCS3's list rates it Ingame \
+                 from 2020.",
+    },
+    Tested {
+        console: Console::WiiU,
+        title: "Skylanders Imaginators",
+        reason: "Tested by Bertram on 8 October 2026 with the portal menu: a Sensei and new \
+                 Creation Crystals went on with Cemu's Signature Patch, and an Imaginator made \
+                 in one stayed on it.",
+    },
 ];
 
 /// The entry for this game on this console, if it has been played in Omoio.
@@ -53,10 +73,11 @@ mod tests {
     }
 
     #[test]
-    fn a_tested_game_is_found_under_its_other_names_on_its_own_console_only() {
-        assert!(tested(Console::WiiU, "Skylanders - Swap Force").is_some());
+    fn a_tested_game_is_found_under_its_other_names_on_its_own_console() {
+        assert!(tested(Console::WiiU, "Skylanders - Swap Force").is_some_and(|game| game.console == Console::WiiU));
         assert!(tested(Console::WiiU, "Skylanders: Trap Team").is_some());
-        assert!(tested(Console::Ps3, "Skylanders SWAP Force").is_none());
+        assert!(tested(Console::Ps3, "Skylanders SWAP Force™").is_some_and(|game| game.console == Console::Ps3));
+        assert!(tested(Console::Ps3, "Skylanders Giants").is_none());
         assert!(tested(Console::WiiU, "Skylanders: SuperChargers").is_none());
         assert!(tested(Console::WiiU, "").is_none());
     }

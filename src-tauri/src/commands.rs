@@ -1,5 +1,5 @@
 use crate::archive;
-use crate::backends::rpcs3;
+use crate::backends::{rpcs3, EmulatorBackend};
 use crate::core::console::Console;
 use crate::core::import_warning::{self, Imported, List, Warning};
 use crate::core::library::Library;
@@ -37,9 +37,11 @@ pub struct InstallState {
     cancel_update: Arc<AtomicBool>,
     cancel_compat: Arc<AtomicBool>,
     cancel_cemu: Arc<AtomicBool>,
+    cancel_dolphin: Arc<AtomicBool>,
     cancel_community: Arc<AtomicBool>,
-    /// Emulators whose files are being replaced right now.
-    installing: std::sync::Mutex<Vec<Console>>,
+    /// Emulators whose files are being replaced right now, by name: Dolphin
+    /// runs two consoles from the same files.
+    installing: std::sync::Mutex<Vec<&'static str>>,
 }
 
 /// Marks an emulator as being installed until it is dropped, so a game cannot
@@ -47,33 +49,41 @@ pub struct InstallState {
 /// that fails or is stopped part way.
 struct Installing<'a> {
     state: &'a InstallState,
-    console: Console,
+    emulator: &'static str,
 }
 
 impl Drop for Installing<'_> {
     fn drop(&mut self) {
-        self.state.installing.lock().unwrap().retain(|c| *c != self.console);
+        self.state.installing.lock().unwrap().retain(|e| *e != self.emulator);
     }
 }
 
 impl InstallState {
-    fn begin_install(&self, console: Console) -> Result<Installing<'_>, String> {
+    fn begin_install(&self, emulator: &dyn crate::backends::EmulatorBackend) -> Result<Installing<'_>, String> {
+        let emulator = emulator.name();
         let mut busy = self.installing.lock().unwrap();
-        if busy.contains(&console) {
+        if busy.contains(&emulator) {
             return Err("It's already being installed.".to_string());
         }
-        busy.push(console);
-        Ok(Installing { state: self, console })
+        busy.push(emulator);
+        Ok(Installing { state: self, emulator })
     }
 
-    fn is_installing(&self, console: Console) -> bool {
-        self.installing.lock().unwrap().contains(&console)
+    pub(crate) fn is_installing(&self, emulator: &dyn crate::backends::EmulatorBackend) -> bool {
+        self.installing.lock().unwrap().contains(&emulator.name())
     }
 }
 
+/// Whether the emulator is running a game now, for whichever of its
+/// consoles.
+fn is_playing_on(app: &AppHandle, emulator: &dyn crate::backends::EmulatorBackend) -> bool {
+    let running = app.state::<Session>().playing().and_then(|p| crate::backends::for_console(p.console));
+    running.is_some_and(|running| running.name() == emulator.name())
+}
+
 /// An emulator's files cannot be replaced under a game it is running.
-fn refuse_while_playing(app: &AppHandle, console: Console) -> Result<(), String> {
-    if app.state::<Session>().playing().is_some_and(|p| p.console == console) {
+fn refuse_while_playing(app: &AppHandle, emulator: &dyn crate::backends::EmulatorBackend) -> Result<(), String> {
+    if is_playing_on(app, emulator) {
         return Err("Close the game first. The emulator can't be replaced while it runs one.".to_string());
     }
     Ok(())
@@ -86,8 +96,8 @@ pub fn get_rpcs3_version(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 pub async fn install_rpcs3(app: AppHandle, state: State<'_, InstallState>) -> Result<String, String> {
-    refuse_while_playing(&app, Console::Ps3)?;
-    let _installing = state.begin_install(Console::Ps3)?;
+    refuse_while_playing(&app, &rpcs3::Rpcs3)?;
+    let _installing = state.begin_install(&rpcs3::Rpcs3)?;
     state.cancel.store(false, Ordering::Relaxed);
     let cancel = state.cancel.clone();
     rpcs3::install(app, cancel).await
@@ -108,7 +118,7 @@ fn omoio_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(data.join("Omoio"))
 }
 
-fn library_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn library_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(omoio_data_dir(app)?.join("library.json"))
 }
 
@@ -209,8 +219,18 @@ pub async fn import_archive(
 
         // Answered from the names inside, before anything is unpacked: a dump
         // that needs a key is refused in seconds rather than after the wait.
-        if let Some(why) = crate::backends::refuses(&app, &archive::names(&source, kind)?) {
+        let names = archive::names(&source, kind)?;
+        if let Some(why) = crate::backends::refuses(&app, &names) {
             return Err(why);
+        }
+
+        // Unpacking the same archive again would leave a second copy of the
+        // whole game behind the replaced library entry.
+        if let Some(game) = crate::backends::identify_packed(&names, &|name| archive::read_small(&source, kind, name)) {
+            let library = Library::load(&library_path(&app)?);
+            if library.games().iter().any(|had| had.title_id == game.title_id && had.path.exists()) {
+                return Err("That game is already in your library.".to_string());
+            }
         }
 
         let needed = archive::unpacked_size(&source, kind)?;
@@ -226,10 +246,7 @@ pub async fn import_archive(
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .ok_or("That file has no name.")?;
-        let dest = games_folder.join(&name);
-        if dest.exists() {
-            return Err("There's already a folder with that name in your games folder.".to_string());
-        }
+        let dest = archive::free_folder(&games_folder, &name);
 
         let mut last_sent = 0u64;
         let outcome = archive::extract(&source, kind, &dest, &cancel, &mut |done| {
@@ -350,6 +367,9 @@ fn entry(app: &AppHandle, game: crate::core::library::Game) -> GameEntry {
         cover_source,
         features,
         portal_menu: crate::core::figures::offers_portal_menu(features, game.console, &game.title),
+        portal_note: if cfg!(windows) {
+            crate::core::figures::portal_menu_note(game.console, &game.title)
+        } else { import_warning::native_portal_note(&game.title) },
         game,
     }
 }
@@ -412,7 +432,11 @@ pub fn catalogue(
     let mut consoles = Vec::new();
     let mut missing = Vec::new();
     let mut sources = Vec::new();
+    // An emulator with no list Omoio may use is left out altogether.
     for backend in crate::backends::all() {
+        let Some((label, url)) = backend.catalogue_source() else {
+            continue;
+        };
         consoles.push(CatalogueConsole {
             console: backend.console(),
             name: backend.console().short(),
@@ -420,7 +444,6 @@ pub fn catalogue(
         match backend.catalogue(&app) {
             Some(found) => {
                 entries.extend(found);
-                let (label, url) = backend.catalogue_source();
                 sources.push(CatalogueSource { label, url });
             }
             None => missing.push(backend.console()),
@@ -465,6 +488,7 @@ pub fn list_games(app: AppHandle) -> Result<Vec<GameEntry>, String> {
 fn compat_lists(app: &AppHandle) -> Vec<List> {
     crate::backends::all()
         .iter()
+        .filter(|backend| backend.catalogue_source().is_some())
         .map(|backend| List::new(backend.console(), backend.name(), backend.catalogue(app).unwrap_or_default()))
         .collect()
 }
@@ -509,7 +533,7 @@ pub async fn import_check(app: AppHandle, path: String) -> Result<ImportCheck, S
         };
         ImportCheck {
             checked: true,
-            warning: import_warning::warning(&game, &compat_lists(&app)),
+            warning: import_warning::warning_for_host(&game, &compat_lists(&app)),
         }
     })
     .await
@@ -526,7 +550,7 @@ pub async fn game_warning(app: AppHandle, title_id: String) -> Result<Option<War
             .games()
             .iter()
             .find(|game| game.title_id == title_id)
-            .and_then(|game| import_warning::warning(&Imported::of(game), &compat_lists(&app))))
+            .and_then(|game| import_warning::warning_for_host(&Imported::of(game), &compat_lists(&app))))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -565,8 +589,20 @@ pub fn launch_warning(app: AppHandle, title_id: String) -> Option<String> {
     crate::controllers::launch_warning(&app, backend, &game.title_id)
 }
 
+/// Off the window's thread: the game before may take a few seconds to close
+/// (`Session::stop`).
 #[tauri::command]
-pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
+pub async fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || launch(app, &title_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn launch(app: AppHandle, title_id: &str) -> Result<(), String> {
+    // One start at a time, as when this ran on the window's thread: two at
+    // once would each start a game, and only one would be known to stop.
+    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let library = Library::load(&library_path(&app)?);
     let game = library
         .games()
@@ -574,15 +610,23 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
         .find(|g| g.title_id == title_id)
         .ok_or("That game isn't in your library any more.")?;
 
-    if app.state::<InstallState>().is_installing(game.console) {
-        let name = crate::backends::for_console(game.console).map_or("The emulator", |b| b.name());
-        return Err(format!("{name} is being updated. Try again in a minute."));
+    let backend = crate::backends::for_console(game.console)
+        .ok_or("Omoio can't start games for this console yet.")?;
+    if app.state::<InstallState>().is_installing(backend) {
+        return Err(format!("{} is being updated. Try again in a minute.", backend.name()));
+    }
+
+    // The emulator may be busy making a copy of a game to read figure
+    // pictures from.
+    if crate::figure_pictures::copying() == Some(backend.name()) {
+        return Err(format!(
+            "{} is busy getting figure pictures. Try again when that is done, or stop it.",
+            backend.name()
+        ));
     }
 
     // One game at a time: starting another stops the one already running.
     app.state::<Session>().stop();
-    let backend = crate::backends::for_console(game.console)
-        .ok_or("Omoio can't start games for this console yet.")?;
     // The known fixes for this game go in before it starts, each only once,
     // so one the user switched off afterwards stays off.
     let settings_file = settings_path(&app)?;
@@ -604,7 +648,7 @@ pub fn launch_game(app: AppHandle, title_id: String) -> Result<(), String> {
     // Ready before the emulator starts: every player has their pad and
     // buttons, a pad plugged in for the first time works, and the picture
     // fits this machine.
-    backend.prepare(&app, game);
+    backend.prepare(&app, game)?;
     crate::controllers::before_launch(&app, backend, &game.title_id);
     tune_picture(&app, backend);
     let pid = backend.launch(&app, game)?;
@@ -658,9 +702,10 @@ fn game_and_emulator(
     Ok((backend, game))
 }
 
+/// Off the window's thread, for the same reason as `launch_game`.
 #[tauri::command]
-pub fn stop_game(app: AppHandle) {
-    app.state::<Session>().stop();
+pub async fn stop_game(app: AppHandle) {
+    let _ = tauri::async_runtime::spawn_blocking(move || app.state::<Session>().stop()).await;
 }
 
 /// Where Omoio keeps things, so the Settings screen can point at them and open
@@ -853,8 +898,9 @@ pub fn game_compatibility(app: AppHandle, title_id: String) -> CompatView {
 }
 
 /// Getting RPCS3's list means an export plus a page-at-a-time pass for the
-/// names, around 22 seconds, and the Cemu wiki's takes a few more, so it
-/// reports progress and can be stopped. `console` narrows it to one list.
+/// names, around 22 seconds, and the Cemu wiki's and the Dolphin wiki's take
+/// a few more, so it reports progress and can be stopped. `console` narrows
+/// it to one list.
 #[tauri::command]
 pub async fn refresh_compatibility(
     app: AppHandle,
@@ -866,7 +912,7 @@ pub async fn refresh_compatibility(
     let mut count = 0;
     let mut failed = None;
     for backend in crate::backends::all() {
-        if console.is_some_and(|wanted| wanted != backend.console()) {
+        if console.is_some_and(|wanted| wanted != backend.console()) || backend.catalogue_source().is_none() {
             continue;
         }
         match backend.refresh_catalogue(&app, &cancel).await {
@@ -1025,7 +1071,7 @@ pub async fn scan_folder(
         if result.added > 0 {
             library.save(&library_file)?;
             let lists = compat_lists(&app);
-            result.warnings = added.iter().filter_map(|game| import_warning::warning(game, &lists)).collect();
+            result.warnings = added.iter().filter_map(|game| import_warning::warning_for_host(game, &lists)).collect();
         }
         Ok(result)
     })
@@ -1109,7 +1155,9 @@ pub async fn install_update(
     // not load on it. Told to back up and given no way to, people would not.
     // A failure here is not a reason to refuse the update; it is reported and
     // the update goes ahead.
-    if let Err(e) = rpcs3::saves::back_up(&app, &title_id) {
+    let backed_up =
+        game_and_emulator(&app, &title_id).and_then(|(backend, game)| crate::saves::back_up(&app, backend, &game));
+    if let Err(e) = backed_up {
         let _ = app.emit("saves-backup-failed", e);
     }
 
@@ -1150,30 +1198,35 @@ pub async fn install_update(
     Ok(())
 }
 
+/// Whether the game has saved anything, and the copies kept of its saves.
 #[tauri::command]
-pub fn game_saves(app: AppHandle, title_id: String) -> (bool, Vec<rpcs3::saves::Backup>) {
-    (
-        rpcs3::saves::has_saves(&app, &title_id),
-        rpcs3::saves::list(&app, &title_id),
-    )
+pub fn game_saves(app: AppHandle, title_id: String) -> (bool, Vec<crate::saves::Backup>) {
+    let has_saves = game_and_emulator(&app, &title_id)
+        .is_ok_and(|(backend, game)| crate::saves::has_saves(&app, backend, &game));
+    (has_saves, crate::saves::list(&app, &title_id))
 }
 
 #[tauri::command]
-pub fn back_up_saves(
-    app: AppHandle,
-    title_id: String,
-) -> Result<Option<rpcs3::saves::Backup>, String> {
-    rpcs3::saves::back_up(&app, &title_id)
+pub fn back_up_saves(app: AppHandle, title_id: String) -> Result<Option<crate::saves::Backup>, String> {
+    let (backend, game) = game_and_emulator(&app, &title_id)?;
+    crate::saves::back_up(&app, backend, &game)
 }
 
+/// Refused while the emulator runs a game, which may be writing the very
+/// saves being put back, or hold them in memory and write them over the
+/// backup when it next saves.
 #[tauri::command]
 pub fn restore_saves(app: AppHandle, title_id: String, made: u64) -> Result<(), String> {
-    rpcs3::saves::restore(&app, &title_id, made)
+    let (backend, game) = game_and_emulator(&app, &title_id)?;
+    if is_playing_on(&app, backend) {
+        return Err(format!("Close the game first. Saves can't be put back while {} runs one.", backend.name()));
+    }
+    crate::saves::restore(&app, backend, &game, made)
 }
 
 #[tauri::command]
 pub fn forget_backup(app: AppHandle, title_id: String, made: u64) -> Result<(), String> {
-    rpcs3::saves::forget(&app, &title_id, made)
+    crate::saves::forget(&app, &title_id, made)
 }
 
 #[tauri::command]
@@ -1293,20 +1346,30 @@ pub fn dropped_kind(path: String) -> &'static str {
 /// this takes effect from the second game started. Until then `apply` reports
 /// that there is nothing to change yet and this is tried again next time.
 fn tune_picture(app: &AppHandle, backend: &dyn crate::backends::EmulatorBackend) {
+    // Before the machine is looked over, which takes a moment.
+    if !backend.sizes_picture() {
+        return;
+    }
     let Ok(file) = settings_path(app) else {
         return;
     };
     let mut settings = Settings::load(&file);
-    if settings.tuned {
+    let rpcs3 = backend.console() == Console::Ps3;
+    let name = backend.name().to_string();
+    if (rpcs3 && settings.tuned) || settings.tuned_for.contains(&name) {
         return;
     }
     let hw = hardware::detect();
     let (Some(display), Some(gpu)) = (hw.display, hw.gpu) else {
         return;
     };
-    if let Ok(scale) = backend.tune_picture(app, display.height, gpu.dedicated_memory_bytes) {
-        settings.tuned = true;
-        settings.tuned_scale = scale;
+    if let Ok(scale) = backend.tune_picture(app, display.width, display.height, gpu.dedicated_memory_bytes) {
+        if rpcs3 {
+            settings.tuned = true;
+            settings.tuned_scale = scale;
+        } else {
+            settings.tuned_for.push(name);
+        }
         let _ = settings.save(&file);
     }
 }
@@ -1520,8 +1583,12 @@ pub struct EmulatorUpdate {
 /// holding up the rest.
 #[tauri::command]
 pub async fn emulator_updates(app: AppHandle) -> Vec<EmulatorUpdate> {
-    let mut behind = Vec::new();
+    let mut behind: Vec<EmulatorUpdate> = Vec::new();
     for backend in crate::backends::all() {
+        // Dolphin is listed once for each of its consoles.
+        if behind.iter().any(|update| update.name == backend.name()) {
+            continue;
+        }
         let Some(installed) = backend.detect_version(&app) else {
             continue;
         };
@@ -1542,8 +1609,8 @@ pub async fn emulator_updates(app: AppHandle) -> Vec<EmulatorUpdate> {
 
 #[tauri::command]
 pub async fn install_cemu(app: AppHandle, state: State<'_, InstallState>) -> Result<String, String> {
-    refuse_while_playing(&app, Console::WiiU)?;
-    let _installing = state.begin_install(Console::WiiU)?;
+    refuse_while_playing(&app, &crate::backends::cemu::Cemu)?;
+    let _installing = state.begin_install(&crate::backends::cemu::Cemu)?;
     state.cancel_cemu.store(false, Ordering::Relaxed);
     let cancel = state.cancel_cemu.clone();
     crate::backends::cemu::install(app, cancel).await
@@ -1583,7 +1650,7 @@ pub fn look_at_own_cemu(app: AppHandle, path: String) -> Result<crate::backends:
 /// into Omoio's Cemu. Overwrites nothing.
 #[tauri::command]
 pub fn bring_own_cemu(app: AppHandle, path: String) -> Result<crate::backends::cemu::own_cemu::Brought, String> {
-    refuse_while_playing(&app, Console::WiiU)?;
+    refuse_while_playing(&app, &crate::backends::cemu::Cemu)?;
     crate::backends::cemu::own_cemu::bring_over(&app, &path)
 }
 
@@ -1591,13 +1658,32 @@ pub fn bring_own_cemu(app: AppHandle, path: String) -> Result<crate::backends::c
 /// said so. Omoio's is moved aside first.
 #[tauri::command]
 pub fn replace_with_own_save(app: AppHandle, path: String, title_id: String) -> Result<(), String> {
-    refuse_while_playing(&app, Console::WiiU)?;
+    refuse_while_playing(&app, &crate::backends::cemu::Cemu)?;
     crate::backends::cemu::own_cemu::replace_save(&app, &path, &title_id)
 }
 
 #[tauri::command]
 pub fn cancel_cemu_install(state: State<'_, InstallState>) {
     state.cancel_cemu.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub async fn install_dolphin(app: AppHandle, state: State<'_, InstallState>) -> Result<String, String> {
+    refuse_while_playing(&app, &crate::backends::dolphin::WII)?;
+    let _installing = state.begin_install(&crate::backends::dolphin::WII)?;
+    // Asked only once marked as installing, as a copy is marked before it
+    // asks about an install, so the two never both go ahead.
+    if crate::figure_pictures::copying() == Some(crate::backends::dolphin::WII.name()) {
+        return Err("Dolphin is busy getting figure pictures. Try again when that is done, or stop it.".to_string());
+    }
+    state.cancel_dolphin.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_dolphin.clone();
+    crate::backends::dolphin::install(app, cancel).await
+}
+
+#[tauri::command]
+pub fn cancel_dolphin_install(state: State<'_, InstallState>) {
+    state.cancel_dolphin.store(true, Ordering::Relaxed);
 }
 
 /// The emulator running the game right now, and its process.
@@ -1641,21 +1727,23 @@ pub async fn portal_load(app: AppHandle, slot: usize, figure: String) -> Result<
 
 /// The user's figure files, the ones used lately first. With `playable`, only
 /// those the running game reads, for the portal menu: a figure from a later
-/// game does nothing in an earlier one. A file the user brought is kept, since
-/// Omoio can't tell which character it is.
+/// game does nothing in an earlier one, and Nintendo's SuperChargers figures
+/// do nothing away from the Wii U. A file the user brought is kept, since
+/// Omoio can't tell which character it is, except a Creation Crystal, which
+/// it tells by the plain id in its first blocks.
 #[tauri::command]
 pub fn figures(app: AppHandle, playable: Option<bool>) -> Vec<crate::portal_menu::Figure> {
     use crate::core::figures::{game_from_title, reads};
-    let game = playable
-        .unwrap_or(false)
-        .then(|| app.state::<Session>().playing())
-        .flatten()
-        .and_then(|playing| game_from_title(&playing.title));
+    use crate::core::vehicles::plays_on;
+    let playing = playable.unwrap_or(false).then(|| app.state::<Session>().playing()).flatten();
+    let game = playing.as_ref().and_then(|playing| game_from_title(&playing.title));
+    let console = playing.map(|playing| playing.console);
     crate::portal_menu::list(&app)
         .into_iter()
         .filter(|figure| {
             let character = figure.id.zip(figure.variant);
             game.is_none_or(|game| character.is_none_or(|(id, variant)| reads(game, id, variant)))
+                && console.is_none_or(|console| figure.id.is_none_or(|id| plays_on(console, id)))
         })
         .collect()
 }
@@ -1672,6 +1760,12 @@ pub fn add_figures(app: AppHandle, paths: Vec<String>) -> Result<usize, String> 
     crate::portal_menu::add(&app, &paths)
 }
 
+/// Moves one of the user's saved figures to the Recycle Bin.
+#[tauri::command]
+pub fn delete_figure(app: AppHandle, path: String) -> Result<(), String> {
+    crate::portal_menu::delete(&app, &path)
+}
+
 #[tauri::command]
 pub fn close_portal_menu(app: AppHandle) {
     crate::portal_menu::close(&app);
@@ -1681,6 +1775,30 @@ pub fn close_portal_menu(app: AppHandle) {
 #[tauri::command]
 pub fn portal_menu_family() -> String {
     crate::portal_menu::family()
+}
+
+/// The Skylanders game running now, so the menu lays itself out for it.
+/// `None` when nothing runs or the title doesn't say which game it is.
+#[tauri::command]
+pub fn portal_game(app: AppHandle) -> Option<crate::core::figures::Game> {
+    let playing = app.state::<Session>().playing()?;
+    crate::core::figures::game_from_title(&playing.title)
+}
+
+/// Whether the running game takes the figures its emulator makes, so the
+/// menu can say why before making one the game would turn away. Off the
+/// interface thread: the first ask after a download reads every pack.
+#[tauri::command]
+pub async fn portal_made_figures(app: AppHandle) -> crate::core::community::MadeFigures {
+    let Some(playing) = app.state::<Session>().playing() else {
+        return crate::core::community::MadeFigures::default();
+    };
+    let Some(backend) = crate::backends::for_console(playing.console) else {
+        return crate::core::community::MadeFigures::default();
+    };
+    tauri::async_runtime::spawn_blocking(move || backend.made_figures(&app, &playing.title))
+        .await
+        .unwrap_or_default()
 }
 
 /// Everything held on any pad, for a menu any player may use. Nothing while
@@ -1705,7 +1823,7 @@ pub fn pads_held(app: AppHandle) -> Vec<&'static str> {
 }
 
 /// Every character the running game's emulator can make a figure of that
-/// the game reads, each with its element and kind.
+/// the game reads on its console, each with its element and kind.
 #[tauri::command]
 pub async fn figure_characters(app: AppHandle) -> Result<Vec<crate::core::figures::Offer>, String> {
     let (backend, pid) = running_emulator(&app)?;
@@ -1718,7 +1836,7 @@ pub async fn figure_characters(app: AppHandle) -> Result<Vec<crate::core::figure
     .await
     .map_err(|e| e.to_string())?;
     crate::portal_menu::take_front(&app);
-    Ok(crate::core::figures::offers(characters?, game))
+    Ok(crate::core::figures::offers(characters?, game, playing.console))
 }
 
 /// A new figure on the portal: what the portal holds now, and the figure's
@@ -1789,11 +1907,16 @@ pub fn figure_pictures(app: AppHandle, title_id: Option<String>) -> Result<crate
 }
 
 /// Reads the figures' pictures out of the user's own copy of the game.
-/// Resolves to how many were kept.
+/// Resolves to how many were kept, or, for a copy that can't be read as it
+/// is, to what a temporary copy would take until `copy` says to make one.
 #[tauri::command]
-pub async fn get_figure_pictures(app: AppHandle, title_id: String) -> Result<usize, String> {
+pub async fn get_figure_pictures(
+    app: AppHandle,
+    title_id: String,
+    copy: Option<bool>,
+) -> Result<crate::figure_pictures::Got, String> {
     let (backend, game) = game_and_emulator(&app, &title_id)?;
-    crate::figure_pictures::get(app, backend, game).await
+    crate::figure_pictures::get(app, backend, game, copy.unwrap_or(false)).await
 }
 
 #[tauri::command]

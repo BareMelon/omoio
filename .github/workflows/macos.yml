@@ -2,7 +2,7 @@ name: macOS build
 
 on:
   push:
-    branches: [master, macos-support]
+    branches: [macos-support]
   pull_request:
   workflow_dispatch:
 
@@ -41,7 +41,9 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: macos-${{ matrix.architecture }}-rust-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
-          restore-keys: macos-${{ matrix.architecture }}-rust-${{ hashFiles('src-tauri/Cargo.lock') }}-
+          restore-keys: |
+            macos-${{ matrix.architecture }}-rust-${{ hashFiles('src-tauri/Cargo.lock') }}-
+            macos-${{ matrix.architecture }}-rust-
       - name: Frontend dependencies and icons
         run: |
           npm ci
@@ -56,10 +58,11 @@ jobs:
           set -o pipefail
           python3 - <<'PY' 2>&1 | tee "$RUNNER_TEMP/omoio-emulators.log"
           import subprocess, sys
-          result = subprocess.run(['cargo', 'run', '--locked', '--manifest-path', 'src-tauri/Cargo.toml', '--example', 'macos_smoke'], timeout=240)
+          result = subprocess.run(['cargo', 'run', '--locked', '--manifest-path', 'src-tauri/Cargo.toml', '--example', 'macos_smoke'], timeout=600)
           sys.exit(result.returncode)
           PY
           grep -F 'macOS emulator integration passed:' "$RUNNER_TEMP/omoio-emulators.log"
+          grep -F 'Dolphin integration passed:' "$RUNNER_TEMP/omoio-emulators.log"
       - name: Emulator startup diagnostics
         if: failure()
         run: |

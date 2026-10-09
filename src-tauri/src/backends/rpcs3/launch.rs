@@ -62,9 +62,24 @@ pub fn register(app: &AppHandle, game: &Game) -> Result<(), String> {
 /// its piracy policy. The user asked for their game, so the greeting is turned
 /// off the same way clicking its checkbox would, before the emulator ever runs.
 fn with_welcome_disabled(existing: &str) -> String {
-    const SECTION: &str = "[main_window]";
-    const KEY: &str = "infoBoxEnabledWelcome";
+    with_setting(existing, "[main_window]", "infoBoxEnabledWelcome", "false")
+}
 
+/// The game window's own keys that Omoio uses or takes care of itself
+/// (`rpcs3qt/shortcut_settings.cpp`). F11 started a recording of the game
+/// as Omoio filled the screen with it, and Alt+Enter put the game in RPCS3's
+/// own fullscreen, from which it left Omoio's window. A shortcut saved empty
+/// is none at all (`shortcut_handler.cpp`).
+const TAKEN_KEYS: [&str; 2] = ["game_window_toggle_recording", "game_window_toggle_fullscreen"];
+
+fn with_keys_freed(existing: &str) -> String {
+    TAKEN_KEYS.iter().fold(existing.to_string(), |text, key| with_setting(&text, "[Shortcuts]", key, ""))
+}
+
+/// One line of RPCS3's GUI settings file set, in its section, and the rest
+/// of the file left as it was.
+fn with_setting(existing: &str, section: &str, key: &str, value: &str) -> String {
+    let setting = format!("{key}={value}");
     let mut lines: Vec<String> = Vec::new();
     let mut in_section = false;
     let mut written = false;
@@ -74,13 +89,15 @@ fn with_welcome_disabled(existing: &str) -> String {
         if trimmed.starts_with('[') {
             // Leaving the section without having seen the key: add it here.
             if in_section && !written {
-                lines.push(format!("{KEY}=false"));
+                lines.push(setting.clone());
                 written = true;
             }
-            in_section = trimmed == SECTION;
-        } else if in_section && trimmed.starts_with(KEY) {
-            lines.push(format!("{KEY}=false"));
-            written = true;
+            in_section = trimmed == section;
+        } else if in_section && trimmed.split('=').next() == Some(key) {
+            if !written {
+                lines.push(setting.clone());
+                written = true;
+            }
             continue;
         }
         lines.push(line.to_string());
@@ -89,9 +106,9 @@ fn with_welcome_disabled(existing: &str) -> String {
     if !written {
         if !in_section {
             lines.push(String::new());
-            lines.push(SECTION.to_string());
+            lines.push(section.to_string());
         }
-        lines.push(format!("{KEY}=false"));
+        lines.push(setting);
     }
 
     let mut out = lines.join("\n");
@@ -99,15 +116,18 @@ fn with_welcome_disabled(existing: &str) -> String {
     out
 }
 
-fn disable_welcome_screen(app: &AppHandle) -> Result<(), String> {
+fn prepare_gui_settings(app: &AppHandle) -> Result<(), String> {
     let dir = super::data_dir(app)?.join("GuiConfigs");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let file = dir.join("CurrentSettings.ini");
     let existing = std::fs::read_to_string(&file).unwrap_or_default();
-    if existing.contains("infoBoxEnabledWelcome=false") {
+    let updated = with_welcome_disabled(&existing);
+    #[cfg(windows)]
+    let updated = with_keys_freed(&updated);
+    if updated == existing {
         return Ok(());
     }
-    std::fs::write(&file, with_welcome_disabled(&existing)).map_err(|e| e.to_string())
+    std::fs::write(&file, updated).map_err(|e| e.to_string())
 }
 
 /// RPCS3 reads the pad even while its window is not the one in front:
@@ -117,7 +137,19 @@ fn disable_welcome_screen(app: &AppHandle) -> Result<(), String> {
 /// waiting behind Big Picture doesn't take the presses meant for Omoio. A
 /// value chosen for one game in its own settings still wins over this one.
 fn keep_pad_to_the_game(app: &AppHandle) {
-    const KEY: &str = "Background input enabled";
+    switch_off(app, "Background input enabled");
+}
+
+/// Omoio sizes and places the game window itself. Started in RPCS3's own
+/// fullscreen, the window left it at a press of Esc in the game and came back
+/// with its frame, out of Omoio's window.
+fn leave_fullscreen_to_omoio(app: &AppHandle) {
+    switch_off(app, "Start games in fullscreen mode");
+}
+
+/// One of RPCS3's settings in its config.yml, switched off before a game
+/// starts.
+fn switch_off(app: &AppHandle, key: &str) {
     let Ok(dir) = super::config_dir(app) else {
         return;
     };
@@ -125,7 +157,7 @@ fn keep_pad_to_the_game(app: &AppHandle) {
     let Ok(config) = std::fs::read_to_string(&path) else {
         return;
     };
-    let updated = super::account::replace_setting(&config, KEY, "false");
+    let updated = super::account::replace_setting(&config, key, "false");
     if updated != config {
         let _ = std::fs::write(&path, updated);
     }
@@ -145,9 +177,14 @@ pub fn launch(app: &AppHandle, game: &Game) -> Result<u32, String> {
     let eboot = eboot_path(&game.path)
         .ok_or("Couldn't find the game's program file. This folder may be incomplete.")?;
 
+    // Before RPCS3's files are written, so one on its way out doesn't save
+    // its own over them.
+    super::end_running(&exe);
     register(app, game)?;
-    disable_welcome_screen(app)?;
+    prepare_gui_settings(app)?;
     keep_pad_to_the_game(app);
+    #[cfg(windows)]
+    leave_fullscreen_to_omoio(app);
 
     // --no-gui keeps RPCS3's own window out of the way: the user asked to play
     // a game, not to meet the emulator. A Skylanders game needs that window
@@ -276,6 +313,28 @@ mod tests {
     }
 
     #[test]
+    fn frees_the_keys_omoio_uses_from_the_game_window() {
+        let existing = "[Shortcuts]\ngame_window_toggle_recording=F11\ngame_window_screenshot=F12\n\n[Meta]\nx=2\n";
+        let out = with_keys_freed(existing);
+        assert!(out.contains("game_window_toggle_recording=\n"));
+        assert!(!out.contains("=F11"));
+        assert!(out.contains("game_window_screenshot=F12"));
+        // Added inside Shortcuts, not after Meta.
+        assert!(out.find("game_window_toggle_fullscreen=").unwrap() < out.find("[Meta]").unwrap());
+        assert_eq!(with_keys_freed(&out), out, "already free");
+
+        let fresh = with_keys_freed("[GSFrame]\nscreen=0\n");
+        assert!(fresh.contains("[Shortcuts]\ngame_window_toggle_recording=\ngame_window_toggle_fullscreen=\n"));
+    }
+
+    #[test]
+    fn a_key_is_matched_whole() {
+        let out = with_setting("[Shortcuts]\ngame_window_toggle_recording_extra=X\n", "[Shortcuts]", "game_window_toggle_recording", "");
+        assert!(out.contains("game_window_toggle_recording_extra=X"));
+        assert!(out.contains("game_window_toggle_recording=\n"));
+    }
+
+    #[test]
     fn keeps_games_it_did_not_put_there() {
         let existing = "BCES00141: C:/games/LBP/\nNPEA00243: C:/games/Sackboy/\n";
         let merged = merged_list(&existing, "BCES00850", Path::new("D:/games/LBP2"));
@@ -339,6 +398,7 @@ pub fn install_package(app: &AppHandle, package: &std::path::Path) -> Result<(),
     if !exe.exists() {
         return Err("Install RPCS3 first, then packages can be installed.".to_string());
     }
+    super::refuse_while_running(app)?;
 
     let log = super::log_path(app)?;
     let started = std::time::SystemTime::now();

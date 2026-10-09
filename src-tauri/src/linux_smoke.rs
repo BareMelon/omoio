@@ -45,6 +45,7 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
         return Err("Cemu's launch environment does not match the paths Omoio writes".into());
     }
     println!("Native emulator installation passed: RPCS3 {rpc_version}, Cemu {cemu_version}");
+    crate::dolphin_smoke::check(app).await?;
     Ok(())
 }
 

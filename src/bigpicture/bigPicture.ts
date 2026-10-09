@@ -8,6 +8,7 @@ import {
   launchWarning,
   listSessions,
   onGameStopped,
+  onPadNotFound,
   padsConnected,
   padInput,
   padsHeld,
@@ -692,6 +693,15 @@ function chordNote(rest: string): HTMLElement {
   return note;
 }
 
+/// The remote's moves a Wii game asks for, on the buttons Omoio gives them
+/// (backends/dolphin/controllers.rs, `WII`), drawn as on the pad in hand.
+function wiiMovesNote(): HTMLElement {
+  const note = h("div", "bp-chord");
+  note.innerHTML = `${cap("RB")}<span>shakes the Wii Remote,</span>${cap("RT")}`;
+  note.append(h("span", "", "pushes it forward"));
+  return note;
+}
+
 // ---- the top bar and the hints ----
 
 const clock = h("span", "bp-clock");
@@ -798,9 +808,15 @@ function tile(game: Game, group: string, withMeta: boolean): HTMLButtonElement {
           ? ["Offline", "warn"]
           : null;
   if (badge) art.append(h("span", `bp-badge ${badge[1]}`, badge[0]));
+  // The same tag as the desktop library's, so a game owned on two consoles
+  // tells apart from the sofa too.
+  const mixed = consoles().length > 1;
+  if (mixed) art.append(h("span", `console-tag ${game.console}`, CONSOLE_SHORT[game.console]));
   card.append(art, h("span", "bp-tile-name", game.title));
   if (withMeta) {
-    const meta = [CONSOLE_SHORT[game.console], game.set_up ? formatSize(game.size_bytes) : ""].filter(Boolean).join(" · ");
+    const meta = [mixed ? "" : CONSOLE_SHORT[game.console], game.set_up ? formatSize(game.size_bytes) : ""]
+      .filter(Boolean)
+      .join(" · ");
     card.append(h("span", "bp-tile-meta", meta));
   }
   return card;
@@ -1090,6 +1106,7 @@ function gamePage(titleId: string, section: Section): Screen {
             ? "The game still hears the controller while Big Picture is open."
             : "";
       if (note) notes.append(h("p", "bp-page-note", note));
+      if (game.portal_note) notes.append(h("p", "bp-page-note", game.portal_note));
       const when = lastPlayed.get(titleId);
       if (when) notes.append(h("p", "bp-page-quiet", lastPlayedText(when)));
       const runs = h("div", "bp-page-runs");
@@ -1098,6 +1115,7 @@ function gamePage(titleId: string, section: Section): Screen {
         if (!result.known || !runs.isConnected) return;
         runs.append(h("span", `bp-status ${result.tone}`, result.label), h("span", "", result.explanation));
       });
+      if (game.console === "wii") notes.append(wiiMovesNote());
       if (playable(game) && family) notes.append(chordNote("while you play brings you back here."));
 
       info.append(meta, h("h1", "bp-page-title", game.title), actions);
@@ -1191,6 +1209,11 @@ async function arrive(): Promise<void> {
 }
 
 export function renderBigPicture(): HTMLElement {
+  // The desktop says it in the bar over the game, which Big Picture covers.
+  void onPadNotFound((message) => {
+    if (store.get().bigPicture) say(message);
+  });
+
   listen(
     act,
     () => {
