@@ -114,7 +114,8 @@ pub fn copies(exe: &Path) -> (sysinfo::System, Vec<sysinfo::Pid>) {
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet).with_cmd(UpdateKind::OnlyIfNotSet),
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet)
+            .with_cmd(UpdateKind::OnlyIfNotSet).with_environ(UpdateKind::OnlyIfNotSet),
     );
     let ours = system
         .processes()
@@ -122,8 +123,15 @@ pub fn copies(exe: &Path) -> (sysinfo::System, Vec<sysinfo::Pid>) {
         .filter(|(_, process)| {
             #[cfg(target_os = "linux")]
             {
-                let marker = format!("--filesystem={}", exe.parent().unwrap_or(Path::new("")).display());
+                let root = exe.parent().unwrap_or(Path::new(""));
+                let marker = format!("--filesystem={}", root.display());
+                // Flatpak execs bwrap, which no longer has run's arguments.
+                // The actual emulator/tool keeps the private environment
+                // explicitly supplied by flatpak_command, even in its sandbox.
+                let private_config = format!("XDG_CONFIG_HOME={}", root.join("runtime/config").display());
+                let dolphin = matches!(process.name().to_str(), Some("dolphin-emu" | "dolphin-tool"));
                 process.cmd().iter().any(|arg| arg == marker.as_str())
+                    || (dolphin && process.environ().iter().any(|var| var == private_config.as_str()))
             }
             #[cfg(not(target_os = "linux"))]
             { process.exe().is_some_and(|own| own == exe) }
@@ -254,6 +262,8 @@ pub fn end_running(exe: &Path) {
             continue;
         }
         if let Some(process) = system.process(*pid) {
+            #[cfg(unix)]
+            crate::session::kill(pid.as_u32());
             process.kill();
         }
     }
