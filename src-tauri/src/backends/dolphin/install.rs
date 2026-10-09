@@ -130,7 +130,11 @@ pub fn copies(exe: &Path) -> (sysinfo::System, Vec<sysinfo::Pid>) {
                 // explicitly supplied by flatpak_command, even in its sandbox.
                 let private_config = format!("XDG_CONFIG_HOME={}", root.join("runtime/config").display());
                 let dolphin = matches!(process.name().to_str(), Some("dolphin-emu" | "dolphin-tool"));
+                let user = root.join("User");
                 process.cmd().iter().any(|arg| arg == marker.as_str())
+                    // Sandboxed environments can be hidden from /proc, but
+                    // the explicit user directory remains in the command line.
+                    || process.cmd().windows(2).any(|args| args[0] == "--user" && args[1] == user.as_os_str())
                     || (dolphin && process.environ().iter().any(|var| var == private_config.as_str()))
             }
             #[cfg(not(target_os = "linux"))]

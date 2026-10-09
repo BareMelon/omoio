@@ -30,6 +30,17 @@ pub async fn check(app: &tauri::AppHandle) -> Result<(), String> {
         .arg("--user").arg(&user).spawn().map_err(|e| e.to_string())?;
     let pid = crate::platform::track(child);
     std::thread::sleep(Duration::from_secs(12));
+    #[cfg(target_os = "linux")]
+    {
+        // Keep process evidence for Flatpak namespace/lifecycle regressions.
+        // Only this test's private installation is listed; never dump envs.
+        let (system, ours) = dolphin::install::copies(&dolphin::install::exe_path(app)?);
+        for (id, process) in system.processes() {
+            if process.cmd().iter().any(|arg| arg.to_string_lossy().contains("Omoio/dolphin")) {
+                println!("Dolphin process: pid={id}, detected={}, executable={:?}, command={:?}", ours.contains(id), process.exe(), process.cmd());
+            }
+        }
+    }
     if !crate::session::still_running(pid) {
         return Err("Dolphin exited during its GUI startup check".into());
     }
