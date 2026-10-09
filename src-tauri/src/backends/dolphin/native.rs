@@ -113,11 +113,12 @@ mod linux {
     pub fn ask_to_close(pid: u32) -> bool {
         use x11rb::connection::Connection;
         use x11rb::protocol::res::{ClientIdMask, ClientIdSpec, ConnectionExt as ResExt};
-        use x11rb::protocol::xproto::{AtomEnum, ClientMessageEvent, ConnectionExt, EventMask};
+        use x11rb::protocol::xproto::{AtomEnum, ClientMessageEvent, ConnectionExt, EventMask, MapState};
         let Ok((conn, screen)) = x11rb::connect(None) else { return false; };
         let atom = |name: &[u8]| conn.intern_atom(false, name).ok()?.reply().ok().map(|reply| reply.atom);
         let (Some(protocols), Some(delete), Some(net_pid)) = (atom(b"WM_PROTOCOLS"), atom(b"WM_DELETE_WINDOW"), atom(b"_NET_WM_PID")) else { return false; };
         let mut pending = vec![(conn.setup().roots[screen].root, 0)];
+        let mut asked = false;
         while let Some((window, depth)) = pending.pop() {
             // XRes reports the host PID even for Flatpak's PID namespace.
             // The window's own PID property is only a fallback, and must
@@ -128,9 +129,16 @@ mod linux {
             if owner.is_some_and(|owner| is_descendant(owner, pid)) {
                 let supports_close = conn.get_property(false, window, protocols, AtomEnum::ATOM, 0, 64).ok()
                     .and_then(|cookie| cookie.reply().ok()).is_some_and(|reply| reply.value32().is_some_and(|mut values| values.any(|a| a == delete)));
-                if supports_close {
+                let visible = conn.get_window_attributes(window).ok().and_then(|cookie| cookie.reply().ok())
+                    .is_some_and(|attributes| attributes.map_state == MapState::VIEWABLE);
+                if supports_close && visible {
                     let message = ClientMessageEvent::new(32, window, protocols, [delete, x11rb::CURRENT_TIME, 0, 0, 0]);
-                    return conn.send_event(false, window, EventMask::NO_EVENT, message).is_ok() && conn.flush().is_ok();
+                    // Qt also owns hidden helper windows. Close its visible
+                    // windows, then wait for the server to process the requests
+                    // before dropping this X connection.
+                    if conn.send_event(false, window, EventMask::NO_EVENT, message).ok().is_some_and(|cookie| cookie.check().is_ok()) {
+                        asked = true;
+                    }
                 }
             }
             if depth < 4 {
@@ -139,7 +147,7 @@ mod linux {
                 }
             }
         }
-        false
+        asked && conn.get_input_focus().ok().is_some_and(|cookie| cookie.reply().is_ok())
     }
 
     #[cfg(test)]

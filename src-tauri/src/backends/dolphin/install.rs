@@ -114,7 +114,7 @@ pub fn copies(exe: &Path) -> (sysinfo::System, Vec<sysinfo::Pid>) {
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet)
+        ProcessRefreshKind::nothing().without_tasks().with_exe(UpdateKind::OnlyIfNotSet)
             .with_cmd(UpdateKind::OnlyIfNotSet).with_environ(UpdateKind::OnlyIfNotSet),
     );
     let ours = system
