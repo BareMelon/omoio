@@ -17,7 +17,7 @@ pub async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         let tool = dolphin::install::tool_path(app)?;
-        let output = dolphin::install::command(&tool).arg("--help").output()
+        let output = dolphin::install::command(&tool).args(["extract", "--help"]).output()
             .map_err(|e| format!("Couldn't start DolphinTool {}: {e}", tool.display()))?;
         if !output.status.success() {
             return Err(format!("DolphinTool didn't start: {} {}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)));
