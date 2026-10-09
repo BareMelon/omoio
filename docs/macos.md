@@ -20,7 +20,7 @@ notarization. If Gatekeeper blocks the app, macOS may offer **Open Anyway** in
 System Settings > Privacy & Security after the first attempt. Only approve the
 fork build you intended to download.
 
-On first start, select RPCS3 and/or Cemu. Omoio downloads the official Mac
+On first start, select RPCS3, Cemu and/or Dolphin. Omoio downloads the official Mac
 application bundles, verifies SHA-256 before extraction, and installs them into
 its own data directory. RPCS3 is native to the selected architecture. Cemu 2.6
 ships an Intel executable and needs Apple's **Rosetta** on Apple Silicon;
@@ -31,14 +31,21 @@ PS3 firmware must still be downloaded from Sony's page and selected by you.
 Games and console keys are not included. Cemu's Mac port is experimental
 upstream; expect some game-specific and graphics limitations.
 
+Dolphin 2609a uses the official **universal Apple Silicon/Intel** application.
+Wii/GameCube imports, native launching, save backup/restore, SDL controller
+profiles, compatibility entries and bundled patches/graphics mods are integrated.
+For Skylanders, use Dolphin's own **Tools > Emulated USB Devices > Skylanders
+Portal** menu. Its main window stays available for Skylanders games.
+
 ## Features and limits
 
 - Game imports, library management, compatibility lists, community packs, game
   settings, PS3 firmware/package installation and PS3 save backups use the
   existing backends with Mac-specific paths.
 - Games run in separate emulator windows. Starting from Big Picture or enabling
-  start-in-fullscreen requests the emulator's own fullscreen mode. Stop ends
-  the emulator's process group and Omoio records the session log.
+  start-in-fullscreen requests the emulator's own fullscreen mode. Stop asks
+  Dolphin's exact running application to quit first, allowing it to flush saves;
+  a process group is ended if it fails to quit. Omoio records the session log.
 - Controller discovery and mappings use SDL names and GUIDs. SDL is compiled
   into the Mac app, so users do not need Homebrew or a separate SDL install.
   Physical USB/Bluetooth controllers still need testing on your Mac.
@@ -63,11 +70,14 @@ Omoio's data root is `~/Library/Application Support/Omoio`:
 | Cemu application | `cemu/Cemu.app` |
 | Cemu settings, keys, saves, packs and log | `cemu/home/Library/Application Support/Cemu` |
 | Cemu cache | `cemu/home/Library/Caches/Cemu` |
+| Dolphin application | `dolphin/Dolphin.app` |
+| Dolphin settings, saves, logs and packs | `dolphin/User` |
 
-Each emulator receives a private home directory for that subprocess. Cemu also
+RPCS3 and Cemu receive a private home directory for that subprocess. Cemu also
 receives `CFFIXED_USER_HOME` for Cocoa's standard-path lookup. Updating an app
 bundle preserves these separate data directories. Omoio's own home directory
-and your shell environment are unchanged.
+and your shell environment are unchanged. Dolphin receives its private data
+directory through its native `--user` option.
 
 ## Build from source
 
@@ -97,6 +107,10 @@ builds application and disk-image packages, verifies the app signature, and
 checks packaged desktop startup. The official RPCS3 executable version command
 is exercised on Apple Silicon.
 
+The Dolphin check starts its native GUI and command-line tool, checks shipped
+packs, verifies its private data directory, and requires graceful shutdown.
+These checks use no commercial games, console firmware or physical controllers.
+
 The initial official Intel RPCS3 probe aborted with SIGABRT on GitHub's hosted
 Intel runner during startup, after MoltenVK initialization output. Its cause has
 not been established. The Intel workflow verifies the installed RPCS3 bundle
@@ -105,6 +119,10 @@ Actual games, PS3 firmware installation, physical controllers, Gatekeeper after
 a browser download, and Intel RPCS3 on a physical Mac still need manual testing.
 
 ## Upstream references
+
+- [Dolphin's official downloads](https://dolphin-emu.org/download/), version
+  2609a, `dolphin-2609a-universal.dmg`, SHA-256:
+  `9a810043538f21b53cf8f8f747b1672df74895d3d6eb30940d96042823f20ecb`.
 
 - [RPCS3 Apple Silicon releases](https://github.com/RPCS3/rpcs3-binaries-mac-arm64/releases)
   and [Intel releases](https://github.com/RPCS3/rpcs3-binaries-mac/releases).

@@ -294,7 +294,7 @@ fn emit_import_progress(app: &AppHandle, stage: &str, bytes: u64, total: u64) {
 }
 
 #[cfg(windows)]
-fn free_space(path: &Path) -> Option<u64> {
+pub(crate) fn free_space(path: &Path) -> Option<u64> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
@@ -313,7 +313,7 @@ fn free_space(path: &Path) -> Option<u64> {
 }
 
 #[cfg(not(windows))]
-fn free_space(path: &Path) -> Option<u64> {
+pub(crate) fn free_space(path: &Path) -> Option<u64> {
     let mut probe = path;
     while !probe.exists() { probe = probe.parent()?; }
     let path = probe.canonicalize().ok()?;

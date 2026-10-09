@@ -223,11 +223,7 @@ fn copy_places(app: &AppHandle, game: &Game) -> Vec<PathBuf> {
 /// The room free on the drive a folder is on, whether or not the folder is
 /// there yet.
 fn free_space(folder: &Path) -> Option<u64> {
-    let there = folder.ancestors().find(|dir| dir.is_dir())?;
-    let path = windows::core::HSTRING::from(there);
-    let mut free = 0u64;
-    unsafe { windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(&path, Some(&mut free), None, None) }.ok()?;
-    Some(free)
+    crate::commands::free_space(folder)
 }
 
 fn gigabytes(bytes: u64) -> String {
