@@ -28,17 +28,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
-const READER_URL: &str = "https://github.com/Bertrram/omoio-portraits/releases/download/v0.2.0/omoio-portraits.exe";
-const READER_SHA256: &str = "ad5ade731e957f509623aba4e9457b2dc66de81154d33164c13905b5edce820f";
+const READER_URL: &str = "https://github.com/Bertrram/omoio-portraits/releases/download/v0.3.0/omoio-portraits.exe";
+const READER_SHA256: &str = "3a0f3937d165eb63844004343d9039e777baed8996e535b7784f156bdb32d538";
 const READER: &str = "omoio-portraits.exe";
 
 /// The games, on the consoles whose disc images need a copy, whose pictures
 /// the reader at `READER_URL` knows (its README). A copy of a disc image is
 /// made only for one of these: for any other the minutes and gigabytes would
-/// come to nothing. SuperChargers, Imaginators and Spyro's Adventure on the
-/// Wii join them with the reader that reads them.
-const COPIES_FOR: [(Console, figures::Game); 2] =
-    [(Console::WiiU, figures::Game::SwapForce), (Console::WiiU, figures::Game::TrapTeam)];
+/// come to nothing.
+const COPIES_FOR: [(Console, figures::Game); 5] = [
+    (Console::WiiU, figures::Game::SwapForce),
+    (Console::WiiU, figures::Game::TrapTeam),
+    (Console::WiiU, figures::Game::SuperChargers),
+    (Console::WiiU, figures::Game::Imaginators),
+    (Console::Wii, figures::Game::Spyro),
+];
 
 /// Room left free on the drive on top of the copy, so it is never filled to
 /// the last byte.

@@ -1,8 +1,8 @@
 # Omoio
 
-> Omoio is a free, open source game library and launcher for Windows. You import dumps of PS3 and Wii U games you own and press Play. Omoio installs the emulator and keeps it updated (Cemu to the newest version Omoio has tested), sets up your controller and starts the game: RPCS3 for PS3 games and Cemu for Wii U games.
+> Omoio is a free, open source game library and launcher for Windows. You import dumps of PS3, Wii U, Wii and GameCube games you own and press Play. Omoio installs the emulator and keeps it updated (Cemu and Dolphin to the newest version Omoio has tested), sets up your controller and starts the game: RPCS3 for PS3 games, Cemu for Wii U games and Dolphin for Wii and GameCube games.
 
-Omoio is in early development and runs on 64-bit Windows only. It is not an emulator itself; RPCS3 and Cemu are separate projects that do the emulation, run as their official builds. Omoio does not include games, download them or help anyone find them, and it does not get around copy protection.
+Omoio is in early development and runs on 64-bit Windows only. It is not an emulator itself; RPCS3, Cemu and Dolphin are separate projects that do the emulation, run as their official builds. Omoio does not include games, download them or help anyone find them, and it does not get around copy protection.
 
 ## Download
 
@@ -12,16 +12,19 @@ Omoio is in early development and runs on 64-bit Windows only. It is not an emul
 ## What it does
 
 - One library for every system. Import a folder, a zip or 7z file, or scan a whole drive at once.
-- Installs the official builds of RPCS3 and Cemu. RPCS3 is kept up to date; Cemu is updated to the newest version Omoio has tested, which is v2.6. Games run inside Omoio's window, fullscreen with F11.
+- Installs the official builds of RPCS3, Cemu and Dolphin. RPCS3 is kept up to date; Cemu and Dolphin are updated to the newest version Omoio has tested, which is v2.6 for Cemu and 2609a for Dolphin. Omoio checks Dolphin's download and keeps its Dolphin in a folder of its own, apart from any Dolphin the user already has. Games run inside Omoio's window, fullscreen with F11.
 - Omoio updates itself from version 0.2.2 on: it downloads a new version in the background and asks before it restarts, never during a game. Older versions have to install the newest one once by hand.
-- One controller layout for every emulator, for up to four players. Xbox and other XInput pads work in both emulators; other pads work in RPCS3 through SDL, and in Cemu PS5 and PS4 controllers and the Switch Pro Controller work too.
+- One controller layout for every emulator, for up to four players. Xbox and other XInput pads, PS5 and PS4 controllers (no DS4Windows needed) and the Switch Pro Controller work in all three emulators; other pads work in RPCS3 through SDL. In a Wii game the pad plays as a Wii Remote with a Nunchuk; a GameCube game uses Dolphin's own layout for a gamepad.
 - Big Picture: a full-screen library for a TV and a controller. View and Menu together switch between Big Picture and a running game.
-- Community packs: RPCS3's patches for PS3 games and Cemu's graphic packs for Wii U games, such as 60 fps for Skylanders SWAP Force.
-- For PS3 games: official game updates, save backups and RPCS3's settings for each game. Homebrew installs from a .pkg the user already has.
+- Community packs: RPCS3's patches for PS3 games and Cemu's graphic packs for Wii U games, such as 60 fps for Skylanders SWAP Force, downloaded from the emulators' own sources. For Wii and GameCube games, the patches and cheat codes that come with Dolphin, switched on per game, with nothing to download.
+- Graphics mods: the ones Dolphin comes with are in the same community packs list for Wii and GameCube games, switched on per game, with nothing to download. A game only gets the mods that change something in it; for Skylanders: Spyro's Adventure and Giants they are Bloom Removal, Bloom Blurred and Native Resolution Bloom.
+- Save backups for PS3, Wii U, Wii and GameCube games, kept in Omoio's own folder apart from the emulator. The game's panel backs up its saves and puts an older copy back.
+- For PS3 games: official game updates, with the saves backed up before each one, and RPCS3's settings for each game. Homebrew installs from a .pkg the user already has.
 - For Wii U games: Cemu's settings for each game. Unpacked game folders and .wua files (Cemu's own archive) work as they are; disc images (.wud, .wux) need the user's own keys file. Downloads in NUS form aren't supported.
-- A Skylanders portal menu, opened with the controller's home button, that puts figures and traps on the portal without a real one. It works in Skylanders Giants (the PS3 version, through RPCS3) and in Skylanders SWAP Force and Trap Team (the Wii U versions, through Cemu). In Trap Team it also shows which villains the player has caught and which trap holds each. The figures' pictures are read from the user's own copy of the game; Omoio doesn't ship them.
-- Cover art from RAWG when the user adds a free RAWG key. Without one, Omoio shows the game's own picture from the user's dump (ICON0 for PS3, the boot picture for unpacked Wii U games and .wua files, and the save icon for Wii U disc images once played), and draws a tile when there is none.
-- When a game may not run well in its emulator, Omoio says so before importing it and suggests another console's version that runs better, if there is one.
+- For Wii and GameCube games: disc images (.iso, .gcm, .wbfs, .rvz, .wia, .gcz, .ciso, .tgc) are played where they are, and a disc's files unpacked into a folder work too. Wii channels (.wad) aren't supported. Omoio sizes Dolphin's picture for the screen once, unless the user has chosen a size, and switches off Dolphin's first-start questions, its update check and its keyboard shortcuts so nothing comes up over the game. There are no per-game emulator settings or official updates for these consoles.
+- A Skylanders portal menu, opened with the controller's home button, that puts figures, traps, vehicles and crystals on the portal without a real one. It works in Skylanders Spyro's Adventure, Giants, SWAP Force and Trap Team (the PS3 versions, through RPCS3), in Skylanders SWAP Force, Trap Team, SuperChargers and Imaginators (the Wii U versions, through Cemu) and in Skylanders Spyro's Adventure (the Wii version, through Dolphin). In Spyro's Adventure on the Wii it works Dolphin's own Skylanders Manager out of sight; figures made in Cemu or RPCS3 work in Dolphin too. It isn't in SuperChargers and Imaginators on PS3 or in Giants, SWAP Force, Trap Team and SuperChargers on Wii yet. In Trap Team it also shows which villains the player has caught and which trap holds each. In SuperChargers it sorts the vehicles by land, sea and sky, and puts a SuperCharger on with its own vehicle in one press. In Imaginators it keeps the player's Creation Crystals together, makes a new crystal for each new Imaginator, and sorts the Senseis by battle class. The figures' pictures are read from the user's own copy of the game (in Spyro's Adventure on the Wii also small sprites for the magic items and adventure packs); Omoio doesn't ship them. For a Wii U or Wii disc image, the emulator (Cemu, or Dolphin's own DolphinTool) makes a temporary copy that Omoio reads the pictures from and then deletes, after asking first; Omoio never decrypts anything itself.
+- Cover art from RAWG when the user adds a free RAWG key. Without one, Omoio shows the game's own picture from the user's dump (ICON0 for PS3, the boot picture for unpacked Wii U games and .wua files, the save icon for Wii U disc images once played, the disc's own banner for GameCube games, and the save's banner for Wii games once played and saved), and draws a tile when there is none.
+- A catalogue of how well PS3, Wii U, Wii and GameCube games run, from RPCS3's compatibility list, the Cemu wiki and the Dolphin wiki (CC BY-SA 3.0). When a game may not run well in its emulator, Omoio says so before importing it and suggests another console's version that runs better, if there is one.
 
 ## Setup
 
@@ -31,8 +34,8 @@ Omoio is in early development and runs on 64-bit Windows only. It is not an emul
 
 ## Systems
 
-- Supported now: PS3 through RPCS3, Wii U through Cemu.
-- Planned: PS2, GameCube and Wii, PSP, PS1, Game Boy Advance, PS Vita and DS.
+- Supported now: PS3 through RPCS3, Wii U through Cemu, Wii and GameCube through Dolphin.
+- Planned: PS2, PSP, PS1, Game Boy Advance, PS Vita and DS.
 - Not planned: PS4, because a PS4 game is locked to Sony's console keys. Mac and Linux aren't supported.
 
 ## Links

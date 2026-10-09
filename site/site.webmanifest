@@ -1,7 +1,7 @@
 {
   "name": "Omoio",
   "short_name": "Omoio",
-  "description": "Your PS3 and Wii U games in one library. Press Play and Omoio sets up the emulator for you.",
+  "description": "Your PS3, Wii U, Wii and GameCube games in one library. Press Play and Omoio sets up the emulator for you.",
   "start_url": "/",
   "display": "browser",
   "background_color": "#0b0e14",
